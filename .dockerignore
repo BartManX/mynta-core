@@ -1,0 +1,50 @@
+# Build artifacts
+*.o
+*.lo
+*.a
+*.la
+*.so
+*.so.*
+*.libs/
+.deps/
+.dirstamp
+
+# Autotools generated
+Makefile
+!Makefile.am
+config.log
+config.status
+libtool
+stamp-h1
+autom4te.cache/
+
+# Compiled binaries
+src/myntad
+src/mynta-cli
+src/mynta-tx
+src/qt/mynta-qt
+src/test/test_mynta
+src/bench/bench_mynta
+
+# Dependencies build
+depends/built/
+depends/work/
+depends/sources/
+depends/x86_64*/
+depends/i686*/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+Dockerfile*
+.dockerignore
+docker-compose*.yml

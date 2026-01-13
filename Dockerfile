@@ -31,8 +31,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /src
 COPY . .
 
-# Build
-RUN ./autogen.sh && \
+# Clean any pre-built objects and build fresh
+RUN make distclean 2>/dev/null || true && \
+    cd src/univalue && make distclean 2>/dev/null || true && \
+    cd ../secp256k1 && make distclean 2>/dev/null || true && \
+    cd ../.. && \
+    ./autogen.sh && \
     ./configure \
         --disable-bench \
         --disable-tests \
@@ -48,6 +52,7 @@ FROM debian:12-slim
 RUN apt-get update && apt-get install -y \
     libssl3 \
     libevent-2.1-7 \
+    libevent-pthreads-2.1-7 \
     libboost-system1.74.0 \
     libboost-filesystem1.74.0 \
     libboost-chrono1.74.0 \
@@ -61,13 +66,12 @@ RUN apt-get update && apt-get install -y \
 # Create mynta user
 RUN useradd -r -m -d /home/mynta mynta
 
-# Copy binaries
+# Copy binaries (mynta-tx not built with --disable-tests)
 COPY --from=builder /src/src/myntad /usr/local/bin/
 COPY --from=builder /src/src/mynta-cli /usr/local/bin/
-COPY --from=builder /src/src/mynta-tx /usr/local/bin/
 
 # Set ownership
-RUN chown mynta:mynta /usr/local/bin/mynta*
+RUN chown mynta:mynta /usr/local/bin/myntad /usr/local/bin/mynta-cli
 
 # Switch to mynta user
 USER mynta
