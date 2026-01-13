@@ -285,6 +285,112 @@ Mynta inherits its genesis block from Ravencoin. The original pszTimestamp is pr
 - On newer systems with miniupnpc 2.2+, the code includes compatibility fixes
 - Man page generation may fail; this is non-critical
 
+## Docker Build
+
+The easiest way to build and run Mynta Core is using Docker.
+
+### Build the Image
+
+```bash
+docker build -t mynta-core:latest .
+```
+
+This creates a multi-stage build:
+1. **Builder stage**: Compiles from source using Debian 12
+2. **Runtime stage**: Minimal 530MB image with only required libraries
+
+### Run the Container
+
+```bash
+# Start the daemon with persistent data
+docker run -d \
+  --name myntad \
+  -p 8767:8767 \
+  -p 8766:8766 \
+  -v mynta-data:/home/mynta/.mynta \
+  mynta-core:latest
+
+# Check status
+docker exec myntad mynta-cli getblockchaininfo
+
+# View logs
+docker logs -f myntad
+
+# Stop the container
+docker stop myntad
+```
+
+### Configuration
+
+Mount a config file to customize settings:
+
+```bash
+# Create local config
+mkdir -p ./mynta-config
+cat > ./mynta-config/mynta.conf << EOF
+rpcuser=myntarpc
+rpcpassword=$(openssl rand -base64 32)
+rpcallowip=0.0.0.0/0
+server=1
+EOF
+
+# Run with custom config
+docker run -d \
+  --name myntad \
+  -p 8767:8767 \
+  -p 8766:8766 \
+  -v mynta-data:/home/mynta/.mynta \
+  -v $(pwd)/mynta-config/mynta.conf:/home/mynta/.mynta/mynta.conf:ro \
+  mynta-core:latest
+```
+
+### Docker Compose
+
+For production deployments, use Docker Compose:
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  myntad:
+    image: mynta-core:latest
+    build: .
+    container_name: myntad
+    ports:
+      - "8767:8767"  # P2P
+      - "8766:8766"  # RPC
+    volumes:
+      - mynta-data:/home/mynta/.mynta
+      - ./mynta.conf:/home/mynta/.mynta/mynta.conf:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mynta-cli", "getblockchaininfo"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mynta-data:
+```
+
+```bash
+# Start
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+### Ports
+
+| Port | Protocol | Description |
+|------|----------|-------------|
+| 8767 | TCP | P2P network |
+| 8766 | TCP | JSON-RPC |
+
 ## Verification
 
 After building, verify the version:
