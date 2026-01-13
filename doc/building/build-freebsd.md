@@ -1,85 +1,134 @@
-Build instructions for Ravencoin 
-=================================
-FreeBSD 13.0
----------------------------------
-This will install most of the dependencies from FreeBSD pkg.
+FreeBSD Build Instructions
+==========================
 
-The only one we build, is Berkeley DB 4.8.
+Instructions for building Mynta Core on FreeBSD 13.0+.
 
+Dependencies
+------------
 
-Install dependencies:
-----------------------------
-`# pkg install autoconf automake boost-libs git gmake libevent libtool pkgconf openssl
-`
+Install from FreeBSD packages:
 
-Optional dependencies
-----------------------
-Qt5 for GUI
+```shell
+pkg install autoconf automake boost-libs git gmake libevent libtool pkgconf openssl
+```
 
-`# pkg install qt5`
+### Optional Dependencies
 
-libqrencode for QR Code support.
+Qt5 for GUI:
 
-`# pkg install libqrencode`
+```shell
+pkg install qt5
+```
 
+QR Code support:
 
-Directory structure
-------------------
-Ravencoin sources in `$HOME/src`
+```shell
+pkg install libqrencode
+```
 
-Berkeley DB will be installed to `$HOME/src/db4`
+ZeroMQ:
 
+```shell
+pkg install libzmq4
+```
 
-Ravencoin
-------------------
+Build Process
+-------------
 
-Start in $HOME
+### 1. Clone Repository
 
-Make the directory for sources and go into it.
+```shell
+mkdir -p ~/src
+cd ~/src
+git clone https://github.com/Slashx124/mynta-core.git
+cd mynta-core
+git submodule update --init --recursive
+```
 
-`mkdir src`
+### 2. Build Berkeley DB 4.8 (Recommended)
 
-`cd src`
+For wallet portability, build BDB 4.8:
 
-__Download Ravencoin source.__
+```shell
+contrib/install_db4.sh ../
+export BDB_PREFIX=$HOME/src/db4
+```
 
-`git clone https://github.com/RavenProject/Ravencoin`
+### 3. Build BLST Library
 
-`cd Ravencoin`
+```shell
+cd src/bls/blst
+./build.sh
+cd ../../..
+```
 
-`git checkout develop` # this checks out the develop branch.
+### 4. Build Mynta Core
 
-__Download and build Berkeley DB 4.8__
+```shell
+./autogen.sh
 
-`contrib/install_db4.sh ../`
+# With BDB 4.8
+./configure \
+    BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" \
+    BDB_CFLAGS="-I${BDB_PREFIX}/include" \
+    CFLAGS="-fPIC" \
+    CXXFLAGS="-fPIC -I/usr/local/include" \
+    --prefix=/usr/local \
+    MAKE=gmake
 
-__The build process:__
+# OR with system BDB (use --with-incompatible-bdb)
+./configure \
+    --with-incompatible-bdb \
+    CFLAGS="-fPIC" \
+    CXXFLAGS="-fPIC -I/usr/local/include" \
+    --prefix=/usr/local \
+    MAKE=gmake
 
-`./autogen.sh`
+# Build (adjust -j for your CPU cores)
+gmake -j8
+```
 
-This is for `sh` or `bash`. 
+### 5. Install (Optional)
 
-`export BDB_PREFIX=$HOME/src/db4`
+```shell
+gmake install
+```
 
-`./configure BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" BDB_CFLAGS="-I${BDB_PREFIX}/include" CFLAGS="-fPIC" CXXFLAGS="-fPIC -I/usr/local/include" --prefix=/usr/local MAKE=gmake`
+Binaries
+--------
 
-_Adjust to own needs. `--prefix=/usr/local` will install the binaries to `/usr/local/bin`_
+After build, binaries are in `src/`:
 
+| Binary | Description |
+|--------|-------------|
+| `myntad` | Mynta daemon |
+| `mynta-cli` | Command-line RPC client |
+| `mynta-qt` | Qt GUI (if built with Qt) |
 
-`gmake -j8`  # 8 for 8 build threads, adjust to fit your setup.
+Running
+-------
 
-You can now start raven-qt from the build directory.
+```shell
+# Create data directory
+mkdir -p ~/.mynta
 
-`src/qt/raven-qt`
+# Create config
+cat > ~/.mynta/mynta.conf << EOF
+rpcuser=myntarpc
+rpcpassword=$(openssl rand -base64 32)
+server=1
+EOF
 
-ravend and raven-cli are in `src/`
+# Start daemon
+./src/myntad -daemon
 
+# Check status
+./src/mynta-cli getblockchaininfo
+```
 
-__Optional:__
+See Also
+--------
 
-`make install`  # if you want to install the binaries to /usr/local/bin.
-
-
-
-
-
+- [BUILDING.md](../../BUILDING.md) - Main build documentation
+- [build-unix.md](build-unix.md) - General Unix instructions
+- [dependencies.md](dependencies.md) - Dependency details

@@ -1,119 +1,210 @@
 WINDOWS BUILD NOTES
-====================
+===================
 
-Below are some notes on how to build Raven Core for Windows.
+Notes on building Mynta Core for Windows.
 
-Most developers use cross-compilation from Ubuntu to build executables for
-Windows. Cross-compilation is also used to build the release binaries.
+Most developers use cross-compilation from Ubuntu/WSL to build Windows executables.
 
-Currently only building on Ubuntu Trusty 14.04 or Ubuntu Zesty 17.04 or later is supported.
-Building on Ubuntu Xenial 16.04 is known to be broken, see extensive discussion in issue [8732](https://github.com/bitcoin/bitcoin/issues/8732).
-While it may be possible to do so with work arounds, it's potentially dangerous and not recommended.
-
-While there are potentially a number of ways to build on Windows (for example using msys / mingw-w64),
-using the Windows Subsystem For Linux is the most straightforward. If you are building with
-another method, please contribute the instructions here for others who are running versions
-of Windows that are not compatible with the Windows Subsystem for Linux.
-
-Compiling with Windows Subsystem For Linux
--------------------------------------------
-
-With Windows 10, Microsoft has released a new feature named the [Windows
-Subsystem for Linux](https://msdn.microsoft.com/commandline/wsl/about). This
-feature allows you to run a bash shell directly on Windows in an Ubuntu-based
-environment. Within this environment you can cross compile for Windows without
-the need for a separate Linux VM or server.
-
-This feature is not supported in versions of Windows prior to Windows 10 or on
-Windows Server SKUs. In addition, it is available [only for 64-bit versions of
-Windows](https://msdn.microsoft.com/en-us/commandline/wsl/install_guide).
-
-To get the bash shell, you must first activate the feature in Windows.
-
-1. Turn on Developer Mode
-  * Open Settings -> Update and Security -> For developers
-  * Select the Developer Mode radio button
-  * Restart if necessary
-2. Enable the Windows Subsystem for Linux feature
-  * From Start, search for "Turn Windows features on or off" (type 'turn')
-  * Select Windows Subsystem for Linux (beta)
-  * Click OK
-  * Restart if necessary
-3. Complete Installation
-  * Open a cmd prompt and type "bash"
-  * Accept the license
-  * Create a new UNIX user account (this is a separate account from your Windows account)
-
-After the bash shell is active, you can follow the instructions below, starting
-with the "Cross-compilation" section. Compiling the 64-bit version is
-recommended but it is possible to compile the 32-bit version.
-
-Cross-compilation
--------------------
-
-These steps can be performed on, for example, an Ubuntu VM. The depends system
-will also work on other Linux distributions, however the commands for
-installing the toolchain will be different.
-
-First, install the general dependencies:
-
-    sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils curl nsis
-
-A host toolchain (`build-essential`) is necessary because some dependency
-packages (such as `protobuf`) need to build host utilities that are used in the
-build process.
-
-See also: [dependencies.md](dependencies.md).
-
-If you're building on Ubuntu 17.04 or later, run these two commands, selecting the 'posix' variant for both,
-to work around issues with mingw-w64. See issue [8732](https://github.com/bitcoin/bitcoin/issues/8732) for more information.
-```
-sudo update-alternatives --config x86_64-w64-mingw32-g++
-sudo update-alternatives --config x86_64-w64-mingw32-gcc
-```
-
-## Building for 64-bit Windows
-
-To build executables for Windows 64-bit, install the following dependencies:
-
-    sudo apt-get install g++-mingw-w64-x86-64 mingw-w64-x86-64-dev
-
-Then build using:
-
-    PATH=$(echo "$PATH" | sed -e 's/:\/mnt.*//g') # strip out problematic Windows %PATH% imported var
-    cd depends
-    make HOST=x86_64-w64-mingw32
-    cd ..
-    ./autogen.sh # not required when building from tarball
-    CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site ./configure --prefix=/
-    make
-
-## Building for 32-bit Windows
-
-To build executables for Windows 32-bit, install the following dependencies:
-
-    sudo apt-get install g++-mingw-w64-i686 mingw-w64-i686-dev
-
-Then build using:
-
-    PATH=$(echo "$PATH" | sed -e 's/:\/mnt.*//g') # strip out problematic Windows %PATH% imported var
-    cd depends
-    make HOST=i686-w64-mingw32
-    cd ..
-    ./autogen.sh # not required when building from tarball
-    CONFIG_SITE=$PWD/depends/i686-w64-mingw32/share/config.site ./configure --prefix=/
-    make
-
-## Depends system
-
-For further documentation on the depends system see [README.md](../depends/README.md) in the depends directory.
-
-Installation
+Prerequisites
 -------------
 
-After building using the Windows subsystem it can be useful to copy the compiled
-executables to a directory on the windows drive in the same directory structure
-as they appear in the release `.zip` archive. This can be done in the following
-way. This will install to `c:\workspace\raven`, for example:
+### Using Windows Subsystem for Linux (WSL2) - Recommended
 
-    make install DESTDIR=/mnt/c/workspace/raven
+1. Install WSL2 with Ubuntu 22.04 or later
+2. Follow the cross-compilation instructions below
+
+### System Requirements
+
+- Windows 10/11 64-bit (for WSL2)
+- Or Ubuntu 22.04+ VM for cross-compilation
+- ~20GB disk space for build
+
+Cross-Compilation from Linux
+----------------------------
+
+### Install Dependencies
+
+```bash
+# Install base build tools
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential \
+    libtool \
+    autotools-dev \
+    automake \
+    pkg-config \
+    bsdmainutils \
+    curl \
+    nsis \
+    python3 \
+    git \
+    dos2unix
+
+# Install mingw-w64 cross-compiler
+sudo apt-get install -y \
+    g++-mingw-w64-x86-64 \
+    mingw-w64-x86-64-dev
+
+# Set mingw to use posix threading (REQUIRED)
+sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+```
+
+### Build Dependencies
+
+The `depends` system builds all required libraries for Windows:
+
+```bash
+# Clone repository
+git clone https://github.com/Slashx124/mynta-core.git
+cd mynta-core
+git submodule update --init --recursive
+
+# IMPORTANT: Clear Windows PATH in WSL (paths with spaces break the build)
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+# Build dependencies (takes 15-30 minutes)
+cd depends
+make HOST=x86_64-w64-mingw32 NO_QT=1 -j$(nproc)
+cd ..
+```
+
+### Build BLST for Windows
+
+```bash
+cd src/bls/blst
+rm -f libblst.a *.o 2>/dev/null
+CC=x86_64-w64-mingw32-gcc ./build.sh
+cd ../../..
+```
+
+### Build Mynta Core
+
+```bash
+# Ensure clean PATH
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
+# Fix line endings
+dos2unix autogen.sh configure.ac Makefile.am 2>/dev/null || true
+
+# Generate build scripts
+./autogen.sh
+
+# Configure with depends
+export CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site
+./configure \
+    --prefix=/ \
+    --disable-bench \
+    --disable-tests \
+    --disable-shared \
+    --without-gui \
+    --with-incompatible-bdb \
+    PTHREAD_LIBS='-lpthread' \
+    LIBS='-lpthread'
+
+# Build
+make -j$(nproc)
+```
+
+Windows Executables
+-------------------
+
+After successful build, executables are in `src/`:
+
+| Binary | Description |
+|--------|-------------|
+| `myntad.exe` | Mynta daemon |
+| `mynta-cli.exe` | Command-line RPC client |
+
+These are fully static, standalone executables that work on any Windows 10/11 x64 system.
+
+### Copy to Windows
+
+```bash
+# Copy to Windows drive (adjust path as needed)
+mkdir -p /mnt/c/mynta
+cp src/myntad.exe src/mynta-cli.exe /mnt/c/mynta/
+```
+
+Building 32-bit Windows (Legacy)
+--------------------------------
+
+```bash
+# Install 32-bit cross-compiler
+sudo apt-get install g++-mingw-w64-i686 mingw-w64-i686-dev
+
+# Build dependencies
+cd depends
+make HOST=i686-w64-mingw32 NO_QT=1 -j$(nproc)
+cd ..
+
+# Build BLST for 32-bit
+cd src/bls/blst
+rm -f libblst.a *.o 2>/dev/null
+CC=i686-w64-mingw32-gcc ./build.sh
+cd ../../..
+
+# Configure and build
+export CONFIG_SITE=$PWD/depends/i686-w64-mingw32/share/config.site
+./configure --prefix=/ --disable-bench --disable-tests --disable-shared --without-gui --with-incompatible-bdb
+make -j$(nproc)
+```
+
+Running on Windows
+------------------
+
+1. Create data directory: `%APPDATA%\Mynta\`
+2. Create config file: `%APPDATA%\Mynta\mynta.conf`
+
+```ini
+rpcuser=myntarpc
+rpcpassword=<random-password>
+server=1
+```
+
+3. Run daemon:
+
+```cmd
+myntad.exe -daemon
+```
+
+4. Check status:
+
+```cmd
+mynta-cli.exe getblockchaininfo
+```
+
+Troubleshooting
+---------------
+
+### Build Fails with Path Errors
+
+Windows `%PATH%` contains spaces that break the build. Always set a clean PATH:
+
+```bash
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+```
+
+### mingw-w64 Threading Issues
+
+Ensure posix threading is selected:
+
+```bash
+sudo update-alternatives --config x86_64-w64-mingw32-g++
+# Select the option ending in -posix
+```
+
+### Missing pthread
+
+Add pthread flags to configure:
+
+```bash
+./configure ... PTHREAD_LIBS='-lpthread' LIBS='-lpthread'
+```
+
+See Also
+--------
+
+- [BUILDING.md](../../BUILDING.md) - Main build documentation
+- [build-unix.md](build-unix.md) - Linux native build
+- [dependencies.md](dependencies.md) - Dependency details

@@ -1,183 +1,231 @@
-Build instructions for Ravencoin 
-=================================
+Build Instructions for Mynta Core on Ubuntu/Debian
+==================================================
 
-This will install most of the dependencies from ubuntu.
-The only one we build, is Berkeley DB 4.8.
+This guide covers building Mynta Core on Ubuntu and Debian systems.
 
+> **Quick Start**: For the easiest build experience, use Docker. See [BUILDING.md](../../BUILDING.md#docker-build)
 
-Ubuntu 21.10 - Impish Indri - Install dependencies:
----------------------------
-`$ sudo apt install 
-build-essential
-libssl-dev
-libboost-chrono1.74-dev
-libboost-filesystem1.74-dev
-libboost-program-options1.74-dev
-libboost-system1.74-dev
-libboost-thread1.74-dev
-libboost-test1.74-dev
-qtbase5-dev
-qttools5-dev
-bison
-libexpat1-dev
-libdbus-1-dev
-libfontconfig-dev
-libfreetype-dev
-libice-dev
-libsm-dev
-libx11-dev
-libxau-dev
-libxext-dev
-libevent-dev
-libxcb1-dev
-libxkbcommon-dev
-libminiupnpc-dev
-libprotobuf-dev
-libqrencode-dev
-xcb-proto
-x11proto-xext-dev
-x11proto-dev
-xtrans-dev
-zlib1g-dev
-libczmq-dev
-autoconf
-automake
-libtool
-protobuf-compiler
-`
-
-Ubuntu 21.04 - Hirsute Hippo - Install dependencies:
-----------------------------
-`$ sudo apt install 
-build-essential
-libssl-dev
-libboost-chrono1.71-dev
-libboost-filesystem1.71-dev
-libboost-program-options1.71-dev
-libboost-system1.71-dev
-libboost-thread1.71-dev
-libboost-test1.71-dev
-qtbase5-dev
-qttools5-dev
-bison
-libexpat1-dev
-libdbus-1-dev
-libfontconfig-dev
-libfreetype-dev
-libice-dev
-libsm-dev
-libx11-dev
-libxau-dev
-libxext-dev
-libevent-dev
-libxcb1-dev
-libxkbcommon-dev
-libminiupnpc-dev
-libprotobuf-dev
-libqrencode-dev
-xcb-proto
-x11proto-xext-dev
-x11proto-dev
-xtrans-dev
-zlib1g-dev
-libczmq-dev
-autoconf
-automake
-libtool
-protobuf-compiler
-`
-
-Ubuntu 18.04 - Bionic Beaver - Install dependencies:
-----------------------------
-`$ sudo apt install 
-build-essential
-libssl-dev
-libboost-chrono-dev
-libboost-filesystem-dev
-libboost-program-options-dev
-libboost-system-dev
-libboost-thread-dev
-libboost-test-dev
-qtbase5-dev
-qttools5-dev
-bison
-libexpat1-dev
-libdbus-1-dev
-libfontconfig-dev
-libfreetype6-dev
-libice-dev
-libsm-dev
-libx11-dev
-libxau-dev
-libxext-dev
-libevent-dev
-libxcb1-dev
-libxkbcommon-dev
-libminiupnpc-dev
-libprotobuf-dev
-libqrencode-dev
-xcb-proto
-x11proto-xext-dev
-x11proto-dev
-xtrans-dev
-zlib1g-dev
-libczmq-dev
-autoconf
-automake
-libtool
-protobuf-compiler
-`
-
-Directory structure
-------------------
-Ravencoin sources in `$HOME/src`
-
-Berkeley DB will be installed to `$HOME/src/db4`
-
-
-Ravencoin
+Supported Versions
 ------------------
 
-Start in $HOME
+| Distribution | Version | Status |
+|--------------|---------|--------|
+| Debian | 12 (Bookworm) | ✅ Recommended |
+| Ubuntu | 24.04 LTS (Noble) | ✅ Recommended |
+| Ubuntu | 22.04 LTS (Jammy) | ✅ Supported |
+| Ubuntu | 20.04 LTS (Focal) | ⚠️ Legacy |
 
-Make the directory for sources and go into it.
+Ubuntu 24.04 / Debian 12 (Recommended)
+--------------------------------------
 
-`mkdir src`
+### Install Dependencies
 
-`cd src`
+```bash
+# Base development tools
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential \
+    libtool \
+    autotools-dev \
+    automake \
+    pkg-config \
+    bsdmainutils \
+    python3 \
+    git \
+    dos2unix
 
-__Download Ravencoin source.__
+# Required libraries
+sudo apt-get install -y \
+    libssl-dev \
+    libevent-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \
+    libboost-chrono-dev \
+    libboost-test-dev \
+    libboost-thread-dev \
+    libboost-program-options-dev
 
-`git clone https://github.com/RavenProject/Ravencoin`
+# BerkeleyDB (wallet support)
+sudo apt-get install -y libdb-dev libdb++-dev
 
-`cd Ravencoin`
+# Optional: UPnP support
+sudo apt-get install -y libminiupnpc-dev
 
-`git checkout develop` # this checks out the develop branch.
+# Optional: ZeroMQ notifications
+sudo apt-get install -y libzmq3-dev
 
-__Download and build Berkeley DB 4.8__
+# Optional: Qt5 GUI
+sudo apt-get install -y \
+    qtbase5-dev \
+    qttools5-dev \
+    qttools5-dev-tools \
+    libqt5gui5 \
+    libqt5core5a \
+    libqt5dbus5 \
+    libprotobuf-dev \
+    protobuf-compiler \
+    libqrencode-dev
+```
 
-`contrib/install_db4.sh ../`
+Ubuntu 22.04 LTS
+----------------
 
-__The build process:__
+Same as above. All package names are identical.
 
-`./autogen.sh`
+Ubuntu 20.04 LTS (Legacy)
+-------------------------
 
-`export BDB_PREFIX=$HOME/src/db4`
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential \
+    libtool \
+    autotools-dev \
+    automake \
+    pkg-config \
+    bsdmainutils \
+    python3 \
+    git \
+    libssl-dev \
+    libevent-dev \
+    libboost-chrono-dev \
+    libboost-filesystem-dev \
+    libboost-program-options-dev \
+    libboost-system-dev \
+    libboost-thread-dev \
+    libboost-test-dev \
+    libdb-dev \
+    libdb++-dev \
+    libminiupnpc-dev \
+    libzmq3-dev
+```
 
-`./configure BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" BDB_CFLAGS="-I${BDB_PREFIX}/include" --prefix=/usr/local` 
+Build Process
+-------------
 
-_Adjust to own needs. This will install the binaries to `/usr/local/bin`_
+### 1. Clone Repository
 
+```bash
+mkdir -p ~/src
+cd ~/src
+git clone https://github.com/Slashx124/mynta-core.git
+cd mynta-core
 
-`make -j8`  # 8 for 8 build threads, adjust to fit your setup.
+# Initialize submodules
+git submodule update --init --recursive
+```
 
-You can now start raven-qt from the build directory.
+### 2. Build BLST Library
 
-`src/qt/raven-qt`
+The BLST library must be built before the main project:
 
-ravend and raven-cli are in `src/`
+```bash
+cd src/bls/blst
+./build.sh
+cd ../../..
+```
 
+### 3. Build Mynta Core
 
-__Optional:__
+```bash
+# Fix line endings if needed (WSL users)
+dos2unix autogen.sh configure.ac Makefile.am 2>/dev/null || true
 
-`sudo make install`  # if you want to install the binaries to /usr/local/bin (if this prefix was used above).
+# Generate build scripts
+./autogen.sh
+
+# Configure (daemon only, no GUI)
+./configure \
+    --disable-bench \
+    --disable-tests \
+    --with-incompatible-bdb \
+    --without-gui
+
+# Build
+make -j$(nproc)
+```
+
+### 4. Build with Qt GUI (Optional)
+
+```bash
+./configure \
+    --with-gui=qt5 \
+    --with-incompatible-bdb
+
+make -j$(nproc)
+```
+
+### 5. Install (Optional)
+
+```bash
+sudo make install
+```
+
+Binaries
+--------
+
+After successful build, binaries are in `src/`:
+
+| Binary | Description |
+|--------|-------------|
+| `myntad` | Mynta daemon |
+| `mynta-cli` | Command-line RPC client |
+| `mynta-qt` | Qt GUI wallet (if built with Qt) |
+
+Running
+-------
+
+```bash
+# Create data directory
+mkdir -p ~/.mynta
+
+# Create config file
+cat > ~/.mynta/mynta.conf << EOF
+rpcuser=myntarpc
+rpcpassword=$(openssl rand -base64 32)
+server=1
+EOF
+
+# Start daemon
+./src/myntad -daemon
+
+# Check status
+./src/mynta-cli getblockchaininfo
+```
+
+Troubleshooting
+---------------
+
+### Line Ending Issues (WSL)
+
+If you see `bad interpreter: No such file or directory`:
+
+```bash
+dos2unix autogen.sh configure.ac Makefile.am
+find . -name '*.sh' -exec dos2unix {} \;
+```
+
+### Missing libblst.a
+
+Build the BLST library first:
+
+```bash
+cd src/bls/blst
+./build.sh
+cd ../../..
+```
+
+### BerkeleyDB Version Errors
+
+Use `--with-incompatible-bdb` flag when configuring.
+
+### libtoolize Conflicts
+
+If you see `AC_CONFIG_MACRO_DIRS` errors, run `./autogen.sh` again or comment out conflicting lines in `configure.ac`.
+
+See Also
+--------
+
+- [BUILDING.md](../../BUILDING.md) - Main build documentation with Docker instructions
+- [build-unix.md](build-unix.md) - General Unix build notes
+- [build-windows.md](build-windows.md) - Windows cross-compilation

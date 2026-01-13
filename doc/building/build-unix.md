@@ -1,20 +1,16 @@
 UNIX/LINUX BUILD NOTES
-====================
-Some notes on how to build Raven Core in *nix.
+======================
 
+Notes on building Mynta Core on Unix/Linux systems.
+
+> **Quick Start**: For the easiest build experience, use Docker. See [BUILDING.md](../../BUILDING.md#docker-build)
 
 Note
----------------------
-Always use absolute paths to configure and compile raven and the dependencies,
-for example, when specifying the path of the dependency:
-
-	../dist/configure --enable-cxx --disable-shared --with-pic --prefix=$BDB_PREFIX
-
-Here BDB_PREFIX must be an absolute path - it is defined using $(pwd) which ensures
-the usage of the absolute path.
+----
+Always use absolute paths when configuring and compiling Mynta Core and its dependencies.
 
 To Build
----------------------
+--------
 
 ```bash
 ./autogen.sh
@@ -23,226 +19,228 @@ make
 make install # optional
 ```
 
-This will build raven-qt as well if the dependencies are met.
-
-On most Linux distros the "fPIC" flag needs to be set.  If this flag is not specified it is possible that the build will fail with an error similar to:
-```bash
-relocation R_X86_64_32 against `.rodata' can not be used when making a shared object; recompile with -fPIC
-```
- 
-To resolve or avoid the following build error specify the following configure parameters, make clean, and then build:
-```bash
-./configure --enable-cxx --disable-shared --with-pic --prefix=$BDB_PREFIX CXXFLAGS="-fPIC" CPPFLAGS="-fPIC"
-make clean
-make
-```
+This will build `mynta-qt` as well if the Qt dependencies are met.
 
 Dependencies
----------------------
+------------
 
-These dependencies are required:
+### Required Dependencies
 
- Library     | Purpose          | Description
- ------------|------------------|----------------------
- libssl      | Crypto           | Random Number Generation, Elliptic Curve Cryptography
- libboost    | Utility          | Library for threading, data structures, etc
- libevent    | Networking       | OS independent asynchronous networking
- libdb++     | Utility          | Contains headers and static libraries for the Berkeley DB library
+| Library | Purpose | Description |
+|---------|---------|-------------|
+| libssl | Crypto | Random Number Generation, Elliptic Curve Cryptography |
+| libboost | Utility | Library for threading, data structures, etc |
+| libevent | Networking | OS independent asynchronous networking |
+| libdb++ | Wallet | Berkeley DB for wallet storage |
 
-Optional dependencies:
+### Optional Dependencies
 
- Library     | Purpose          | Description
- ------------|------------------|----------------------
- miniupnpc   | UPnP Support     | Firewall-jumping support
- libdb4.8    | Berkeley DB      | Wallet storage (only needed when wallet enabled)
- qt          | GUI              | GUI toolkit (only needed when GUI enabled)
- protobuf    | Payments in GUI  | Data interchange format used for payment protocol (only needed when GUI enabled)
- libqrencode | QR codes in GUI  | Optional for generating QR codes (only needed when GUI enabled)
- univalue    | Utility          | JSON parsing and encoding (bundled version will be used unless --with-system-univalue passed to configure)
- libzmq3     | ZMQ notification | Optional, allows generating ZMQ notifications (requires ZMQ version >= 4.x)
+| Library | Purpose | Description |
+|---------|---------|-------------|
+| miniupnpc | UPnP Support | Firewall-jumping support |
+| qt | GUI | GUI toolkit (only needed when GUI enabled) |
+| protobuf | Payments in GUI | Data interchange format (only needed with GUI) |
+| libqrencode | QR codes in GUI | QR code generation (only needed with GUI) |
+| libzmq3 | ZMQ notification | ZMQ notifications (requires ZMQ >= 4.x) |
 
-For the versions used, see [dependencies.md](dependencies.md)
+For version details, see [dependencies.md](dependencies.md)
 
+Linux Distribution Specific Instructions
+----------------------------------------
 
-## Linux Distribution Specific Instructions
+### Debian 12+ / Ubuntu 22.04+
 
-### Ubuntu & Debian
+```bash
+# Install base development tools
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential \
+    libtool \
+    autotools-dev \
+    automake \
+    pkg-config \
+    bsdmainutils \
+    python3 \
+    git
 
-Ubuntu/Debian specific instructions, see [build-ubuntu.md](build-ubuntu.md))
+# Install required libraries
+sudo apt-get install -y \
+    libssl-dev \
+    libevent-dev \
+    libboost-system-dev \
+    libboost-filesystem-dev \
+    libboost-chrono-dev \
+    libboost-test-dev \
+    libboost-thread-dev \
+    libboost-program-options-dev
 
+# BerkeleyDB for wallet support
+# Use --with-incompatible-bdb if BDB 4.8 is not available
+sudo apt-get install -y libdb-dev libdb++-dev
+
+# Optional: MiniUPnP for UPnP support
+sudo apt-get install -y libminiupnpc-dev
+
+# Optional: ZeroMQ for ZMQ notifications
+sudo apt-get install -y libzmq3-dev
+
+# Optional: Qt5 for GUI
+sudo apt-get install -y \
+    libqt5gui5 \
+    libqt5core5a \
+    libqt5dbus5 \
+    qttools5-dev \
+    qttools5-dev-tools \
+    libprotobuf-dev \
+    protobuf-compiler \
+    libqrencode-dev
+```
 
 ### Fedora
 
-#### Dependency Build Instructions
+```bash
+# Build requirements
+sudo dnf install gcc-c++ libtool make autoconf automake \
+    openssl-devel libevent-devel boost-devel libdb-cxx-devel python3
 
-Build requirements:
+# Optional dependencies
+sudo dnf install miniupnpc-devel zeromq-devel
 
-    sudo dnf install gcc-c++ libtool make autoconf automake openssl-devel libevent-devel boost-devel libdb4-devel libdb4-cxx-devel python3
+# Qt5 GUI (optional)
+sudo dnf install qt5-qttools-devel qt5-qtbase-devel protobuf-devel qrencode-devel
+```
 
-Optional:
+### Arch Linux
 
-    sudo dnf install miniupnpc-devel
+```bash
+pacman -S git base-devel boost libevent python openssl db
+```
 
-ZMQ dependencies (provides ZMQ API):
+Build Steps
+-----------
 
-    sudo dnf install zeromq-devel
+```bash
+# Clone repository
+git clone https://github.com/Slashx124/mynta-core.git
+cd mynta-core
 
-To build with Qt 5 you need the following:
+# Initialize submodules (required for BLS library)
+git submodule update --init --recursive
 
-    sudo dnf install qt5-qttools-devel qt5-qtbase-devel protobuf-devel
+# Build BLST library
+cd src/bls/blst
+./build.sh
+cd ../../..
 
-libqrencode (optional) can be installed with:
+# Generate build scripts
+./autogen.sh
 
-    sudo dnf install qrencode-devel
+# Configure (adjust options as needed)
+./configure \
+    --disable-bench \
+    --disable-tests \
+    --with-incompatible-bdb \
+    --without-gui
 
-Notes
------
-The release is built with GCC and then "strip ravend" to strip the debug
-symbols, which reduces the executable size by about 90%.
+# Build
+make -j$(nproc)
 
+# Optional: Install
+sudo make install
+```
+
+Configure Options
+-----------------
+
+| Option | Description |
+|--------|-------------|
+| `--with-incompatible-bdb` | Allow BerkeleyDB versions other than 4.8 |
+| `--disable-wallet` | Build without wallet support |
+| `--without-gui` | Build without Qt GUI |
+| `--without-miniupnpc` | Build without UPnP support |
+| `--disable-tests` | Don't build unit tests |
+| `--disable-bench` | Don't build benchmarks |
+| `--enable-debug` | Build with debug symbols |
 
 miniupnpc
 ---------
 
-[miniupnpc](http://miniupnp.free.fr/) may be used for UPnP port mapping.  It can be downloaded from [here](
-http://miniupnp.tuxfamily.org/files/).  UPnP support is compiled in and
-turned off by default.  See the configure options for upnp behavior desired:
+[miniupnpc](http://miniupnp.free.fr/) may be used for UPnP port mapping. UPnP support is compiled in and turned off by default.
 
-	--without-miniupnpc      No UPnP support miniupnp not required
-	--disable-upnp-default   (the default) UPnP support turned off by default at runtime
-	--enable-upnp-default    UPnP support turned on by default at runtime
-
+| Option | Description |
+|--------|-------------|
+| `--without-miniupnpc` | No UPnP support, miniupnp not required |
+| `--disable-upnp-default` | (default) UPnP support off by default at runtime |
+| `--enable-upnp-default` | UPnP support on by default at runtime |
 
 Berkeley DB
 -----------
-It is recommended to use Berkeley DB 4.8. If you want to build it yourself, we recommend using the install_db4.sh script
 
-	contrib/install_db4.sh
+BerkeleyDB 4.8 is recommended for wallet portability. If using a newer version, use `--with-incompatible-bdb`.
 
-**Note**: You only need Berkeley DB if the wallet is enabled (see the section *Disable-Wallet mode* below).
+To build BDB 4.8 yourself:
 
-Boost
------
-If you need to build Boost yourself:
+```bash
+contrib/install_db4.sh $HOME/src/db4
+export BDB_PREFIX=$HOME/src/db4
+./configure BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" BDB_CFLAGS="-I${BDB_PREFIX}/include"
+```
 
-	sudo su
-	./bootstrap.sh
-	./bjam install
+Disable-wallet Mode
+-------------------
 
+When running only a P2P node without a wallet:
 
-Security
---------
-To help make your raven installation more secure by making certain attacks impossible to
-exploit even if a vulnerability is found, binaries are hardened by default.
-This can be disabled with:
+```bash
+./configure --disable-wallet
+```
 
-Hardening Flags:
+No dependency on BerkeleyDB in this mode. Mining is still possible using `getblocktemplate` RPC.
 
-	./configure --enable-hardening
-	./configure --disable-hardening
+Security Hardening
+------------------
 
+Hardening is enabled by default. To disable:
 
-Hardening enables the following features:
+```bash
+./configure --disable-hardening
+```
 
-* Position Independent Executable
-    Build position independent code to take advantage of Address Space Layout Randomization
-    offered by some kernels. Attackers who can cause execution of code at an arbitrary memory
-    location are thwarted if they don't know where anything useful is located.
-    The stack and heap are randomly located by default but this allows the code section to be
-    randomly located as well.
-
-    On an AMD64 processor where a library was not compiled with -fPIC, this will cause an error
-    such as: "relocation R_X86_64_32 against `......' can not be used when making a shared object;"
-
-    To test that you have built PIE executable, install scanelf, part of paxutils, and use:
-
-    	scanelf -e ./raven
-
-    The output should contain:
-
-     TYPE
-    ET_DYN
-
-* Non-executable Stack
-    If the stack is executable then trivial stack based buffer overflow exploits are possible if
-    vulnerable buffers are found. By default, raven should be built with a non-executable stack
-    but if one of the libraries it uses asks for an executable stack or someone makes a mistake
-    and uses a compiler extension which requires an executable stack, it will silently build an
-    executable without the non-executable stack protection.
-
-    To verify that the stack is non-executable after compiling use:
-    `scanelf -e ./raven`
-
-    the output should contain:
-	STK/REL/PTL
-	RW- R-- RW-
-
-    The STK RW- means that the stack is readable and writeable but not executable.
-
-Disable-wallet mode
---------------------
-When the intention is to run only a P2P node without a wallet, raven may be compiled in
-disable-wallet mode with:
-
-    ./configure --disable-wallet
-
-In this case there is no dependency on Berkeley DB 4.8.
-
-Mining is also possible in disable-wallet mode, but only using the `getblocktemplate` RPC
-call not `getwork`.
-
-Additional Configure Flags
---------------------------
-A list of additional configure flags can be displayed with:
-
-    ./configure --help
-
-
-Setup and Build Example: Arch Linux
------------------------------------
-This example lists the steps necessary to setup and build a command line only, non-wallet distribution of the latest changes on Arch Linux:
-
-    pacman -S git base-devel boost libevent python
-    git clone https://github.com/RavenProject/Ravencoin.git
-    cd raven/
-    ./autogen.sh
-    ./configure --disable-wallet --without-gui --without-miniupnpc
-    make check
-
-Note:
-Enabling wallet support requires either compiling against a Berkeley DB newer than 4.8 (package `db`) using `--with-incompatible-bdb`,
-or building and depending on a local version of Berkeley DB 4.8. The readily available Arch Linux packages are currently built using
-`--with-incompatible-bdb` according to the [PKGBUILD](https://projects.archlinux.org/svntogit/community.git/tree/raven/trunk/PKGBUILD).
-As mentioned above, when maintaining portability of the wallet between the standard Raven Core distributions and independently built
-node software is desired, Berkeley DB 4.8 must be used.
-
+Hardening enables:
+- **Position Independent Executable (PIE)**: ASLR protection
+- **Non-executable Stack**: Prevents stack-based buffer overflow exploits
 
 ARM Cross-compilation
--------------------
-These steps can be performed on, for example, an Ubuntu VM. The depends system
-will also work on other Linux distributions, however the commands for
-installing the toolchain will be different.
+---------------------
 
-Make sure you install the build requirements mentioned above.
-Then, install the toolchain and curl:
+From Ubuntu:
 
-    sudo apt-get install g++-arm-linux-gnueabihf curl
+```bash
+sudo apt-get install g++-arm-linux-gnueabihf curl
 
-To build executables for ARM:
+cd depends
+make HOST=arm-linux-gnueabihf NO_QT=1
+cd ..
+./autogen.sh
+./configure --prefix=$PWD/depends/arm-linux-gnueabihf --enable-glibc-back-compat --enable-reduce-exports LDFLAGS=-static-libstdc++
+make
+```
 
-    cd depends
-    make HOST=arm-linux-gnueabihf NO_QT=1
-    cd ..
-    ./autogen.sh
-    ./configure --prefix=$PWD/depends/arm-linux-gnueabihf --enable-glibc-back-compat --enable-reduce-exports LDFLAGS=-static-libstdc++
-    make
+Notes
+-----
 
+### Compiler Requirements
+- GCC 7+ or Clang 6+
+- C++17 support required
 
-For further documentation on the depends system see [README.md](../depends/README.md) in the depends directory.
+### Known Issues
+- If you encounter BerkeleyDB version errors, use `--with-incompatible-bdb`
+- On newer systems with miniupnpc 2.2+, the code includes compatibility fixes
 
-Building on FreeBSD and OpenBSD
---------------------
+See Also
+--------
 
-FreeBSD specific instructions, see [build-freebsd.md](build-freebsd.md))
-
-OpenBSD specific instructions, see [build-openbsd.md](build-openbsd.md))
+- [BUILDING.md](../../BUILDING.md) - Main build documentation
+- [build-ubuntu.md](build-ubuntu.md) - Ubuntu-specific instructions
+- [build-windows.md](build-windows.md) - Windows cross-compilation
+- [dependencies.md](dependencies.md) - Dependency version details

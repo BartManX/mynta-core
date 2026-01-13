@@ -17,7 +17,7 @@
 ## Quick Links
 
 ### Getting Started
-- [Building from Source](building/build-unix.md)
+- [Building from Source](../BUILDING.md) (includes Docker)
 - [Configuration](api/raven-conf.md)
 - [Running a Node](operations/init.md)
 

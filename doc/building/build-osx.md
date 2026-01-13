@@ -1,136 +1,165 @@
-macOS Build Instructions and Notes
-====================================
-The commands in this guide should be executed in a Terminal application.
-The built-in one is located in 
-```
-/Applications/Utilities/Terminal.app
-```
+macOS Build Instructions
+========================
+
+Instructions for building Mynta Core on macOS.
 
 Preparation
 -----------
+
 Install the macOS command line tools:
 
-`xcode-select --install`
+```shell
+xcode-select --install
+```
 
 When the popup appears, click `Install`.
 
 Then install [Homebrew](https://brew.sh).
 
 Dependencies
-----------------------
+------------
 
-    brew install automake berkeley-db4 libtool boost miniupnpc openssl@1.1 pkg-config protobuf python qt libevent qrencode
+```shell
+brew install automake berkeley-db libtool boost miniupnpc openssl@3 pkg-config protobuf python qt@5 libevent qrencode
+```
 
 If you run into issues, check [Homebrew's troubleshooting page](https://docs.brew.sh/Troubleshooting).
+
 See [dependencies.md](dependencies.md) for a complete overview.
 
-If you want to build the disk image with `make deploy` (.dmg / optional), you need RSVG:
+For disk image creation (`make deploy`):
+
 ```shell
 brew install librsvg
 ```
 
-## Berkeley DB
-It is recommended to use Berkeley DB 4.8. If you have to build it yourself,
-you can use [this](/contrib/install_db4.sh) script to install it
-like so:
+Berkeley DB
+-----------
+
+It is recommended to use Berkeley DB 4.8 for wallet portability. To build it yourself:
 
 ```shell
 ./contrib/install_db4.sh .
 ```
 
-from the root of the repository.
+**Note**: BerkeleyDB is only required if wallet is enabled (see [Disable-wallet mode](#disable-wallet-mode)).
 
-**Note**: You only need Berkeley DB if the wallet is enabled (see [*Disable-wallet mode*](/doc/build-osx.md#disable-wallet-mode)).
+Build Mynta Core
+----------------
 
-## Build Raven Core
+### 1. Clone Repository
 
-1. Clone the Raven Core source code:
-    ```shell
-    git clone https://github.com/RavenProject/Ravencoin
-    cd Ravencoin
-    ```
+```shell
+git clone https://github.com/Slashx124/mynta-core.git
+cd mynta-core
+git submodule update --init --recursive
+```
 
-2.  Build raven-core:
+### 2. Build BLST Library
 
-    Configure and build the headless raven binaries as well as the GUI (if Qt is found).
+```shell
+cd src/bls/blst
+./build.sh
+cd ../../..
+```
 
-    You can disable the GUI build by passing `--without-gui` to configure.
-    ```shell
-    ./autogen.sh
-    ./configure
-    make
-    ```
+### 3. Build
 
-3.  It is recommended to build and run the unit tests:
-    ```shell
-    make check
-    ```
+Configure and build the daemon and GUI (if Qt is found):
 
-4.  You can also create a  `.dmg` that contains the `.app` bundle (optional):
-    ```shell
-    make deploy
-    ```
+```shell
+./autogen.sh
+./configure --with-incompatible-bdb
+make -j$(sysctl -n hw.ncpu)
+```
 
-## `disable-wallet` mode
-When the intention is to run only a P2P node without a wallet, Raven Core may be
-compiled in `disable-wallet` mode with:
+To disable the GUI:
+
+```shell
+./configure --without-gui --with-incompatible-bdb
+```
+
+### 4. Run Tests (Recommended)
+
+```shell
+make check
+```
+
+### 5. Create DMG (Optional)
+
+```shell
+make deploy
+```
+
+Disable-wallet Mode
+-------------------
+
+To run only a P2P node without wallet:
+
 ```shell
 ./configure --disable-wallet
 ```
 
-In this case there is no dependency on Berkeley DB 4.8 and SQLite.
+No BerkeleyDB dependency required. Mining still possible via `getblocktemplate` RPC.
 
-Mining is also possible in disable-wallet mode using the `getblocktemplate` RPC call.
-
-## Running
-Raven Core is now available at `./src/ravend`
-
-Before running, you may create an empty configuration file:
-```shell
-mkdir -p "/Users/${USER}/Library/Application Support/Raven"
-
-touch "/Users/${USER}/Library/Application Support/Raven/raven.conf"
-
-chmod 600 "/Users/${USER}/Library/Application Support/Raven/raven.conf"
-```
-
-The first time you run ravend, it will start downloading the blockchain. This process could
-take many hours, or even days on slower than average systems.
-
-You can monitor the download process by looking at the debug.log file:
-```shell
-tail -f $HOME/Library/Application\ Support/Raven/debug.log
-```
-
-Other commands:
+Running
 -------
 
-    ./src/ravend -daemon # Starts the raven daemon.
-    ./src/raven-cli --help # Outputs a list of command-line options.
-    ./src/raven-cli help # Outputs a list of RPC commands when the daemon is running.
+Mynta Core binaries are in `./src/`:
+
+```shell
+# Create config directory
+mkdir -p "$HOME/Library/Application Support/Mynta"
+
+# Create config file
+cat > "$HOME/Library/Application Support/Mynta/mynta.conf" << EOF
+rpcuser=myntarpc
+rpcpassword=$(openssl rand -base64 32)
+server=1
+EOF
+
+chmod 600 "$HOME/Library/Application Support/Mynta/mynta.conf"
+
+# Start daemon
+./src/myntad -daemon
+
+# Monitor sync progress
+tail -f "$HOME/Library/Application Support/Mynta/debug.log"
+
+# Check status
+./src/mynta-cli getblockchaininfo
+```
+
+Commands
+--------
+
+```shell
+./src/myntad -daemon           # Start daemon
+./src/mynta-cli --help         # Command-line options
+./src/mynta-cli help           # RPC commands
+./src/mynta-cli stop           # Stop daemon
+```
 
 Using Qt Creator as IDE
-------------------------
-You can use Qt Creator as an IDE, for raven development.
-Download and install the community edition of [Qt Creator](https://www.qt.io/download/).
-Uncheck everything except Qt Creator during the installation process.
+-----------------------
 
-1. Make sure you installed everything through Homebrew mentioned above
-2. Do a proper ./configure --enable-debug
-3. In Qt Creator do "New Project" -> Import Project -> Import Existing Project
-4. Enter "raven-qt" as project name, enter src/qt as location
-5. Leave the file selection as it is
-6. Confirm the "summary page"
-7. In the "Projects" tab select "Manage Kits..."
-8. Select the default "Desktop" kit and select "Clang (x86 64bit in /usr/bin)" as compiler
-9. Select LLDB as debugger (you might need to set the path to your installation)
-10. Start debugging with Qt Creator
+1. Install dependencies via Homebrew
+2. Configure with debug: `./configure --enable-debug`
+3. In Qt Creator: New Project → Import Project → Import Existing Project
+4. Enter "mynta-qt" as project name, `src/qt` as location
+5. Select Clang compiler and LLDB debugger
+6. Start debugging
 
 Notes
 -----
 
-* Tested on OS X 10.8 through 10.15 on 64-bit Intel processors only.
+- Tested on macOS 10.15+ on Intel and Apple Silicon
+- For Apple Silicon (M1/M2), ensure Homebrew packages are for arm64
+- Building with downloaded Qt binaries is not officially supported
 
-* Building with downloaded Qt binaries is not officially supported. 
+See Also
+--------
 
-* autoreconf (boost issue)
+- [BUILDING.md](../../BUILDING.md) - Main build documentation
+- [build-unix.md](build-unix.md) - General Unix instructions
+- [dependencies.md](dependencies.md) - Dependency details
