@@ -9,7 +9,7 @@
 
 #include "optionsmodel.h"
 
-#include "ravenunits.h"
+#include "myntaunits.h"
 #include "guiutil.h"
 #include "amount.h"
 #include "init.h"
@@ -76,7 +76,7 @@ void OptionsModel::Init(bool resetSettings)
 
     // Display
     if (!settings.contains("nDisplayUnit"))
-        settings.setValue("nDisplayUnit", RavenUnits::RVN);
+        settings.setValue("nDisplayUnit", MyntaUnits::MYNTA);
     nDisplayUnit = settings.value("nDisplayUnit").toInt();
     
     if (!settings.contains("nDisplayCurrencyIndex"))

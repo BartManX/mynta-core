@@ -10,7 +10,7 @@
 #include "optionsdialog.h"
 #include "ui_optionsdialog.h"
 
-#include "ravenunits.h"
+#include "myntaunits.h"
 #include "guiutil.h"
 #include "optionsmodel.h"
 #include "guiconstants.h" // for DEFAULT_IPFS_VIEWER and DEFAULT_THIRD_PARTY_BROWSERS
@@ -78,7 +78,7 @@ OptionsDialog::OptionsDialog(QWidget *parent, bool enableWallet) :
     ui->ravenAtStartup->setToolTip(ui->ravenAtStartup->toolTip().arg(tr(PACKAGE_NAME)));
     ui->ravenAtStartup->setText(ui->ravenAtStartup->text().arg(tr(PACKAGE_NAME)));
 
-    ui->openRavenConfButton->setToolTip(ui->openRavenConfButton->toolTip().arg(tr(PACKAGE_NAME)));
+    ui->openMyntaConfButton->setToolTip(ui->openMyntaConfButton->toolTip().arg(tr(PACKAGE_NAME)));
 
     ui->lang->setToolTip(ui->lang->toolTip().arg(tr(PACKAGE_NAME)));
     ui->lang->addItem(QString("(") + tr("default") + QString(")"), QVariant(""));
@@ -113,7 +113,7 @@ OptionsDialog::OptionsDialog(QWidget *parent, bool enableWallet) :
     ui->ipfsUrl->setPlaceholderText(DEFAULT_IPFS_VIEWER);
 #endif
 
-    ui->unit->setModel(new RavenUnits(this));
+    ui->unit->setModel(new MyntaUnits(this));
     QStringList currencyList;
     for(int unitNum = 0; unitNum < CurrencyUnits::count() ; unitNum++) {
         ui->currencyUnitIndex->addItem(QString(CurrencyUnits::CurrencyOptions[unitNum].Header), unitNum);
@@ -248,7 +248,7 @@ void OptionsDialog::on_ipfsUrlReset_clicked()
     ui->ipfsUrl->setText(DEFAULT_IPFS_VIEWER);
 }
 
-void OptionsDialog::on_openRavenConfButton_clicked()
+void OptionsDialog::on_openMyntaConfButton_clicked()
 {
     /* explain the purpose of the config file */
     QMessageBox::information(this, tr("Configuration options"),

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Encoding=UTF-8
+Name=Mynta Core
+Comment=Connect to the Mynta P2P Network
+Comment[de]=Verbinde mit dem Mynta peer-to-peer Netzwerk
+Comment[fr]=Mynta, monnaie virtuelle cryptographique pair à pair
+Comment[tr]=Mynta, eşten eşe kriptografik sanal para birimi
+Exec=mynta-qt %u
+Terminal=false
+Type=Application
+Icon=mynta128
+MimeType=x-scheme-handler/mynta;
+Categories=Office;Finance;

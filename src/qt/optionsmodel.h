@@ -14,7 +14,7 @@ QT_BEGIN_NAMESPACE
 class QNetworkProxy;
 QT_END_NAMESPACE
 
-/** Interface from Qt to configuration data structure for Raven client.
+/** Interface from Qt to configuration data structure for Mynta client.
    To Qt, the options are presented as a list with the different options
    laid out vertically.
    This can be changed to a tree once the settings become sufficiently
@@ -40,7 +40,7 @@ public:
         ProxyUseTor,            // bool
         ProxyIPTor,             // QString
         ProxyPortTor,           // int
-        DisplayUnit,            // RavenUnits::Unit
+        DisplayUnit,            // MyntaUnits::Unit
         DisplayCurrencyIndex,   // int
         ThirdPartyTxUrls,       // QString
         IpfsUrl,                // QString
@@ -96,10 +96,10 @@ private:
     QString strThirdPartyTxUrls;
     QString strIpfsUrl;
     bool fCoinControlFeatures;
-    /** RVN START*/
+    /** MYNTA START*/
     bool fCustomFeeFeatures;
     bool fDarkModeEnabled;
-    /** RVN END*/
+    /** MYNTA END*/
     /* settings that were overridden by command-line */
     QString strOverriddenByCommandLine;
 

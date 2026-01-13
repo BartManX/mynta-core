@@ -10,7 +10,7 @@ SetCompressor /SOLID lzma
 !define URL https://mynta.network/
 
 # MUI Symbol Definitions
-!define MUI_ICON "/home/drock/Documents/mynta-workspace/mynta-core/share/pixmaps/raven.ico"
+!define MUI_ICON "/home/drock/Documents/mynta-workspace/mynta-core/share/pixmaps/mynta.ico"
 !define MUI_WELCOMEFINISHPAGE_BITMAP "/home/drock/Documents/mynta-workspace/mynta-core/share/pixmaps/nsis-wizard.bmp"
 !define MUI_HEADERIMAGE
 !define MUI_HEADERIMAGE_RIGHT
@@ -50,9 +50,9 @@ Var StartMenuGroup
 # Installer attributes
 OutFile /home/drock/Documents/mynta-workspace/mynta-core/mynta-${VERSION}-win-setup.exe
 !if "" == "64"
-InstallDir $PROGRAMFILES64\Raven
+InstallDir $PROGRAMFILES64\Mynta
 !else
-InstallDir $PROGRAMFILES\Raven
+InstallDir $PROGRAMFILES\Mynta
 !endif
 CRCCheck on
 XPStyle on
@@ -104,7 +104,7 @@ Section -post SEC0001
     WriteRegDWORD HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)" NoModify 1
     WriteRegDWORD HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)" NoRepair 1
     WriteRegStr HKCR "mynta" "URL Protocol" ""
-    WriteRegStr HKCR "mynta" "" "URL:Raven"
+    WriteRegStr HKCR "mynta" "" "URL:Mynta"
     WriteRegStr HKCR "mynta\DefaultIcon" "" $INSTDIR\@RAVEN_GUI_NAME@
     WriteRegStr HKCR "mynta\shell\open\command" "" '"$INSTDIR\@RAVEN_GUI_NAME@" "%1"'
 SectionEnd
@@ -137,7 +137,7 @@ Section -un.post UNSEC0001
     Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\Uninstall $(^Name).lnk"
     Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\$(^Name).lnk"
     Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\Mynta Core (testnet, -bit).lnk"
-    Delete /REBOOTOK "$SMSTARTUP\Raven.lnk"
+    Delete /REBOOTOK "$SMSTARTUP\Mynta.lnk"
     Delete /REBOOTOK $INSTDIR\uninstall.exe
     Delete /REBOOTOK $INSTDIR\debug.log
     Delete /REBOOTOK $INSTDIR\db.log

@@ -35,7 +35,7 @@ enum NumConnections {
     CONNECTIONS_ALL  = (CONNECTIONS_IN | CONNECTIONS_OUT),
 };
 
-/** Model for Raven network client. */
+/** Model for Mynta network client. */
 class ClientModel : public QObject
 {
     Q_OBJECT

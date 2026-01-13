@@ -6,7 +6,7 @@
 #include "overviewpage.h"
 #include "ui_overviewpage.h"
 
-#include "ravenunits.h"
+#include "myntaunits.h"
 #include "clientmodel.h"
 #include "guiconstants.h"
 #include "guiutil.h"
@@ -46,7 +46,7 @@ class TxViewDelegate : public QAbstractItemDelegate
     Q_OBJECT
 public:
     explicit TxViewDelegate(const PlatformStyle *_platformStyle, QObject *parent=nullptr):
-        QAbstractItemDelegate(parent), unit(RavenUnits::RVN),
+        QAbstractItemDelegate(parent), unit(MyntaUnits::MYNTA),
         platformStyle(_platformStyle)
     {
 
@@ -155,7 +155,7 @@ class AssetViewDelegate : public QAbstractItemDelegate
 Q_OBJECT
 public:
     explicit AssetViewDelegate(const PlatformStyle *_platformStyle, QObject *parent=nullptr):
-            QAbstractItemDelegate(parent), unit(RavenUnits::RVN),
+            QAbstractItemDelegate(parent), unit(MyntaUnits::MYNTA),
             platformStyle(_platformStyle)
     {
 
@@ -299,7 +299,7 @@ public:
 
 };
 #include "overviewpage.moc"
-#include "ravengui.h"
+#include "myntagui.h"
 #include <QFontDatabase>
 
 OverviewPage::OverviewPage(const PlatformStyle *platformStyle, QWidget *parent) :
@@ -561,14 +561,14 @@ void OverviewPage::setBalance(const CAmount& balance, const CAmount& unconfirmed
     currentWatchOnlyBalance = watchOnlyBalance;
     currentWatchUnconfBalance = watchUnconfBalance;
     currentWatchImmatureBalance = watchImmatureBalance;
-    ui->labelBalance->setText(RavenUnits::formatWithUnit(unit, balance, false, RavenUnits::separatorAlways));
-    ui->labelUnconfirmed->setText(RavenUnits::formatWithUnit(unit, unconfirmedBalance, false, RavenUnits::separatorAlways));
-    ui->labelImmature->setText(RavenUnits::formatWithUnit(unit, immatureBalance, false, RavenUnits::separatorAlways));
-    ui->labelTotal->setText(RavenUnits::formatWithUnit(unit, balance + unconfirmedBalance + immatureBalance, false, RavenUnits::separatorAlways));
-    ui->labelWatchAvailable->setText(RavenUnits::formatWithUnit(unit, watchOnlyBalance, false, RavenUnits::separatorAlways));
-    ui->labelWatchPending->setText(RavenUnits::formatWithUnit(unit, watchUnconfBalance, false, RavenUnits::separatorAlways));
-    ui->labelWatchImmature->setText(RavenUnits::formatWithUnit(unit, watchImmatureBalance, false, RavenUnits::separatorAlways));
-    ui->labelWatchTotal->setText(RavenUnits::formatWithUnit(unit, watchOnlyBalance + watchUnconfBalance + watchImmatureBalance, false, RavenUnits::separatorAlways));
+    ui->labelBalance->setText(MyntaUnits::formatWithUnit(unit, balance, false, MyntaUnits::separatorAlways));
+    ui->labelUnconfirmed->setText(MyntaUnits::formatWithUnit(unit, unconfirmedBalance, false, MyntaUnits::separatorAlways));
+    ui->labelImmature->setText(MyntaUnits::formatWithUnit(unit, immatureBalance, false, MyntaUnits::separatorAlways));
+    ui->labelTotal->setText(MyntaUnits::formatWithUnit(unit, balance + unconfirmedBalance + immatureBalance, false, MyntaUnits::separatorAlways));
+    ui->labelWatchAvailable->setText(MyntaUnits::formatWithUnit(unit, watchOnlyBalance, false, MyntaUnits::separatorAlways));
+    ui->labelWatchPending->setText(MyntaUnits::formatWithUnit(unit, watchUnconfBalance, false, MyntaUnits::separatorAlways));
+    ui->labelWatchImmature->setText(MyntaUnits::formatWithUnit(unit, watchImmatureBalance, false, MyntaUnits::separatorAlways));
+    ui->labelWatchTotal->setText(MyntaUnits::formatWithUnit(unit, watchOnlyBalance + watchUnconfBalance + watchImmatureBalance, false, MyntaUnits::separatorAlways));
 
     // only show immature (newly mined) balance if it's non-zero, so as not to complicate things
     // for the non-mining users
@@ -644,7 +644,7 @@ void OverviewPage::setWalletModel(WalletModel *model)
         connect(model, SIGNAL(notifyWatchonlyChanged(bool)), this, SLOT(updateWatchOnlyLabels(bool)));
     }
 
-    // update the display unit, to not use the default ("RVN")
+    // update the display unit, to not use the default ("MYNTA")
     updateDisplayUnit();
 }
 

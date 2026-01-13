@@ -6,7 +6,7 @@
 #include "receiverequestdialog.h"
 #include "ui_receiverequestdialog.h"
 
-#include "ravenunits.h"
+#include "myntaunits.h"
 #include "guiconstants.h"
 #include "guiutil.h"
 #include "optionsmodel.h"
@@ -150,7 +150,7 @@ void ReceiveRequestDialog::update()
     html += "<a href=\""+uri+"\">" + GUIUtil::HtmlEscape(uri) + "</a><br>";
     html += "<b>"+tr("Address")+"</b>: " + GUIUtil::HtmlEscape(info.address) + "<br>";
     if(info.amount)
-        html += "<b>"+tr("Amount")+"</b>: " + RavenUnits::formatHtmlWithUnit(model->getDisplayUnit(), info.amount) + "<br>";
+        html += "<b>"+tr("Amount")+"</b>: " + MyntaUnits::formatHtmlWithUnit(model->getDisplayUnit(), info.amount) + "<br>";
     if(!info.label.isEmpty())
         html += "<b>"+tr("Label")+"</b>: " + GUIUtil::HtmlEscape(info.label) + "<br>";
     if(!info.message.isEmpty())

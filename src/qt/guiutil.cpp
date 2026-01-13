@@ -5,8 +5,8 @@
 
 #include "guiutil.h"
 
-#include "ravenaddressvalidator.h"
-#include "ravenunits.h"
+#include "myntaaddressvalidator.h"
+#include "myntaunits.h"
 #include "qvalidatedlineedit.h"
 #include "walletmodel.h"
 
@@ -212,11 +212,11 @@ void setupAddressWidget(QValidatedLineEdit *widget, QWidget *parent)
 #if QT_VERSION >= 0x040700
     // We don't want translators to use own addresses in translations
     // and this is the only place, where this address is supplied.
-    widget->setPlaceholderText(QObject::tr("Enter a Raven address (e.g. %1)").arg(
+    widget->setPlaceholderText(QObject::tr("Enter a Mynta address (e.g. %1)").arg(
         QString::fromStdString(DummyAddress(GetParams()))));
 #endif
-    widget->setValidator(new RavenAddressEntryValidator(parent));
-    widget->setCheckValidator(new RavenAddressCheckValidator(parent));
+    widget->setValidator(new MyntaAddressEntryValidator(parent));
+    widget->setCheckValidator(new MyntaAddressCheckValidator(parent));
 }
 
 void setupAmountWidget(QLineEdit *widget, QWidget *parent)
@@ -271,7 +271,7 @@ bool parseRavenURI(const QUrl &uri, SendCoinsRecipient *out)
         {
             if(!i->second.isEmpty())
             {
-                if(!RavenUnits::parse(RavenUnits::RVN, i->second, &rv.amount))
+                if(!MyntaUnits::parse(MyntaUnits::MYNTA, i->second, &rv.amount))
                 {
                     return false;
                 }
@@ -310,7 +310,7 @@ QString formatRavenURI(const SendCoinsRecipient &info)
 
     if (info.amount)
     {
-        ret += QString("?amount=%1").arg(RavenUnits::format(RavenUnits::RVN, info.amount, false, RavenUnits::separatorNever));
+        ret += QString("?amount=%1").arg(MyntaUnits::format(MyntaUnits::MYNTA, info.amount, false, MyntaUnits::separatorNever));
         paramCount++;
     }
 
@@ -602,15 +602,15 @@ fs::path static StartupShortcutPath()
 {
     std::string chain = ChainNameFromCommandLine();
     if (chain == CBaseChainParams::MAIN)
-        return GetSpecialFolderPath(CSIDL_STARTUP) / "Raven.lnk";
+        return GetSpecialFolderPath(CSIDL_STARTUP) / "Mynta.lnk";
     if (chain == CBaseChainParams::TESTNET) // Remove this special case when CBaseChainParams::TESTNET = "testnet4"
-        return GetSpecialFolderPath(CSIDL_STARTUP) / "Raven (testnet).lnk";
-    return GetSpecialFolderPath(CSIDL_STARTUP) / strprintf("Raven (%s).lnk", chain);
+        return GetSpecialFolderPath(CSIDL_STARTUP) / "Mynta (testnet).lnk";
+    return GetSpecialFolderPath(CSIDL_STARTUP) / strprintf("Mynta (%s).lnk", chain);
 }
 
 bool GetStartOnSystemStartup()
 {
-    // check for Raven*.lnk
+    // check for Mynta*.lnk
     return fs::exists(StartupShortcutPath());
 }
 
@@ -745,9 +745,9 @@ bool SetStartOnSystemStartup(bool fAutoStart)
         optionFile << "[Desktop Entry]\n";
         optionFile << "Type=Application\n";
         if (chain == CBaseChainParams::MAIN)
-            optionFile << "Name=Raven\n";
+            optionFile << "Name=Mynta\n";
         else
-            optionFile << strprintf("Name=Raven (%s)\n", chain);
+            optionFile << strprintf("Name=Mynta (%s)\n", chain);
         optionFile << "Exec=" << pszExePath << strprintf(" -min -testnet=%d -regtest=%d\n", gArgs.GetBoolArg("-testnet", false), gArgs.GetBoolArg("-regtest", false));
         optionFile << "Terminal=false\n";
         optionFile << "Hidden=false\n";

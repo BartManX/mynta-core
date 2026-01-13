@@ -1,4 +1,4 @@
-#include "ravenunits.h"
+#include "myntaunits.h"
 
 #include <QAbstractTableModel>
 #include <QStringList>
@@ -53,7 +53,7 @@ public:
                 TxPlainTextRole,
         /** Unprocessed icon */
                 RawDecorationRole,
-        /** RVN or name of an asset */
+        /** MYNTA or name of an asset */
                 AssetNameRole,
     };
 

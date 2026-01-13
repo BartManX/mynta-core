@@ -5,7 +5,7 @@
 
 #include "paymentserver.h"
 
-#include "ravenunits.h"
+#include "myntaunits.h"
 #include "guiutil.h"
 #include "optionsmodel.h"
 
@@ -78,7 +78,7 @@ namespace // Anon namespace
 //
 static QString ipcServerName()
 {
-    QString name("RavenQt");
+    QString name("MyntaQt");
 
     // Append a simple hash of the datadir
     // Note that GetDataDir(true) returns a different path
@@ -445,7 +445,7 @@ void PaymentServer::handleURIOrFile(const QString& s)
             }
             else
                 Q_EMIT message(tr("URI handling"),
-                    tr("URI cannot be parsed! This can be caused by an invalid Raven address or malformed URI parameters."),
+                    tr("URI cannot be parsed! This can be caused by an invalid Mynta address or malformed URI parameters."),
                     CClientUIInterface::ICON_WARNING);
 
             return;
@@ -578,7 +578,7 @@ bool PaymentServer::processPaymentRequest(const PaymentRequestPlus& request, Sen
         CTxOut txOut(sendingTo.second, sendingTo.first);
         if (IsDust(txOut, ::dustRelayFee)) {
             Q_EMIT message(tr("Payment request error"), tr("Requested payment amount of %1 is too small (considered dust).")
-                .arg(RavenUnits::formatWithUnit(optionsModel->getDisplayUnit(), sendingTo.second)),
+                .arg(MyntaUnits::formatWithUnit(optionsModel->getDisplayUnit(), sendingTo.second)),
                 CClientUIInterface::MSG_ERROR);
 
             return false;

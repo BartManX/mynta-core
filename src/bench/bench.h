@@ -6,6 +6,7 @@
 #ifndef MYNTA_BENCH_BENCH_H
 #define MYNTA_BENCH_BENCH_H
 
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <map>

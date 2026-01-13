@@ -10,7 +10,7 @@
 #include "base58.h"
 #include "consensus/consensus.h"
 #include "validation.h"
-#include "ravenunits.h"
+#include "myntaunits.h"
 #include "timedata.h"
 #include "wallet/wallet.h"
 #include "core_io.h"
@@ -42,10 +42,10 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
     std::map<std::string, std::string> mapValue = wtx.mapValue;
 
     
-    /** RVN START */
+    /** MYNTA START */
     if(isSwapTransaction(wallet, wtx, parts, nCredit, nDebit, nNet))
         return parts;
-    /** RVN END */
+    /** MYNTA END */
     if (nNet > 0 || wtx.IsCoinBase())
     {
         //
@@ -56,10 +56,10 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
             const CTxOut& txout = wtx.tx->vout[i];
             isminetype mine = wallet->IsMine(txout);
 
-            /** RVN START */
+            /** MYNTA START */
             if (txout.scriptPubKey.IsAssetScript() || txout.scriptPubKey.IsNullAssetTxDataScript() || txout.scriptPubKey.IsNullGlobalRestrictionAssetTxDataScript())
                 continue;
-            /** RVN END */
+            /** MYNTA END */
 
             if(mine)
             {
@@ -70,7 +70,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
                 sub.involvesWatchAddress = mine & ISMINE_WATCH_ONLY;
                 if (ExtractDestination(txout.scriptPubKey, address) && IsMine(*wallet, address))
                 {
-                    // Received by Raven Address
+                    // Received by Mynta Address
                     sub.type = TransactionRecord::RecvWithAddress;
                     sub.address = EncodeDestination(address);
                 }
@@ -104,10 +104,10 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
         isminetype fAllToMe = ISMINE_SPENDABLE;
         for (const CTxOut& txout : wtx.tx->vout)
         {
-            /** RVN START */
+            /** MYNTA START */
             if (txout.scriptPubKey.IsAssetScript() || txout.scriptPubKey.IsNullAssetTxDataScript() || txout.scriptPubKey.IsNullGlobalRestrictionAssetTxDataScript())
                 continue;
-            /** RVN END */
+            /** MYNTA END */
 
             isminetype mine = wallet->IsMine(txout);
             if(mine & ISMINE_WATCH_ONLY) involvesWatchAddress = true;
@@ -134,10 +134,10 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
             {
                 const CTxOut& txout = wtx.tx->vout[nOut];
 
-                /** RVN START */
+                /** MYNTA START */
                 if (txout.scriptPubKey.IsAssetScript())
                     continue;
-                /** RVN END */
+                /** MYNTA END */
 
                 TransactionRecord sub(hash, nTime);
                 sub.idx = nOut;
@@ -153,7 +153,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
                 CTxDestination address;
                 if (ExtractDestination(txout.scriptPubKey, address))
                 {
-                    // Sent to Raven Address
+                    // Sent to Mynta Address
                     sub.type = TransactionRecord::SendToAddress;
                     sub.address = EncodeDestination(address);
                 }
@@ -183,7 +183,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
             //
 
 
-            /** RVN START */
+            /** MYNTA START */
             // We will only show mixed debit transactions that are nNet < 0 or if they are nNet == 0 and
             // they do not contain assets. This is so the list of transaction doesn't add 0 amount transactions to the
             // list.
@@ -203,12 +203,12 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
                 parts.append(TransactionRecord(hash, nTime, TransactionRecord::Other, "", nNet, 0));
                 parts.last().involvesWatchAddress = involvesWatchAddress;
             }
-            /** RVN END */
+            /** MYNTA END */
         }
     }
 
 
-    /** RVN START */
+    /** MYNTA START */
     if (AreAssetsDeployed()) {
         CAmount nFee;
         std::string strSentAccount;
@@ -305,7 +305,7 @@ QList<TransactionRecord> TransactionRecord::decomposeTransaction(const CWallet *
             }
         }
     }
-    /** RVN END */
+    /** MYNTA END */
 
     return parts;
 }
@@ -381,7 +381,7 @@ bool TransactionRecord::isSwapTransaction(const CWallet *wallet, const CWalletTx
                 {
                     if(wallet->IsMine(txout))
                     {
-                        //If we sent assets, we need to see if we were sent assets or RVN in return
+                        //If we sent assets, we need to see if we were sent assets or MYNTA in return
                         if(txout.scriptPubKey.IsAssetScript())
                         {
                             if(fSentAssets) { //Check to skip asset change by name
@@ -396,7 +396,7 @@ bool TransactionRecord::isSwapTransaction(const CWallet *wallet, const CWalletTx
                             myReceievedOutput = txout;
                             break;
                         }
-                        else //We got RVN
+                        else //We got MYNTA
                         {
                             if(fSentAssets) { //If we sent assets, this is ours. but we need to adjust for change.
                                 myReceievedOutput = txout;
@@ -420,20 +420,20 @@ bool TransactionRecord::isSwapTransaction(const CWallet *wallet, const CWalletTx
                 //Trade!
                 //Amount represents the asset we sent, no matter the perspective
                 sub.credit = recvAmount;
-                std::string asset_qty_format = RavenUnits::formatWithCustomName(QString::fromStdString(sentType), sentAmount, 2).toUtf8().constData();
+                std::string asset_qty_format = MyntaUnits::formatWithCustomName(QString::fromStdString(sentType), sentAmount, 2).toUtf8().constData();
                 sub.assetName = strprintf("%s (%s %s)", TransactionView::tr("Traded Away").toUtf8().constData(), recvType, asset_qty_format);
             } else if (fSentAssets) {
                 //Sell!
                 //Total price paid, need to use net calculation when we executed
                 sub.credit = mine ? myReceievedOutput.nValue : nNet;
-                std::string asset_qty_format = RavenUnits::formatWithCustomName(QString::fromStdString(sentType), sentAmount, 2).toUtf8().constData();
-                sub.assetName = strprintf("RVN (%s %s)", TransactionView::tr("Sold").toUtf8().constData(), asset_qty_format);
+                std::string asset_qty_format = MyntaUnits::formatWithCustomName(QString::fromStdString(sentType), sentAmount, 2).toUtf8().constData();
+                sub.assetName = strprintf("MYNTA (%s %s)", TransactionView::tr("Sold").toUtf8().constData(), asset_qty_format);
             } else if (fRecvAssets) {
                 //Buy!
                 //Total price paid, need to use net calculation when we executed
                 sub.credit = (mine ? -myProvidedInput.nValue : nNet);
-                std::string asset_qty_format = RavenUnits::formatWithCustomName(QString::fromStdString(recvType), recvAmount, 2).toUtf8().constData();
-                sub.assetName = strprintf("RVN (%s %s)", TransactionView::tr("Bought").toUtf8().constData(), asset_qty_format);
+                std::string asset_qty_format = MyntaUnits::formatWithCustomName(QString::fromStdString(recvType), recvAmount, 2).toUtf8().constData();
+                sub.assetName = strprintf("MYNTA (%s %s)", TransactionView::tr("Bought").toUtf8().constData(), asset_qty_format);
             } else {
                 LogPrintf("\tFell Through!\n");
                 return false; //!

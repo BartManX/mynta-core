@@ -5,7 +5,7 @@
 
 #include "qvalidatedlineedit.h"
 
-#include "ravenaddressvalidator.h"
+#include "myntaaddressvalidator.h"
 #include "guiconstants.h"
 #include "platformstyle.h"
 

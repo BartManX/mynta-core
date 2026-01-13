@@ -5,7 +5,7 @@
 
 #include "walletframe.h"
 
-#include "ravengui.h"
+#include "myntagui.h"
 #include "walletview.h"
 
 #include <cassert>
@@ -14,7 +14,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 
-WalletFrame::WalletFrame(const PlatformStyle *_platformStyle, RavenGUI *_gui) :
+WalletFrame::WalletFrame(const PlatformStyle *_platformStyle, MyntaGUI *_gui) :
     QFrame(_gui),
     gui(_gui),
     platformStyle(_platformStyle)
@@ -46,7 +46,7 @@ bool WalletFrame::addWallet(const QString& name, WalletModel *walletModel)
         return false;
 
     WalletView *walletView = new WalletView(platformStyle, this);
-    walletView->setRavenGUI(gui);
+    walletView->setMyntaGUI(gui);
     walletView->setClientModel(clientModel);
     walletView->setWalletModel(walletModel);
     walletView->showOutOfSyncWarning(bOutOfSync);
@@ -213,7 +213,7 @@ void WalletFrame::outOfSyncWarningClicked()
     Q_EMIT requestedSyncWarningInfo();
 }
 
-/** RVN START */
+/** MYNTA START */
 void WalletFrame::gotoAssetsPage()
 {
     QMap<QString, WalletView*>::const_iterator i;
