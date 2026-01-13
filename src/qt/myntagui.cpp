@@ -642,8 +642,8 @@ void MyntaGUI::createToolBars()
 
         /** MYNTA START */
         QString tbStyleSheet = ".QToolBar {background-color : transparent; border-color: transparent; }  "
-                               ".QToolButton {background-color: transparent; border-color: transparent; width: 249px; color: %1; border: none;} "
-                               ".QToolButton:checked {background: none; background-color: none; selection-background-color: none; color: %2; border: none; font: %4} "
+                               ".QToolButton {background-color: transparent; border-color: transparent; width: 260px; color: %1; border: none; padding-left: 12px; font-size: 17px;} "
+                               ".QToolButton:checked {background: none; background-color: none; selection-background-color: none; color: %2; border: none; font-size: 17px; font: %4} "
                                ".QToolButton:hover {background: none; background-color: none; border: none; color: %3;} "
                                ".QToolButton:disabled {color: gray;}";
 
@@ -652,7 +652,7 @@ void MyntaGUI::createToolBars()
                                                 platformStyle->DarkOrangeColor().name(), stringToUse));
 
         m_toolbar->setOrientation(Qt::Vertical);
-        m_toolbar->setIconSize(QSize(40, 40));
+        m_toolbar->setIconSize(QSize(30, 30));
 
         QLayout* lay = m_toolbar->layout();
         for(int i = 0; i < lay->count(); ++i)
@@ -660,11 +660,11 @@ void MyntaGUI::createToolBars()
 
         overviewAction->setChecked(true);
 
-        QVBoxLayout* ravenLabelLayout = new QVBoxLayout(toolbarWidget);
-        ravenLabelLayout->addWidget(labelToolbar);
-        ravenLabelLayout->addWidget(m_toolbar);
-        ravenLabelLayout->setDirection(QBoxLayout::TopToBottom);
-        ravenLabelLayout->addStretch(1);
+        QVBoxLayout* myntaLabelLayout = new QVBoxLayout(toolbarWidget);
+        myntaLabelLayout->addWidget(labelToolbar);
+        myntaLabelLayout->addWidget(m_toolbar);
+        myntaLabelLayout->setDirection(QBoxLayout::TopToBottom);
+        myntaLabelLayout->addStretch(1);
 
         QString mainWalletWidgetStyle = QString(".QWidget{background-color: %1}").arg(platformStyle->MainBackGroundColor().name());
         QWidget* mainWalletWidget = new QWidget();

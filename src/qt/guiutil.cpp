@@ -230,8 +230,8 @@ void setupAmountWidget(QLineEdit *widget, QWidget *parent)
 
 bool parseRavenURI(const QUrl &uri, SendCoinsRecipient *out)
 {
-    // return if URI is not valid or is no raven: URI
-    if(!uri.isValid() || uri.scheme() != QString("raven"))
+    // return if URI is not valid or is no mynta: URI
+    if(!uri.isValid() || uri.scheme() != QString("mynta"))
         return false;
 
     SendCoinsRecipient rv;
@@ -291,13 +291,13 @@ bool parseRavenURI(const QUrl &uri, SendCoinsRecipient *out)
 
 bool parseRavenURI(QString uri, SendCoinsRecipient *out)
 {
-    // Convert raven:// to raven:
+    // Convert mynta:// to mynta:
     //
-    //    Cannot handle this later, because raven:// will cause Qt to see the part after // as host,
+    //    Cannot handle this later, because mynta:// will cause Qt to see the part after // as host,
     //    which will lower-case it (and thus invalidate the address).
-    if(uri.startsWith("raven://", Qt::CaseInsensitive))
+    if(uri.startsWith("mynta://", Qt::CaseInsensitive))
     {
-        uri.replace(0, 10, "raven:");
+        uri.replace(0, 9, "mynta:");
     }
     QUrl uriInstance(uri);
     return parseRavenURI(uriInstance, out);
@@ -305,7 +305,7 @@ bool parseRavenURI(QString uri, SendCoinsRecipient *out)
 
 QString formatRavenURI(const SendCoinsRecipient &info)
 {
-    QString ret = QString("raven:%1").arg(info.address);
+    QString ret = QString("mynta:%1").arg(info.address);
     int paramCount = 0;
 
     if (info.amount)

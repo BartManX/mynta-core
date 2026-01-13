@@ -46,15 +46,15 @@
 #include <QUrlQuery>
 #endif
 
-const int RAVEN_IPC_CONNECT_TIMEOUT = 1000; // milliseconds
-const QString RAVEN_IPC_PREFIX("raven:");
+const int MYNTA_IPC_CONNECT_TIMEOUT = 1000; // milliseconds
+const QString MYNTA_IPC_PREFIX("mynta:");
 // BIP70 payment protocol messages
 const char* BIP70_MESSAGE_PAYMENTACK = "PaymentACK";
 const char* BIP70_MESSAGE_PAYMENTREQUEST = "PaymentRequest";
 // BIP71 payment protocol media types
-const char* BIP71_MIMETYPE_PAYMENT = "application/raven-payment";
-const char* BIP71_MIMETYPE_PAYMENTACK = "application/raven-paymentack";
-const char* BIP71_MIMETYPE_PAYMENTREQUEST = "application/raven-paymentrequest";
+const char* BIP71_MIMETYPE_PAYMENT = "application/mynta-payment";
+const char* BIP71_MIMETYPE_PAYMENTACK = "application/mynta-paymentack";
+const char* BIP71_MIMETYPE_PAYMENTREQUEST = "application/mynta-paymentrequest";
 
 struct X509StoreDeleter {
       void operator()(X509_STORE* b) {
@@ -208,11 +208,11 @@ void PaymentServer::ipcParseCommandLine(int argc, char* argv[])
         if (arg.startsWith("-"))
             continue;
 
-        // If the raven: URI contains a payment request, we are not able to detect the
+        // If the mynta: URI contains a payment request, we are not able to detect the
         // network as that would require fetching and parsing the payment request.
         // That means clicking such an URI which contains a testnet payment request
         // will start a mainnet instance and throw a "wrong network" error.
-        if (arg.startsWith(RAVEN_IPC_PREFIX, Qt::CaseInsensitive)) // raven: URI
+        if (arg.startsWith(MYNTA_IPC_PREFIX, Qt::CaseInsensitive)) // mynta: URI
         {
             savedPaymentRequests.append(arg);
 
@@ -270,7 +270,7 @@ bool PaymentServer::ipcSendCommandLine()
     {
         QLocalSocket* socket = new QLocalSocket();
         socket->connectToServer(ipcServerName(), QIODevice::WriteOnly);
-        if (!socket->waitForConnected(RAVEN_IPC_CONNECT_TIMEOUT))
+        if (!socket->waitForConnected(MYNTA_IPC_CONNECT_TIMEOUT))
         {
             delete socket;
             socket = nullptr;
@@ -285,7 +285,7 @@ bool PaymentServer::ipcSendCommandLine()
 
         socket->write(block);
         socket->flush();
-        socket->waitForBytesWritten(RAVEN_IPC_CONNECT_TIMEOUT);
+        socket->waitForBytesWritten(MYNTA_IPC_CONNECT_TIMEOUT);
         socket->disconnectFromServer();
 
         delete socket;
@@ -325,7 +325,7 @@ PaymentServer::PaymentServer(QObject* parent, bool startLocalServer) :
         if (!uriServer->listen(name)) {
             // constructor is called early in init, so don't use "Q_EMIT message()" here
             QMessageBox::critical(0, tr("Payment request error"),
-                tr("Cannot start raven: click-to-pay handler"));
+                tr("Cannot start mynta: click-to-pay handler"));
         }
         else {
             connect(uriServer, SIGNAL(newConnection()), this, SLOT(handleURIConnection()));
@@ -340,7 +340,7 @@ PaymentServer::~PaymentServer()
 }
 
 //
-// OSX-specific way of handling raven: URIs and PaymentRequest mime types.
+// OSX-specific way of handling mynta: URIs and PaymentRequest mime types.
 // Also used by paymentservertests.cpp and when opening a payment request file
 // via "Open URI..." menu entry.
 //
@@ -366,7 +366,7 @@ void PaymentServer::initNetManager()
     if (netManager != nullptr)
         delete netManager;
 
-    // netManager is used to fetch paymentrequests given in raven: URIs
+    // netManager is used to fetch paymentrequests given in mynta: URIs
     netManager = new QNetworkAccessManager(this);
 
     QNetworkProxy proxy;
@@ -406,7 +406,7 @@ void PaymentServer::handleURIOrFile(const QString& s)
         return;
     }
 
-    if (s.startsWith(RAVEN_IPC_PREFIX, Qt::CaseInsensitive)) // raven: URI
+    if (s.startsWith(MYNTA_IPC_PREFIX, Qt::CaseInsensitive)) // mynta: URI
     {
         QUrlQuery uri((QUrl(s)));
         if (uri.hasQueryItem("r")) // payment request URI

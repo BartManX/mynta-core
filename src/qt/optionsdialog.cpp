@@ -75,8 +75,8 @@ OptionsDialog::OptionsDialog(QWidget *parent, bool enableWallet) :
     /* Display elements init */
     QDir translations(":translations");
 
-    ui->ravenAtStartup->setToolTip(ui->ravenAtStartup->toolTip().arg(tr(PACKAGE_NAME)));
-    ui->ravenAtStartup->setText(ui->ravenAtStartup->text().arg(tr(PACKAGE_NAME)));
+    ui->myntaAtStartup->setToolTip(ui->myntaAtStartup->toolTip().arg(tr(PACKAGE_NAME)));
+    ui->myntaAtStartup->setText(ui->myntaAtStartup->text().arg(tr(PACKAGE_NAME)));
 
     ui->openMyntaConfButton->setToolTip(ui->openMyntaConfButton->toolTip().arg(tr(PACKAGE_NAME)));
 
@@ -183,7 +183,7 @@ void OptionsDialog::setModel(OptionsModel *_model)
 void OptionsDialog::setMapper()
 {
     /* Main */
-    mapper->addMapping(ui->ravenAtStartup, OptionsModel::StartAtStartup);
+    mapper->addMapping(ui->myntaAtStartup, OptionsModel::StartAtStartup);
     mapper->addMapping(ui->threadsScriptVerif, OptionsModel::ThreadsScriptVerif);
     mapper->addMapping(ui->databaseCache, OptionsModel::DatabaseCache);
 
