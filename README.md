@@ -132,9 +132,21 @@ Use `mynta-cli help` for the complete command list.
 
 ## Documentation
 
-- [BUILDING.md](BUILDING.md) — Build instructions for all platforms
-- [doc/](doc/) — Additional documentation and specifications
-- [contrib/](contrib/) — Helper scripts and configuration examples
+| Directory | Contents |
+|-----------|----------|
+| [doc/](doc/) | Full documentation index |
+| [doc/building/](doc/building/) | Platform-specific build instructions |
+| [doc/api/](doc/api/) | RPC, REST, ZMQ interfaces |
+| [doc/consensus/](doc/consensus/) | Consensus rules and BIPs |
+| [doc/masternode/](doc/masternode/) | Masternode setup and operation |
+| [doc/release/](doc/release/) | Release notes and process |
+| [contrib/](contrib/) | Helper scripts and configuration examples |
+
+### Quick Links
+- [Build Instructions](doc/building/build-unix.md)
+- [Configuration](doc/api/raven-conf.md)
+- [Masternode Guide](doc/masternode/OPERATOR_GUIDE.md)
+- [Consensus Implementation](doc/consensus/ADVANCED_CONSENSUS_IMPLEMENTATION.md)
 
 ## Contributing
 
