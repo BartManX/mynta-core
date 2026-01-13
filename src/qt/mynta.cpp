@@ -748,12 +748,9 @@ int main(int argc, char *argv[])
     // Load GUI settings from QSettings
     app.createOptionsModel(gArgs.IsArgSet("-resetguisettings"));
 
-    if (app.getOptionsModel()->getDarkModeEnabled()) {
-        app.setStyle(new DarkStyle);
-        darkModeEnabled = true;
-    } else {
-        app.setStyle("");
-    }
+    // Always use dark style - matches myntacoin.org website design
+    app.setStyle(new DarkStyle);
+    darkModeEnabled = true;
 
     // Subscribe to global signals from core
     uiInterface.InitMessage.connect(InitMessage);

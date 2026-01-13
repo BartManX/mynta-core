@@ -99,9 +99,9 @@ void OptionsModel::Init(bool resetSettings)
         settings.setValue("fCustomFeeFeatures", false);
     fCustomFeeFeatures = settings.value("fCustomFeeFeatures", false).toBool();
 
-    if (!settings.contains("fDarkModeEnabled"))
-        settings.setValue("fDarkModeEnabled", false);
-    fDarkModeEnabled = settings.value("fDarkModeEnabled", false).toBool();
+    // Dark mode is always enabled - matches myntacoin.org website design
+    fDarkModeEnabled = true;
+    settings.setValue("fDarkModeEnabled", true);
 
     // These are shared with the core or have a command-line parameter
     // and we want command-line parameters to overwrite the GUI settings.
@@ -300,7 +300,7 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
         case CustomFeeFeatures:
             return fCustomFeeFeatures;
         case DarkModeEnabled:
-            return fDarkModeEnabled;
+            return true; // Always enabled
         default:
             return QVariant();
         }
@@ -471,8 +471,7 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
                 Q_EMIT customFeeFeaturesChanged(fCustomFeeFeatures);
                 break;
         case DarkModeEnabled:
-            fDarkModeEnabled = value.toBool();
-            settings.setValue("fDarkModeEnabled", fDarkModeEnabled);
+            // Dark mode is always enabled - no-op
             break;
         default:
             break;

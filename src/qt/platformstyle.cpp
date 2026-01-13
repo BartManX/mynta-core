@@ -14,7 +14,8 @@
 #include <QPalette>
 #include <QPixmap>
 
-bool darkModeEnabled = false;
+// Dark mode is now the only mode - matches myntacoin.org website design
+bool darkModeEnabled = true;
 
 static const struct {
     const char *platformId;
@@ -163,84 +164,59 @@ QIcon PlatformStyle::TextColorIcon(const QIcon& icon) const
 
 QColor PlatformStyle::TextColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_TOOLBAR_SELECTED_TEXT_DARK_MODE;
-
-    return textColor;
+    return COLOR_TOOLBAR_SELECTED_TEXT_DARK_MODE;
 }
 
 QColor PlatformStyle::ToolBarSelectedTextColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_TOOLBAR_SELECTED_TEXT_DARK_MODE;
-
-    return COLOR_TOOLBAR_SELECTED_TEXT;
+    return COLOR_TOOLBAR_SELECTED_TEXT_DARK_MODE;
 }
 
 QColor PlatformStyle::ToolBarNotSelectedTextColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_TOOLBAR_NOT_SELECTED_TEXT_DARK_MODE;
-
-    return COLOR_TOOLBAR_NOT_SELECTED_TEXT;
+    return COLOR_TOOLBAR_NOT_SELECTED_TEXT_DARK_MODE;
 }
 
 QColor PlatformStyle::MainBackGroundColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_BLACK;
-
+    // dark-900 (#0f172a) - matches myntacoin.org
     return COLOR_BACKGROUND_LIGHT;
 }
 
 QColor PlatformStyle::TopWidgetBackGroundColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_PRICING_WIDGET;
-
-    return COLOR_BACKGROUND_LIGHT;
+    // dark-800 (#1e293b)
+    return COLOR_PRICING_WIDGET;
 }
 
 QColor PlatformStyle::WidgetBackGroundColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_WIDGET_BACKGROUND_DARK;
-
-    return COLOR_WHITE;
+    // dark-800 (#1e293b)
+    return COLOR_WIDGET_BACKGROUND_DARK;
 }
 
 QColor PlatformStyle::SendEntriesBackGroundColor() const
 {
-    if (darkModeEnabled)
-     // return QColor(21,20,17);
-        return COLOR_SENDENTRIES_BACKGROUND_DARK;
-
-//  return QColor("#faf9f6");
-    return COLOR_SENDENTRIES_BACKGROUND;
+    // dark-800 (#1e293b)
+    return COLOR_SENDENTRIES_BACKGROUND_DARK;
 }
 
 QColor PlatformStyle::ShadowColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_SHADOW_DARK;
-
-    return COLOR_SHADOW_LIGHT;
+    // dark-950 (#020617)
+    return COLOR_SHADOW_DARK;
 }
 
 QColor PlatformStyle::LightBlueColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_LIGHT_BLUE_DARK;
-
-    return COLOR_LIGHT_BLUE;
+    // dark-800 (#1e293b) for sidebar gradient
+    return COLOR_LIGHT_BLUE_DARK;
 }
 
 QColor PlatformStyle::DarkBlueColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_DARK_BLUE_DARK;
-
-    return COLOR_DARK_BLUE;
+    // dark-900 (#0f172a) for sidebar gradient
+    return COLOR_DARK_BLUE_DARK;
 }
 
 QColor PlatformStyle::LightOrangeColor() const
@@ -255,18 +231,12 @@ QColor PlatformStyle::DarkOrangeColor() const
 
 QColor PlatformStyle::SingleColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_ASSET_TEXT; // WHITE (black -> white)
-
-    return singleColor;
+    return COLOR_ASSET_TEXT; // White text for dark theme
 }
 
 QColor PlatformStyle::AssetTxColor() const
 {
-    if (darkModeEnabled)
-        return COLOR_LIGHT_BLUE;
-
-    return COLOR_DARK_BLUE;
+    return COLOR_LIGHT_BLUE;
 }
 
 

@@ -18,8 +18,8 @@ static const int STATUSBAR_ICONSIZE = 16;
 static const bool DEFAULT_SPLASHSCREEN = true;
 
 /* Invalid field background style */
-#define STYLE_INVALID "background:#FF8080; border: 1px solid lightgray; padding: 0px;"
-#define STYLE_VALID "border: 1px solid lightgray; padding: 0px;"
+#define STYLE_INVALID "background:#FF8080; border: 1px solid #334155; padding: 0px; color: #0f172a;"
+#define STYLE_VALID "background: #1e293b; border: 1px solid #334155; padding: 0px; color: white;"
 
 /* Transaction list -- unconfirmed transaction */
 #define COLOR_UNCONFIRMED QColor(128, 128, 128)
@@ -38,59 +38,59 @@ static const bool DEFAULT_SPLASHSCREEN = true;
 
 #define COLOR_WALLETFRAME_SHADOW QColor(0,0,0,71)
 
-/* Color of labels */
-#define COLOR_LABELS QColor("#4960ad")
+/* Color of labels - Gold accent */
+#define COLOR_LABELS QColor("#fbbf24")
 
-/** LIGHT MODE */
-/* Background color, very light gray */
-#define COLOR_BACKGROUND_LIGHT QColor("#fbfbfe")
-/* Mynta dark orange */
-#define COLOR_DARK_ORANGE QColor("#f05239")
-/* Mynta light orange */
-#define COLOR_LIGHT_ORANGE QColor("#f79433")
-/* Mynta dark blue */
-#define COLOR_DARK_BLUE QColor("#384192")
-/* Mynta light blue */
-#define COLOR_LIGHT_BLUE QColor("#5874cf")
+/** LIGHT MODE - Updated to match myntacoin.org dark website design */
+/* Background color - dark-900 (matches website) */
+#define COLOR_BACKGROUND_LIGHT QColor("#0f172a")
+/* Mynta primary gold */
+#define COLOR_DARK_ORANGE QColor("#f59e0b")
+/* Mynta light gold */
+#define COLOR_LIGHT_ORANGE QColor("#fbbf24")
+/* Sidebar dark color - dark-900 */
+#define COLOR_DARK_BLUE QColor("#0f172a")
+/* Sidebar light color - dark-800 */
+#define COLOR_LIGHT_BLUE QColor("#1e293b")
 /* Mynta asset text */
 #define COLOR_ASSET_TEXT QColor(255, 255, 255)
-/* Mynta shadow color - light mode */
-#define COLOR_SHADOW_LIGHT QColor("#e1e6f3")
-/* Toolbar not selected text color */
-#define COLOR_TOOLBAR_NOT_SELECTED_TEXT QColor("#a5b7f3")
-/* Toolbar selected text color */
-#define COLOR_TOOLBAR_SELECTED_TEXT COLOR_WHITE
-/* Send entries background color */
-#define COLOR_SENDENTRIES_BACKGROUND QColor("#fbfbfe")
+/* Mynta shadow color - dark-950 */
+#define COLOR_SHADOW_LIGHT QColor("#020617")
+/* Toolbar not selected text color - dark-400 */
+#define COLOR_TOOLBAR_NOT_SELECTED_TEXT QColor("#94a3b8")
+/* Toolbar selected text color - Gold */
+#define COLOR_TOOLBAR_SELECTED_TEXT QColor("#fbbf24")
+/* Send entries background color - dark-800 */
+#define COLOR_SENDENTRIES_BACKGROUND QColor("#1e293b")
 
 
-/** DARK MODE */
-/* Widget background color, dark mode */
-#define COLOR_WIDGET_BACKGROUND_DARK QColor("#1c2535")
-/* Mynta shadow color - dark mode */
-#define COLOR_SHADOW_DARK QColor("#0c1b3d")
-/* Mynta Light blue - dark mode - dark mode */
-#define COLOR_LIGHT_BLUE_DARK QColor("#1e2636")
-/* Mynta Dark blue - dark mode - dark mode */
-#define COLOR_DARK_BLUE_DARK QColor("#0b1018")
-/* Pricing widget background color */
-#define COLOR_PRICING_WIDGET QColor("#161e2d")
+/** DARK MODE - Official Mynta Brand Colors from myntacoin.org */
+/* Widget background color, dark mode - dark-800 */
+#define COLOR_WIDGET_BACKGROUND_DARK QColor("#1e293b")
+/* Mynta shadow color - dark mode - dark-950 */
+#define COLOR_SHADOW_DARK QColor("#020617")
+/* Mynta Light background - dark mode - dark-700 */
+#define COLOR_LIGHT_BLUE_DARK QColor("#334155")
+/* Mynta Dark background - dark mode - dark-900 */
+#define COLOR_DARK_BLUE_DARK QColor("#0f172a")
+/* Pricing widget background color - dark-800 */
+#define COLOR_PRICING_WIDGET QColor("#1e293b")
 /* Mynta dark mode administrator background color */
 #define COLOR_ADMIN_CARD_DARK COLOR_BLACK
-/* Mynta dark mode regular asset background color */
-#define COLOR_REGULAR_CARD_DARK_BLUE_DARK_MODE QColor("#06132a")
-/* Mynta dark mode regular asset background color */
-#define COLOR_REGULAR_CARD_LIGHT_BLUE_DARK_MODE QColor("#0e1b3b")
-/* Toolbar not selected text color */
-#define COLOR_TOOLBAR_NOT_SELECTED_TEXT_DARK_MODE QColor("#6c80c5")
-/* Toolbar selected text color */
-#define COLOR_TOOLBAR_SELECTED_TEXT_DARK_MODE QColor("#c5ccdf")
-/* Send entries background color dark mode */
-#define COLOR_SENDENTRIES_BACKGROUND_DARK QColor("#1c2535")
+/* Mynta dark mode regular asset background color - dark-900 */
+#define COLOR_REGULAR_CARD_DARK_BLUE_DARK_MODE QColor("#0f172a")
+/* Mynta dark mode regular asset background color - dark-800 */
+#define COLOR_REGULAR_CARD_LIGHT_BLUE_DARK_MODE QColor("#1e293b")
+/* Toolbar not selected text color - dark-400 */
+#define COLOR_TOOLBAR_NOT_SELECTED_TEXT_DARK_MODE QColor("#94a3b8")
+/* Toolbar selected text color - Gold */
+#define COLOR_TOOLBAR_SELECTED_TEXT_DARK_MODE QColor("#fbbf24")
+/* Send entries background color dark mode - dark-800 */
+#define COLOR_SENDENTRIES_BACKGROUND_DARK QColor("#1e293b")
 
 
-/* Mynta label color as a string */
-#define STRING_LABEL_COLOR "color: #4960ad"
+/* Mynta label color as a string - Gold */
+#define STRING_LABEL_COLOR "color: #fbbf24"
 #define STRING_LABEL_COLOR_WARNING "color: #FF8080"
 
 
