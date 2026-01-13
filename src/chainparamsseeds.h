@@ -1,0 +1,23 @@
+#ifndef MYNTA_CHAINPARAMSSEEDS_H
+#define MYNTA_CHAINPARAMSSEEDS_H
+/**
+ * Mynta seed nodes
+ * 
+ * Each line contains a 16-byte IPv6 address (IPv4-mapped) and a port.
+ * IPv4 addresses are wrapped as ::ffff:a.b.c.d
+ */
+
+// Mainnet seeds
+static SeedSpec6 pnSeed6_main[] = {
+    // Amsterdam: 78.141.222.18:8770
+    {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0x4e,0x8d,0xde,0x12}, 8770},
+    // West US: 204.10.108.182:8770
+    {{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xcc,0x0a,0x6c,0xb6}, 8770},
+};
+
+// Testnet seeds - empty for now
+static SeedSpec6 pnSeed6_test[] = {
+    // Add testnet seed nodes here if needed
+};
+
+#endif // MYNTA_CHAINPARAMSSEEDS_H
