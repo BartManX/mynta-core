@@ -18,7 +18,7 @@ env:
 
 jobs:
   # =============================================================================
-  # Linux x86_64 Build
+  # Linux x86_64 Build (using depends for reproducibility)
   # =============================================================================
   build-linux:
     name: Linux x86_64
@@ -26,6 +26,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Dependencies
         run: |
@@ -41,38 +43,45 @@ jobs:
             pkg-config \
             python3 \
             bison \
-            libboost-all-dev \
-            libevent-dev \
-            libssl-dev \
-            libdb++-dev \
-            libminiupnpc-dev \
-            libzmq3-dev \
-            libqt5gui5 \
-            libqt5core5a \
-            libqt5dbus5 \
-            qttools5-dev \
-            qttools5-dev-tools \
-            libprotobuf-dev \
-            protobuf-compiler \
-            libqrencode-dev \
             libfuse2 \
             zsync \
             desktop-file-utils \
             appstream
 
+      - name: Cache depends
+        uses: actions/cache@v4
+        with:
+          path: |
+            depends/built
+            depends/sources
+          key: linux-depends-${{ hashFiles('depends/packages/*.mk') }}
+          restore-keys: |
+            linux-depends-
+
+      - name: Build depends
+        run: |
+          cd depends
+          make HOST=x86_64-linux-gnu -j$(nproc)
+
+      - name: Build BLST
+        run: |
+          cd src/bls/blst
+          ./build.sh
+          cd ../../..
+
       - name: Configure
         run: |
           ./autogen.sh
-          ./configure \
+          CONFIG_SITE=$PWD/depends/x86_64-linux-gnu/share/config.site ./configure \
             --prefix=/ \
             --disable-ccache \
             --disable-maintainer-mode \
             --disable-dependency-tracking \
+            --enable-glibc-back-compat \
             --enable-reduce-exports \
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
-            --with-incompatible-bdb \
             CFLAGS="-O2 -g" \
             CXXFLAGS="-O2 -g" \
             LDFLAGS="-static-libstdc++"
@@ -89,9 +98,13 @@ jobs:
           cp src/myntad stage/${DISTNAME}/bin/
           cp src/mynta-cli stage/${DISTNAME}/bin/
           cp src/mynta-tx stage/${DISTNAME}/bin/
-          cp src/qt/mynta-qt stage/${DISTNAME}/bin/ || true
+          cp src/qt/mynta-qt stage/${DISTNAME}/bin/ 2>/dev/null || echo "Qt wallet not built"
           
-          strip stage/${DISTNAME}/bin/*
+          # Strip binaries
+          strip stage/${DISTNAME}/bin/* 2>/dev/null || true
+          
+          # Add README
+          cp doc/RELEASE_GUIDE.md stage/${DISTNAME}/README.md
           
           cd stage
           tar -czvf ../release/${DISTNAME}-x86_64-linux-gnu.tar.gz ${DISTNAME}/
@@ -111,38 +124,41 @@ jobs:
           cp src/myntad ${DEB_DIR}/usr/bin/
           cp src/mynta-cli ${DEB_DIR}/usr/bin/
           cp src/mynta-tx ${DEB_DIR}/usr/bin/
-          cp src/qt/mynta-qt ${DEB_DIR}/usr/bin/ || true
-          strip ${DEB_DIR}/usr/bin/*
+          cp src/qt/mynta-qt ${DEB_DIR}/usr/bin/ 2>/dev/null || echo "Qt wallet not available"
+          strip ${DEB_DIR}/usr/bin/* 2>/dev/null || true
           
-          # Create control file
-          cat > ${DEB_DIR}/DEBIAN/control << EOF
-          Package: mynta
-          Version: ${MYNTA_VERSION}
-          Section: utils
-          Priority: optional
-          Architecture: amd64
-          Depends: libboost-system1.74.0, libboost-filesystem1.74.0, libboost-thread1.74.0, libevent-2.1-7, libssl3, libminiupnpc17, libzmq5, libqt5widgets5, libqt5gui5, libqt5network5, libqt5dbus5, libqrencode4
-          Maintainer: Mynta Developers <dev@myntacoin.org>
-          Description: Mynta Core - Full node and wallet
-           Mynta is a peer-to-peer digital currency with asset support.
-           This package includes the Qt wallet and command-line tools.
-          EOF
+          # Create control file (no leading whitespace!)
+          cat > ${DEB_DIR}/DEBIAN/control << 'EOF'
+Package: mynta
+Version: ${MYNTA_VERSION}
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.31), libgcc-s1 (>= 3.0), libstdc++6 (>= 11)
+Maintainer: Mynta Developers <dev@myntacoin.org>
+Description: Mynta Core - Full node and wallet
+ Mynta is a peer-to-peer digital currency with asset support.
+ This package includes the Qt wallet and command-line tools.
+ The Qt wallet includes a built-in daemon - you do NOT need myntad.
+EOF
+          # Replace version in control file
+          sed -i "s/\${MYNTA_VERSION}/${MYNTA_VERSION}/g" ${DEB_DIR}/DEBIAN/control
           
           # Create desktop file
-          cat > ${DEB_DIR}/usr/share/applications/mynta-qt.desktop << EOF
-          [Desktop Entry]
-          Name=Mynta Core
-          Comment=Mynta wallet and full node
-          Exec=mynta-qt %u
-          Terminal=false
-          Type=Application
-          Icon=mynta
-          Categories=Finance;Network;
-          MimeType=x-scheme-handler/mynta;
-          EOF
+          cat > ${DEB_DIR}/usr/share/applications/mynta-qt.desktop << 'EOF'
+[Desktop Entry]
+Name=Mynta Core
+Comment=Mynta wallet and full node
+Exec=mynta-qt %u
+Terminal=false
+Type=Application
+Icon=mynta
+Categories=Finance;Network;
+MimeType=x-scheme-handler/mynta;
+EOF
           
-          # Copy icon if exists
-          cp share/pixmaps/raven256.png ${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/mynta.png || true
+          # Copy icon
+          cp share/pixmaps/mynta256.png ${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/mynta.png
           
           # Copy docs
           cp doc/RELEASE_GUIDE.md ${DEB_DIR}/usr/share/doc/mynta/
@@ -155,6 +171,12 @@ jobs:
         run: |
           DISTNAME="mynta-${MYNTA_VERSION}"
           
+          # Check if Qt wallet was built
+          if [ ! -f "src/qt/mynta-qt" ]; then
+            echo "Qt wallet not built, skipping AppImage"
+            exit 0
+          fi
+          
           # Download linuxdeploy
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
@@ -165,30 +187,33 @@ jobs:
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
           
-          cp src/qt/mynta-qt AppDir/usr/bin/ || echo "Qt wallet not built"
+          cp src/qt/mynta-qt AppDir/usr/bin/
           cp src/myntad AppDir/usr/bin/
           cp src/mynta-cli AppDir/usr/bin/
           
           # Create desktop file
-          cat > AppDir/usr/share/applications/mynta-qt.desktop << EOF
-          [Desktop Entry]
-          Name=Mynta Core
-          Comment=Mynta wallet and full node
-          Exec=mynta-qt
-          Terminal=false
-          Type=Application
-          Icon=mynta
-          Categories=Finance;Network;
-          EOF
+          cat > AppDir/usr/share/applications/mynta-qt.desktop << 'EOF'
+[Desktop Entry]
+Name=Mynta Core
+Comment=Mynta wallet and full node
+Exec=mynta-qt
+Terminal=false
+Type=Application
+Icon=mynta
+Categories=Finance;Network;
+EOF
           
           # Copy icon
-          cp share/pixmaps/raven256.png AppDir/usr/share/icons/hicolor/256x256/apps/mynta.png || \
-            convert -size 256x256 xc:#d4af37 AppDir/usr/share/icons/hicolor/256x256/apps/mynta.png || true
+          cp share/pixmaps/mynta256.png AppDir/usr/share/icons/hicolor/256x256/apps/mynta.png
+          
+          # Create symlinks required by linuxdeploy
+          ln -sf usr/share/applications/mynta-qt.desktop AppDir/mynta-qt.desktop
+          ln -sf usr/share/icons/hicolor/256x256/apps/mynta.png AppDir/mynta.png
           
           # Build AppImage
           export VERSION=${MYNTA_VERSION}
-          ./linuxdeploy-x86_64.AppImage --appdir AppDir --plugin qt --output appimage || \
-            echo "AppImage creation skipped - Qt wallet may not be available"
+          export QT_SELECT=5
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage || echo "AppImage creation completed with warnings"
           
           mv Mynta*.AppImage release/Mynta-${MYNTA_VERSION}-x86_64.AppImage 2>/dev/null || true
 
@@ -206,7 +231,7 @@ jobs:
           path: release/
 
   # =============================================================================
-  # Windows x64 Build
+  # Windows x64 Build (cross-compile from Linux)
   # =============================================================================
   build-windows:
     name: Windows x64
@@ -214,6 +239,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Dependencies
         run: |
@@ -236,11 +263,29 @@ jobs:
             osslsigncode
           
           sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+          sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+
+      - name: Cache depends
+        uses: actions/cache@v4
+        with:
+          path: |
+            depends/built
+            depends/sources
+          key: windows-depends-${{ hashFiles('depends/packages/*.mk') }}
+          restore-keys: |
+            windows-depends-
 
       - name: Build depends
         run: |
           cd depends
           make HOST=x86_64-w64-mingw32 -j$(nproc)
+
+      - name: Build BLST for Windows
+        run: |
+          cd src/bls/blst
+          rm -f libblst.a *.o 2>/dev/null || true
+          CC=x86_64-w64-mingw32-gcc ./build.sh
+          cd ../../..
 
       - name: Configure
         run: |
@@ -270,66 +315,20 @@ jobs:
           cp src/myntad.exe stage/${DISTNAME}/
           cp src/mynta-cli.exe stage/${DISTNAME}/
           cp src/mynta-tx.exe stage/${DISTNAME}/
-          cp src/qt/mynta-qt.exe stage/${DISTNAME}/ || true
+          cp src/qt/mynta-qt.exe stage/${DISTNAME}/ 2>/dev/null || echo "Qt wallet not built"
           cp doc/RELEASE_GUIDE.md stage/${DISTNAME}/README.md
           
-          x86_64-w64-mingw32-strip stage/${DISTNAME}/*.exe
+          x86_64-w64-mingw32-strip stage/${DISTNAME}/*.exe 2>/dev/null || true
           
           cd stage
           zip -r ../release/${DISTNAME}-win64.zip ${DISTNAME}/
 
       - name: Package NSIS Installer
         run: |
-          # Create NSIS setup if make deploy is available
-          make deploy 2>/dev/null || echo "NSIS installer build attempted"
-          mv *-setup.exe release/mynta-${MYNTA_VERSION}-win64-setup.exe 2>/dev/null || true
-
-      - name: Create MSI Installer
-        run: |
-          # Install WiX tools via Wine
-          sudo apt-get install -y wine64 || true
-          
-          DISTNAME="mynta-${MYNTA_VERSION}"
-          
-          # Create WiX source file
-          cat > mynta.wxs << 'WIXEOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-            <Product Id="*" Name="Mynta Core" Language="1033" Version="${MYNTA_VERSION}.0" 
-                     Manufacturer="Mynta Developers" UpgradeCode="12345678-1234-1234-1234-123456789012">
-              <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine"/>
-              <MajorUpgrade DowngradeErrorMessage="A newer version is already installed."/>
-              <MediaTemplate EmbedCab="yes"/>
-              
-              <Feature Id="MainFeature" Title="Mynta Core" Level="1">
-                <ComponentGroupRef Id="ProductComponents"/>
-              </Feature>
-              
-              <Directory Id="TARGETDIR" Name="SourceDir">
-                <Directory Id="ProgramFiles64Folder">
-                  <Directory Id="INSTALLFOLDER" Name="Mynta">
-                    <Component Id="MainExecutable" Guid="*">
-                      <File Id="MyntaQt" Source="stage/${DISTNAME}/mynta-qt.exe" KeyPath="yes"/>
-                      <File Id="Myntad" Source="stage/${DISTNAME}/myntad.exe"/>
-                      <File Id="MyntaCli" Source="stage/${DISTNAME}/mynta-cli.exe"/>
-                      <File Id="MyntaTx" Source="stage/${DISTNAME}/mynta-tx.exe"/>
-                    </Component>
-                  </Directory>
-                </Directory>
-                <Directory Id="ProgramMenuFolder">
-                  <Directory Id="ApplicationProgramsFolder" Name="Mynta"/>
-                </Directory>
-              </Directory>
-              
-              <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
-                <ComponentRef Id="MainExecutable"/>
-              </ComponentGroup>
-            </Product>
-          </Wix>
-          WIXEOF
-          
-          echo "MSI creation requires WiX Toolset - skipping in CI for now"
-          # For full MSI support, would need WiX installed
+          # Build NSIS installer if Qt wallet exists
+          if [ -f "src/qt/mynta-qt.exe" ]; then
+            make deploy 2>/dev/null && mv *-setup.exe release/mynta-${MYNTA_VERSION}-win64-setup.exe || echo "NSIS installer not created"
+          fi
 
       - name: Generate checksums
         run: |
@@ -345,14 +344,16 @@ jobs:
           path: release/
 
   # =============================================================================
-  # macOS x64 Build
+  # macOS x64 Build (Intel - for maximum compatibility)
   # =============================================================================
   build-macos:
     name: macOS x64
-    runs-on: macos-15
+    runs-on: macos-13  # Intel runner for x86_64 builds
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Dependencies
         run: |
@@ -360,39 +361,34 @@ jobs:
             automake \
             libtool \
             pkg-config \
-            boost \
-            libevent \
-            openssl@3 \
-            miniupnpc \
-            zeromq \
-            qt@5 \
-            qrencode \
-            protobuf \
+            python@3 \
             create-dmg
 
-      - name: Build Berkeley DB 4.8
+      - name: Cache depends
+        uses: actions/cache@v4
+        with:
+          path: |
+            depends/built
+            depends/sources
+          key: macos-depends-${{ hashFiles('depends/packages/*.mk') }}
+          restore-keys: |
+            macos-depends-
+
+      - name: Build depends
         run: |
-          # Download and build BDB 4.8 from source (deprecated in Homebrew)
-          curl -LO https://download.oracle.com/berkeley-db/db-4.8.30.NC.tar.gz
-          echo "12edc0df75bf9abd7f82f821795bcee50f42cb2e5f76a6a281b85732798364ef  db-4.8.30.NC.tar.gz" | shasum -a 256 -c
-          tar -xzf db-4.8.30.NC.tar.gz
-          
-          # Fix for modern Clang
-          sed -i '' 's/__atomic_compare_exchange/__atomic_compare_exchange_db/' db-4.8.30.NC/dbinc/atomic.h
-          
-          cd db-4.8.30.NC/build_unix
-          ../dist/configure \
-            --prefix=/usr/local/opt/berkeley-db@4.8 \
-            --enable-cxx \
-            --disable-shared \
-            --with-pic
-          make -j$(sysctl -n hw.ncpu)
-          sudo make install
+          cd depends
+          make HOST=x86_64-apple-darwin -j$(sysctl -n hw.ncpu)
+
+      - name: Build BLST
+        run: |
+          cd src/bls/blst
+          ./build.sh
+          cd ../../..
 
       - name: Configure
         run: |
           ./autogen.sh
-          ./configure \
+          CONFIG_SITE=$PWD/depends/x86_64-apple-darwin/share/config.site ./configure \
             --prefix=/ \
             --disable-ccache \
             --disable-maintainer-mode \
@@ -401,12 +397,8 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
-            --with-boost=$(brew --prefix boost) \
-            --with-qt=$(brew --prefix qt@5) \
             CFLAGS="-O2" \
-            CXXFLAGS="-O2" \
-            LDFLAGS="-L$(brew --prefix openssl@3)/lib -L/usr/local/opt/berkeley-db@4.8/lib" \
-            CPPFLAGS="-I$(brew --prefix openssl@3)/include -I/usr/local/opt/berkeley-db@4.8/include"
+            CXXFLAGS="-O2"
 
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
@@ -420,7 +412,8 @@ jobs:
           cp src/myntad stage/${DISTNAME}/bin/
           cp src/mynta-cli stage/${DISTNAME}/bin/
           cp src/mynta-tx stage/${DISTNAME}/bin/
-          cp src/qt/mynta-qt stage/${DISTNAME}/bin/ || true
+          cp src/qt/mynta-qt stage/${DISTNAME}/bin/ 2>/dev/null || echo "Qt wallet not built"
+          cp doc/RELEASE_GUIDE.md stage/${DISTNAME}/README.md
           
           strip stage/${DISTNAME}/bin/* 2>/dev/null || true
           
@@ -431,50 +424,61 @@ jobs:
         run: |
           DISTNAME="mynta-${MYNTA_VERSION}"
           
+          # Only create DMG if Qt wallet was built
+          if [ ! -f "src/qt/mynta-qt" ]; then
+            echo "Qt wallet not built, skipping DMG"
+            exit 0
+          fi
+          
           # Create app bundle structure
           mkdir -p "Mynta-Qt.app/Contents/MacOS"
           mkdir -p "Mynta-Qt.app/Contents/Resources"
           
           # Copy binary
-          cp src/qt/mynta-qt "Mynta-Qt.app/Contents/MacOS/Mynta-Qt" || exit 0
+          cp src/qt/mynta-qt "Mynta-Qt.app/Contents/MacOS/Mynta-Qt"
           
           # Create Info.plist
           cat > "Mynta-Qt.app/Contents/Info.plist" << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>CFBundleExecutable</key>
-            <string>Mynta-Qt</string>
-            <key>CFBundleIdentifier</key>
-            <string>org.myntacoin.Mynta-Qt</string>
-            <key>CFBundleName</key>
-            <string>Mynta-Qt</string>
-            <key>CFBundleVersion</key>
-            <string>${MYNTA_VERSION}</string>
-            <key>CFBundleShortVersionString</key>
-            <string>${MYNTA_VERSION}</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>LSMinimumSystemVersion</key>
-            <string>10.14</string>
-            <key>NSHighResolutionCapable</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>Mynta-Qt</string>
+  <key>CFBundleIdentifier</key>
+  <string>org.myntacoin.Mynta-Qt</string>
+  <key>CFBundleName</key>
+  <string>Mynta-Qt</string>
+  <key>CFBundleVersion</key>
+  <string>${MYNTA_VERSION}</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${MYNTA_VERSION}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>10.14</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+</dict>
+</plist>
+EOF
+          
+          # Copy icon if available
+          if [ -f "share/pixmaps/mynta256.png" ]; then
+            cp share/pixmaps/mynta256.png "Mynta-Qt.app/Contents/Resources/mynta.png"
+          fi
           
           # Create DMG
-          if [ -f "src/qt/mynta-qt" ]; then
-            create-dmg \
-              --volname "Mynta Core ${MYNTA_VERSION}" \
-              --window-pos 200 120 \
-              --window-size 600 400 \
-              --icon-size 100 \
-              --app-drop-link 400 185 \
-              "release/${DISTNAME}-osx64.dmg" \
-              "Mynta-Qt.app" || echo "DMG creation completed with warnings"
-          fi
+          create-dmg \
+            --volname "Mynta Core ${MYNTA_VERSION}" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 400 185 \
+            "release/${DISTNAME}-osx64.dmg" \
+            "Mynta-Qt.app" || echo "DMG creation completed with warnings"
 
       - name: Generate checksums
         run: |
@@ -490,11 +494,155 @@ jobs:
           path: release/
 
   # =============================================================================
+  # macOS ARM64 Build (Apple Silicon)
+  # =============================================================================
+  build-macos-arm64:
+    name: macOS ARM64
+    runs-on: macos-14  # ARM64 runner
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Dependencies
+        run: |
+          brew install \
+            automake \
+            libtool \
+            pkg-config \
+            python@3 \
+            create-dmg
+
+      - name: Cache depends
+        uses: actions/cache@v4
+        with:
+          path: |
+            depends/built
+            depends/sources
+          key: macos-arm64-depends-${{ hashFiles('depends/packages/*.mk') }}
+          restore-keys: |
+            macos-arm64-depends-
+
+      - name: Build depends
+        run: |
+          cd depends
+          make HOST=arm64-apple-darwin -j$(sysctl -n hw.ncpu)
+
+      - name: Build BLST
+        run: |
+          cd src/bls/blst
+          ./build.sh
+          cd ../../..
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          CONFIG_SITE=$PWD/depends/arm64-apple-darwin/share/config.site ./configure \
+            --prefix=/ \
+            --disable-ccache \
+            --disable-maintainer-mode \
+            --disable-dependency-tracking \
+            --enable-reduce-exports \
+            --disable-bench \
+            --disable-tests \
+            --disable-gui-tests \
+            CFLAGS="-O2" \
+            CXXFLAGS="-O2"
+
+      - name: Build
+        run: make -j$(sysctl -n hw.ncpu)
+
+      - name: Package tar.gz
+        run: |
+          mkdir -p release
+          DISTNAME="mynta-${MYNTA_VERSION}"
+          
+          mkdir -p stage/${DISTNAME}/bin
+          cp src/myntad stage/${DISTNAME}/bin/
+          cp src/mynta-cli stage/${DISTNAME}/bin/
+          cp src/mynta-tx stage/${DISTNAME}/bin/
+          cp src/qt/mynta-qt stage/${DISTNAME}/bin/ 2>/dev/null || echo "Qt wallet not built"
+          cp doc/RELEASE_GUIDE.md stage/${DISTNAME}/README.md
+          
+          strip stage/${DISTNAME}/bin/* 2>/dev/null || true
+          
+          cd stage
+          tar -czvf ../release/${DISTNAME}-osx-arm64.tar.gz ${DISTNAME}/
+
+      - name: Package DMG
+        run: |
+          DISTNAME="mynta-${MYNTA_VERSION}"
+          
+          if [ ! -f "src/qt/mynta-qt" ]; then
+            echo "Qt wallet not built, skipping DMG"
+            exit 0
+          fi
+          
+          mkdir -p "Mynta-Qt.app/Contents/MacOS"
+          mkdir -p "Mynta-Qt.app/Contents/Resources"
+          
+          cp src/qt/mynta-qt "Mynta-Qt.app/Contents/MacOS/Mynta-Qt"
+          
+          cat > "Mynta-Qt.app/Contents/Info.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key>
+  <string>Mynta-Qt</string>
+  <key>CFBundleIdentifier</key>
+  <string>org.myntacoin.Mynta-Qt</string>
+  <key>CFBundleName</key>
+  <string>Mynta-Qt</string>
+  <key>CFBundleVersion</key>
+  <string>${MYNTA_VERSION}</string>
+  <key>CFBundleShortVersionString</key>
+  <string>${MYNTA_VERSION}</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>11.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSPrincipalClass</key>
+  <string>NSApplication</string>
+</dict>
+</plist>
+EOF
+          
+          if [ -f "share/pixmaps/mynta256.png" ]; then
+            cp share/pixmaps/mynta256.png "Mynta-Qt.app/Contents/Resources/mynta.png"
+          fi
+          
+          create-dmg \
+            --volname "Mynta Core ${MYNTA_VERSION}" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --app-drop-link 400 185 \
+            "release/${DISTNAME}-osx-arm64.dmg" \
+            "Mynta-Qt.app" || echo "DMG creation completed with warnings"
+
+      - name: Generate checksums
+        run: |
+          cd release
+          for f in *.tar.gz *.dmg; do
+            [ -f "$f" ] && shasum -a 256 "$f" > "${f}.sha256sum"
+          done
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64
+          path: release/
+
+  # =============================================================================
   # Create GitHub Release
   # =============================================================================
   create-release:
     name: Create Release
-    needs: [build-linux, build-windows, build-macos]
+    needs: [build-linux, build-windows, build-macos, build-macos-arm64]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.create_release == 'true' }}
     permissions:
@@ -534,77 +682,134 @@ jobs:
           body: |
             ## Mynta Core v${{ github.event.inputs.version }}
             
-            ### Quick Start
+            ### ⚠️ Important: You Do NOT Need the Daemon Binary
             
-            **The Mynta-Qt wallet includes a built-in daemon.** You do NOT need `myntad` unless running a headless server.
+            **The Mynta-Qt wallet includes a built-in daemon.** You do NOT need to run `myntad` separately unless you're running a headless server.
             
             | Binary | Purpose |
             |--------|---------|
-            | `mynta-qt` | Full GUI wallet (recommended) |
+            | `mynta-qt` | Full GUI wallet with built-in daemon (recommended) |
             | `myntad` | Headless daemon (servers only) |
-            | `mynta-cli` | Command-line interface |
+            | `mynta-cli` | Command-line RPC interface |
+            | `mynta-tx` | Transaction utility |
             
             ---
             
             ### Downloads
             
-            #### 🐧 Linux
+            #### 🐧 Linux (x86_64)
             | Format | File | Description |
             |--------|------|-------------|
             | DEB | `mynta_${{ github.event.inputs.version }}_amd64.deb` | Ubuntu/Debian installer |
             | AppImage | `Mynta-${{ github.event.inputs.version }}-x86_64.AppImage` | Portable, run anywhere |
             | tar.gz | `mynta-${{ github.event.inputs.version }}-x86_64-linux-gnu.tar.gz` | Manual install |
             
-            #### 🪟 Windows
+            **Installation:**
+            ```bash
+            # DEB (Ubuntu/Debian)
+            sudo dpkg -i mynta_${{ github.event.inputs.version }}_amd64.deb
+            mynta-qt
+            
+            # AppImage (any distro)
+            chmod +x Mynta-${{ github.event.inputs.version }}-x86_64.AppImage
+            ./Mynta-${{ github.event.inputs.version }}-x86_64.AppImage
+            
+            # Manual (tar.gz)
+            tar -xzf mynta-${{ github.event.inputs.version }}-x86_64-linux-gnu.tar.gz
+            ./mynta-${{ github.event.inputs.version }}/bin/mynta-qt
+            ```
+            
+            #### 🪟 Windows (x64)
             | Format | File | Description |
             |--------|------|-------------|
             | Installer | `mynta-${{ github.event.inputs.version }}-win64-setup.exe` | NSIS installer |
             | ZIP | `mynta-${{ github.event.inputs.version }}-win64.zip` | Portable |
             
+            **Installation:**
+            1. Download and extract the ZIP, or run the installer
+            2. Double-click `mynta-qt.exe`
+            3. On first run, click "More info" → "Run anyway" if Windows shows a warning
+            
+            **Configuration file location:** `%APPDATA%\Mynta\mynta.conf`
+            
             #### 🍎 macOS
             | Format | File | Description |
             |--------|------|-------------|
-            | DMG | `mynta-${{ github.event.inputs.version }}-osx64.dmg` | Disk image installer |
-            | tar.gz | `mynta-${{ github.event.inputs.version }}-osx64.tar.gz` | Manual install |
+            | DMG (Intel) | `mynta-${{ github.event.inputs.version }}-osx64.dmg` | Disk image for Intel Macs |
+            | DMG (ARM64) | `mynta-${{ github.event.inputs.version }}-osx-arm64.dmg` | Disk image for Apple Silicon |
+            | tar.gz (Intel) | `mynta-${{ github.event.inputs.version }}-osx64.tar.gz` | Manual install |
+            | tar.gz (ARM64) | `mynta-${{ github.event.inputs.version }}-osx-arm64.tar.gz` | Manual install |
+            
+            **Installation:**
+            1. Open the DMG file
+            2. Drag Mynta-Qt to Applications
+            3. First run: Right-click → Open (to bypass Gatekeeper)
+            
+            **Configuration file location:** `~/Library/Application Support/Mynta/mynta.conf`
             
             ---
             
-            ### Installation
+            ### Common Startup Flags
             
-            **Linux (DEB):**
+            | Flag | Description |
+            |------|-------------|
+            | `-testnet` | Run on testnet |
+            | `-datadir=<path>` | Custom data directory |
+            | `-gen` | Enable mining |
+            | `-genproclimit=N` | Set mining threads |
+            | `-server` | Enable RPC server |
+            | `-min` | Start minimized to tray |
+            
+            **Example:**
             ```bash
-            sudo dpkg -i mynta_${{ github.event.inputs.version }}_amd64.deb
-            mynta-qt
+            mynta-qt -testnet -server
             ```
             
-            **Linux (AppImage):**
-            ```bash
-            chmod +x Mynta-${{ github.event.inputs.version }}-x86_64.AppImage
-            ./Mynta-${{ github.event.inputs.version }}-x86_64.AppImage
-            ```
+            ---
             
-            **Windows:** Run the installer or extract ZIP
+            ### Using mynta-cli with Qt Wallet
             
-            **macOS:** Open DMG, drag to Applications
+            The Qt wallet has a built-in RPC server. To use `mynta-cli`:
+            
+            1. Add to your `mynta.conf`:
+               ```ini
+               server=1
+               rpcuser=myntarpc
+               rpcpassword=your_secure_password
+               ```
+            2. Restart the wallet
+            3. Run commands:
+               ```bash
+               mynta-cli getblockchaininfo
+               mynta-cli getbalance
+               mynta-cli getnewaddress "label"
+               ```
             
             ---
             
             ### Verification
             
             ```bash
+            # Linux/macOS
             sha256sum -c SHA256SUMS.txt
+            
+            # Windows (PowerShell)
+            Get-FileHash -Algorithm SHA256 mynta-${{ github.event.inputs.version }}-win64.zip
             ```
             
-            ### Common Startup Flags
+            ---
             
-            ```bash
-            mynta-qt -testnet          # Testnet mode
-            mynta-qt -gen              # Enable mining
-            mynta-qt -server           # Enable RPC server
-            mynta-qt -datadir=/path    # Custom data directory
-            ```
+            ### Network Information
             
-            See `RELEASE_GUIDE.md` for full documentation.
+            | Network | Port | RPC Port | Data Directory |
+            |---------|------|----------|----------------|
+            | Mainnet | 8767 | 8766 | `~/.mynta` (Linux), `%APPDATA%\Mynta` (Win), `~/Library/Application Support/Mynta` (Mac) |
+            | Testnet | 18770 | 18766 | `<datadir>/testnet3` |
+            
+            ### Chain Start Time
+            
+            - **Mainnet Launch:** January 15, 2026 00:00:00 UTC
+            - Mining is not possible before this time
             
             ---
             
@@ -612,7 +817,9 @@ jobs:
             
             - ✅ 3% dev allocation enforced at consensus (no bypass possible)
             - ✅ No premine - genesis follows standard subsidy rules
-            - ✅ Chain start: January 15, 2026 00:00:00 UTC
+            - ✅ All code is open source and auditable
+            
+            See `RELEASE_GUIDE.md` for full documentation.
             
           draft: false
           prerelease: false

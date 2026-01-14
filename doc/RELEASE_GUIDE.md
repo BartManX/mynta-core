@@ -17,8 +17,10 @@
 
 ### Prerequisites (Ubuntu/Debian)
 
+For DEB package installation, dependencies are handled automatically. For tar.gz:
+
 ```bash
-# Install runtime dependencies
+# Install runtime dependencies (Ubuntu 22.04+)
 sudo apt update
 sudo apt install -y \
     libboost-system1.74.0 \
@@ -38,17 +40,33 @@ sudo apt install -y \
     libprotobuf23
 ```
 
-### Installation
+### Installation Options
+
+#### Option 1: DEB Package (Recommended for Ubuntu/Debian)
+
+```bash
+sudo dpkg -i mynta_VERSION_amd64.deb
+mynta-qt
+```
+
+#### Option 2: AppImage (Works on any Linux)
+
+```bash
+chmod +x Mynta-VERSION-x86_64.AppImage
+./Mynta-VERSION-x86_64.AppImage
+```
+
+#### Option 3: Manual Installation (tar.gz)
 
 ```bash
 # Extract the release
 tar -xzf mynta-VERSION-x86_64-linux-gnu.tar.gz
 cd mynta-VERSION
 
-# Option 1: Copy to system path
+# Option A: Copy to system path
 sudo cp bin/* /usr/local/bin/
 
-# Option 2: Run from current directory
+# Option B: Run from current directory
 ./bin/mynta-qt
 ```
 
@@ -69,12 +87,17 @@ mynta-qt -min
 
 # Enable mining from startup
 mynta-qt -gen -genproclimit=4
+
+# Enable RPC server for mynta-cli
+mynta-qt -server
 ```
 
 ### Running Headless Daemon (Servers Only)
 
+For servers without a GUI, use the headless daemon:
+
 ```bash
-# Start daemon
+# Start daemon in background
 myntad -daemon
 
 # Check status
@@ -84,11 +107,25 @@ mynta-cli getblockchaininfo
 mynta-cli stop
 ```
 
+### Data Directory
+
+Linux data directory: `~/.mynta/`
+
+Create configuration file: `~/.mynta/mynta.conf`
+
 ---
 
 ## Windows Installation
 
-### Installation
+### Installation Methods
+
+#### Option 1: NSIS Installer
+
+1. Run `mynta-VERSION-win64-setup.exe`
+2. Follow the installation wizard
+3. Launch from Start Menu
+
+#### Option 2: Portable ZIP
 
 1. Extract `mynta-VERSION-win64.zip` to a folder (e.g., `C:\Mynta`)
 2. Double-click `mynta-qt.exe` to start the wallet
@@ -137,11 +174,29 @@ cd C:\Mynta
 # Start in testnet mode
 .\mynta-qt.exe -testnet
 
-# Use CLI (requires server=1 in config)
+# Enable server mode for CLI access
+.\mynta-qt.exe -server
+
+# Use CLI (requires server=1 in config or -server flag)
 .\mynta-cli.exe getblockchaininfo
 .\mynta-cli.exe getbalance
 .\mynta-cli.exe getnewaddress "mylabel"
 ```
+
+### Running as a Node (Windows Service)
+
+To run Mynta as a Windows service for 24/7 operation:
+
+1. Use the headless daemon (`myntad.exe`)
+2. Create a batch file to start it:
+
+```batch
+@echo off
+cd C:\Mynta
+myntad.exe -daemon
+```
+
+3. Use Task Scheduler or NSSM to run it as a service
 
 ### Common Startup Flags
 
@@ -158,18 +213,21 @@ cd C:\Mynta
 | `-min` | Start minimized to tray |
 | `-splash=0` | Disable splash screen |
 | `-resetguisettings` | Reset all GUI settings |
+| `-reindex` | Rebuild blockchain index |
 
 ---
 
 ## macOS Installation
 
-### Installation
+### Installation Methods
 
-1. Extract `mynta-VERSION-osx64.tar.gz`
-2. Move `mynta-qt` to Applications (optional)
+#### Option 1: DMG Installer (Recommended)
+
+1. Open `mynta-VERSION-osx64.dmg` (Intel) or `mynta-VERSION-osx-arm64.dmg` (Apple Silicon)
+2. Drag Mynta-Qt to Applications
 3. First run: Right-click → Open (to bypass Gatekeeper)
 
-### Terminal Commands
+#### Option 2: Manual Installation (tar.gz)
 
 ```bash
 # Extract
@@ -182,6 +240,15 @@ cd mynta-VERSION
 # Or copy to Applications
 cp -r bin/mynta-qt /Applications/
 ```
+
+### Choosing the Right Version
+
+| Mac Type | Download |
+|----------|----------|
+| Intel Mac (2020 or earlier) | `mynta-VERSION-osx64.dmg` |
+| Apple Silicon (M1/M2/M3) | `mynta-VERSION-osx-arm64.dmg` |
+
+Check your Mac type: Apple Menu → About This Mac → Chip
 
 ### Data Directory
 
@@ -198,6 +265,19 @@ Create `~/Library/Application Support/Mynta/mynta.conf`:
 server=1
 rpcuser=myntarpc
 rpcpassword=your_secure_password_here
+```
+
+### Terminal Commands
+
+```bash
+# Start wallet from terminal
+/Applications/Mynta-Qt.app/Contents/MacOS/Mynta-Qt
+
+# Or if using tar.gz install
+./mynta-qt -server
+
+# Use CLI (wallet must be running with server=1)
+./mynta-cli getblockchaininfo
 ```
 
 ---
@@ -271,6 +351,19 @@ mynta-cli addnode <ip:port> add
 mynta-cli getconnectioncount
 ```
 
+### Assets
+
+```bash
+# List assets
+mynta-cli listassets
+
+# Get asset info
+mynta-cli getassetdata <asset_name>
+
+# Issue new asset (requires balance)
+mynta-cli issue <asset_name> <qty> <to_address> <change_address>
+```
+
 ---
 
 ## Building from Source
@@ -306,17 +399,23 @@ sudo apt install -y \
 # Clone repository
 git clone https://github.com/myntacoin/mynta-core.git
 cd mynta-core
+git submodule update --init --recursive
+
+# Build BLST library
+cd src/bls/blst
+./build.sh
+cd ../../..
 
 # Build
 ./autogen.sh
-./configure --with-gui=qt5
+./configure --with-gui=qt5 --with-incompatible-bdb
 make -j$(nproc)
 
 # Install (optional)
 sudo make install
 ```
 
-### Windows Cross-Compile (from Linux)
+### Windows Cross-Compile (from Linux/WSL)
 
 ```bash
 # Install cross-compile dependencies
@@ -329,17 +428,30 @@ sudo apt install -y \
 # Update alternatives for POSIX threads
 sudo update-alternatives --set x86_64-w64-mingw32-g++ \
     /usr/bin/x86_64-w64-mingw32-g++-posix
+sudo update-alternatives --set x86_64-w64-mingw32-gcc \
+    /usr/bin/x86_64-w64-mingw32-gcc-posix
+
+# Clean PATH in WSL (important!)
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
 # Build depends
 cd depends
 make HOST=x86_64-w64-mingw32 -j$(nproc)
 cd ..
 
+# Build BLST for Windows
+cd src/bls/blst
+rm -f libblst.a *.o 2>/dev/null
+CC=x86_64-w64-mingw32-gcc ./build.sh
+cd ../../..
+
 # Configure and build
 ./autogen.sh
 CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site \
-    ./configure --prefix=/
+    ./configure --prefix=/ --disable-tests --with-incompatible-bdb
 make -j$(nproc)
+
+# Binaries are in src/ (myntad.exe, mynta-cli.exe, etc.)
 ```
 
 ### macOS Build
@@ -360,16 +472,26 @@ brew install \
     zeromq \
     qt@5 \
     qrencode \
-    protobuf \
-    berkeley-db@4
+    protobuf
 
-# Build
+# Build BerkeleyDB 4.8 (for wallet portability)
+./contrib/install_db4.sh .
+
+# Build BLST
+cd src/bls/blst
+./build.sh
+cd ../../..
+
+# Build with BDB 4.8
+export BDB_PREFIX="$(pwd)/db4"
 ./autogen.sh
 ./configure \
     --with-boost=$(brew --prefix boost) \
     --with-qt=$(brew --prefix qt@5) \
-    LDFLAGS="-L$(brew --prefix openssl@3)/lib -L$(brew --prefix berkeley-db@4)/lib" \
-    CPPFLAGS="-I$(brew --prefix openssl@3)/include -I$(brew --prefix berkeley-db@4)/include"
+    BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" \
+    BDB_CFLAGS="-I${BDB_PREFIX}/include" \
+    LDFLAGS="-L$(brew --prefix openssl@3)/lib" \
+    CPPFLAGS="-I$(brew --prefix openssl@3)/include"
 make -j$(sysctl -n hw.ncpu)
 ```
 
@@ -385,7 +507,7 @@ make -j$(sysctl -n hw.ncpu)
 
 ### Chain Start Time
 
-- **Mainnet Launch:** January 14, 2026 4:00 PM PST (January 15, 2026 00:00:00 UTC)
+- **Mainnet Launch:** January 15, 2026 00:00:00 UTC
 - Mining is not possible before this time
 
 ---
@@ -431,6 +553,28 @@ rm -rf ~/.mynta/blocks ~/.mynta/chainstate
 mynta-qt
 ```
 
+### Qt wallet fails to start on Linux
+
+```bash
+# Install missing Qt dependencies
+sudo apt install libxcb-xinerama0 libxcb-cursor0
+
+# Try with software rendering
+QT_XCB_FORCE_SOFTWARE_OPENGL=1 mynta-qt
+```
+
+### Windows Defender blocks wallet
+
+1. Go to Windows Security → Virus & threat protection
+2. Click "Protection history"
+3. Find the Mynta entry and click "Allow"
+
+### macOS Gatekeeper blocks app
+
+1. Right-click the app and select "Open"
+2. Click "Open" in the dialog
+3. Or: System Preferences → Security & Privacy → "Open Anyway"
+
 ---
 
 ## Security Notes
@@ -439,6 +583,7 @@ mynta-qt
 2. **Encrypt your wallet** from the GUI: Settings → Encrypt Wallet
 3. **Never share** your wallet.dat or private keys
 4. **Use strong RPC passwords** if enabling server mode
+5. **Keep software updated** to get latest security fixes
 
 ---
 
