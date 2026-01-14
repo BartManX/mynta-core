@@ -341,8 +341,8 @@ public:
         // Mynta BIP44 cointype in mainnet is '175'
         nExtCoinType = 175;
 
-        // Fixed seeds removed for independent operation
-        vFixedSeeds.clear();
+        // Fixed seed nodes for peer discovery
+        vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_main, pnSeed6_main + ARRAYLEN(pnSeed6_main));
 
         fDefaultConsistencyChecks = false;
         fRequireStandard = true;
@@ -542,8 +542,8 @@ public:
         // Mynta BIP44 cointype in testnet
         nExtCoinType = 1;
 
-        // Fixed seeds removed for independent operation
-        vFixedSeeds.clear();
+        // Fixed seed nodes for testnet peer discovery
+        vFixedSeeds = std::vector<SeedSpec6>(pnSeed6_test, pnSeed6_test + ARRAYLEN(pnSeed6_test));
 
         fDefaultConsistencyChecks = false;
         fRequireStandard = false;
