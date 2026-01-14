@@ -729,6 +729,21 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
         result.push_back(Pair("devscript", HexStr(devScript.begin(), devScript.end())));
     }
     
+    // MYNTA LAUNCH: Chain start time information for mining pools
+    // Blocks with timestamps before chain_start_time will be rejected
+    // The block template timestamp is automatically set to at least chain_start_time
+    if (consensusParams.nChainStartTime > 0) {
+        result.push_back(Pair("chain_start_time", consensusParams.nChainStartTime));
+        int64_t nCurrentTime = GetTime();
+        if (nCurrentTime < consensusParams.nChainStartTime) {
+            int64_t nSecondsUntilLaunch = consensusParams.nChainStartTime - nCurrentTime;
+            result.push_back(Pair("seconds_until_launch", nSecondsUntilLaunch));
+            result.push_back(Pair("launch_status", "pending"));
+        } else {
+            result.push_back(Pair("launch_status", "active"));
+        }
+    }
+    
     result.push_back(Pair("longpollid", chainActive.Tip()->GetBlockHash().GetHex() + i64tostr(nTransactionsUpdatedLast)));
     result.push_back(Pair("target", hashTarget.GetHex()));
     result.push_back(Pair("mintime", (int64_t)pindexPrev->GetMedianTimePast()+1));

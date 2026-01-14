@@ -65,6 +65,13 @@ int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParam
     int64_t nOldTime = pblock->nTime;
     int64_t nNewTime = std::max(pindexPrev->GetMedianTimePast()+1, GetAdjustedTime());
 
+    // MYNTA LAUNCH: Ensure block timestamp is not before chain start time
+    // This allows Stratum servers to prepare work that will be valid at launch
+    // Without this, blocks mined before launch would be rejected with "chain-not-started"
+    if (consensusParams.nChainStartTime > 0 && nNewTime < consensusParams.nChainStartTime) {
+        nNewTime = consensusParams.nChainStartTime;
+    }
+
     if (nOldTime < nNewTime)
         pblock->nTime = nNewTime;
 
