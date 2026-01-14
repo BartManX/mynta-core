@@ -29,6 +29,7 @@ src/*/.libs/
 Makefile
 Makefile.in
 !Makefile.am
+!depends/Makefile
 aclocal.m4
 autom4te.cache/
 compile
