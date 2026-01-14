@@ -328,23 +328,19 @@ jobs:
             automake \
             libtool \
             pkg-config \
-            python@3 \
+            boost \
+            libevent \
+            openssl@3 \
+            miniupnpc \
+            zeromq \
+            qt@5 \
+            qrencode \
+            protobuf \
             create-dmg
 
-      - name: Cache depends
-        uses: actions/cache@v4
-        with:
-          path: |
-            depends/built
-            depends/sources
-          key: macos-depends-${{ hashFiles('depends/packages/*.mk') }}
-          restore-keys: |
-            macos-depends-
-
-      - name: Build depends
+      - name: Build Berkeley DB 4.8
         run: |
-          cd depends
-          make HOST=x86_64-apple-darwin -j$(sysctl -n hw.ncpu)
+          ./contrib/install_db4.sh .
 
       - name: Build BLST
         run: |
@@ -354,8 +350,9 @@ jobs:
 
       - name: Configure
         run: |
+          export BDB_PREFIX="$(pwd)/db4"
           ./autogen.sh
-          CONFIG_SITE=$PWD/depends/x86_64-apple-darwin/share/config.site ./configure \
+          ./configure \
             --prefix=/ \
             --disable-ccache \
             --disable-maintainer-mode \
@@ -364,8 +361,14 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --with-boost=$(brew --prefix boost) \
+            --with-qt=$(brew --prefix qt@5) \
+            BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" \
+            BDB_CFLAGS="-I${BDB_PREFIX}/include" \
             CFLAGS="-O2" \
-            CXXFLAGS="-O2"
+            CXXFLAGS="-O2" \
+            LDFLAGS="-L$(brew --prefix openssl@3)/lib" \
+            CPPFLAGS="-I$(brew --prefix openssl@3)/include"
 
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
@@ -476,23 +479,19 @@ jobs:
             automake \
             libtool \
             pkg-config \
-            python@3 \
+            boost \
+            libevent \
+            openssl@3 \
+            miniupnpc \
+            zeromq \
+            qt@5 \
+            qrencode \
+            protobuf \
             create-dmg
 
-      - name: Cache depends
-        uses: actions/cache@v4
-        with:
-          path: |
-            depends/built
-            depends/sources
-          key: macos-arm64-depends-${{ hashFiles('depends/packages/*.mk') }}
-          restore-keys: |
-            macos-arm64-depends-
-
-      - name: Build depends
+      - name: Build Berkeley DB 4.8
         run: |
-          cd depends
-          make HOST=arm64-apple-darwin -j$(sysctl -n hw.ncpu)
+          ./contrib/install_db4.sh .
 
       - name: Build BLST
         run: |
@@ -502,8 +501,9 @@ jobs:
 
       - name: Configure
         run: |
+          export BDB_PREFIX="$(pwd)/db4"
           ./autogen.sh
-          CONFIG_SITE=$PWD/depends/arm64-apple-darwin/share/config.site ./configure \
+          ./configure \
             --prefix=/ \
             --disable-ccache \
             --disable-maintainer-mode \
@@ -512,8 +512,14 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --with-boost=$(brew --prefix boost) \
+            --with-qt=$(brew --prefix qt@5) \
+            BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" \
+            BDB_CFLAGS="-I${BDB_PREFIX}/include" \
             CFLAGS="-O2" \
-            CXXFLAGS="-O2"
+            CXXFLAGS="-O2" \
+            LDFLAGS="-L$(brew --prefix openssl@3)/lib" \
+            CPPFLAGS="-I$(brew --prefix openssl@3)/include"
 
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
