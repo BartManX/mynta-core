@@ -9,6 +9,7 @@
 #include "chain.h"
 #include "chainparams.h"
 #include "consensus/consensus.h"
+#include "consensus/devalloc.h"
 #include "consensus/params.h"
 #include "consensus/validation.h"
 #include "core_io.h"
@@ -381,6 +382,8 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
             "      \"flags\" : \"xx\"                  (string) key name is to be ignored, and value included in scriptSig\n"
             "  },\n"
             "  \"coinbasevalue\" : n,              (numeric) maximum allowable input to coinbase transaction, including the generation award and transaction fees (in satoshis)\n"
+            "  \"devallocation\" : n,             (numeric) MANDATORY dev allocation amount that MUST be included as a separate coinbase output (in satoshis)\n"
+            "  \"devscript\" : \"hex\",             (string) scriptPubKey for the dev allocation output (hex-encoded) - MUST be included in coinbase\n"
             "  \"coinbasetxn\" : { ... },          (json object) information for coinbase transaction\n"
             "  \"target\" : \"xxxx\",                (string) The hash target\n"
             "  \"mintime\" : xxx,                  (numeric) The minimum timestamp appropriate for next block time in seconds since epoch (Jan 1 1970 GMT)\n"
@@ -712,6 +715,20 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
     result.push_back(Pair("transactions", transactions));
     result.push_back(Pair("coinbaseaux", aux));
     result.push_back(Pair("coinbasevalue", (int64_t)pblock->vtx[0]->vout[0].nValue));
+    
+    // Dev allocation info for mining pools
+    // Pools MUST include a dev allocation output in the coinbase transaction
+    // Blocks without this output will be rejected by consensus
+    {
+        int nHeight = pindexPrev->nHeight + 1;
+        CAmount nBlockSubsidy = GetBlockSubsidy(nHeight, Params().GetConsensus());
+        CAmount nDevAllocation = Consensus::GetDevAllocation(nHeight, nBlockSubsidy);
+        CScript devScript = Consensus::GetDevScriptForHeight(nHeight);
+        
+        result.push_back(Pair("devallocation", nDevAllocation));
+        result.push_back(Pair("devscript", HexStr(devScript.begin(), devScript.end())));
+    }
+    
     result.push_back(Pair("longpollid", chainActive.Tip()->GetBlockHash().GetHex() + i64tostr(nTransactionsUpdatedLast)));
     result.push_back(Pair("target", hashTarget.GetHex()));
     result.push_back(Pair("mintime", (int64_t)pindexPrev->GetMedianTimePast()+1));

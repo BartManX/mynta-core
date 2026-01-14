@@ -47,19 +47,11 @@ namespace Consensus {
 // multisig key ceremony is complete. It is not a backdoor or bypass.
 // ---------------------------------------------------------------------------
 
-// Placeholder dev address public key (compressed, 33 bytes)
-// This corresponds to a P2PK address that can receive dev allocation during Epoch 0
-// 
-// PLACEHOLDER PUBLIC KEY:
+// GENESIS BLOCK DEV PUBKEY (Block 0 only - immutable, baked into genesis)
+// This key is in genesis and cannot be changed without regenerating genesis.
+// Address: MUnwxykRqLsGctiHPEy8waP46L9oyUsztz (genesis dev output)
 // 02e9fe9e702c1c6070ccc57a10ca25cd5fdd1a1b04d9427bb0cc083a295153162c
-// Address: MUnwxykRqLsGctiHPEy8waP46L9oyUsztz
-//
-// This key is controlled by the dev team. During Epoch 0, the dev allocation
-// goes to this address. After block 2,100,000 (Epoch 1), the 3-of-5 multisig
-// becomes mandatory.
-//
-// IMPORTANT: Before Epoch 1, funds should be consolidated to the multisig wallet.
-static const unsigned char PLACEHOLDER_PUBKEY_BYTES[33] = {
+static const unsigned char GENESIS_DEV_PUBKEY_BYTES[33] = {
     0x02, 0xe9, 0xfe, 0x9e, 0x70, 0x2c, 0x1c, 0x60,
     0x70, 0xcc, 0xc5, 0x7a, 0x10, 0xca, 0x25, 0xcd,
     0x5f, 0xdd, 0x1a, 0x1b, 0x04, 0xd9, 0x42, 0x7b,
@@ -67,20 +59,49 @@ static const unsigned char PLACEHOLDER_PUBKEY_BYTES[33] = {
     0x2c
 };
 
-CScript GetDevScriptPlaceholder()
+// ---------------------------------------------------------------------------
+// WALLET-DERIVED DEV PUBKEY (Block 1+ - from backed up wallet)
+// ---------------------------------------------------------------------------
+// This is the PRIMARY dev allocation address, controlled by the backed up wallet.
+// Derivation path: m/44'/175'/0'/0/0 (mainnet coin type 175)
+// Address: MNxr3jzMYGg9d19jJjmDXjDNeTNVcF5jBC
+// Mnemonic backup: "domain once estate pause office caution another put subject prepare seat permit"
+// 
+// This pubkey is used for all blocks from height 1 onwards.
+// 03b7039bad8e506d6673f4aab24193f06ffe2f31c97fc0b8d861e50a065078eb6c
+static const unsigned char WALLET_DEV_PUBKEY_BYTES[33] = {
+    0x03, 0xb7, 0x03, 0x9b, 0xad, 0x8e, 0x50, 0x6d,
+    0x66, 0x73, 0xf4, 0xaa, 0xb2, 0x41, 0x93, 0xf0,
+    0x6f, 0xfe, 0x2f, 0x31, 0xc9, 0x7f, 0xc0, 0xb8,
+    0xd8, 0x61, 0xe5, 0x0a, 0x06, 0x50, 0x78, 0xeb,
+    0x6c
+};
+
+// Get genesis dev script (block 0 only - for validation)
+CScript GetGenesisDevScript()
 {
-    // Provably fair launch:
-    // This script is a standard P2PK (pay-to-public-key) that pays to the
-    // placeholder public key. It is spendable by anyone with the corresponding
-    // private key. It applies equally to all miners and cannot be bypassed.
-    
-    // Create P2PK script (pay to public key)
-    // This matches the genesis coinbase output format for consistency
-    std::vector<unsigned char> pubkey(PLACEHOLDER_PUBKEY_BYTES, 
-                                       PLACEHOLDER_PUBKEY_BYTES + sizeof(PLACEHOLDER_PUBKEY_BYTES));
+    std::vector<unsigned char> pubkey(GENESIS_DEV_PUBKEY_BYTES, 
+                                       GENESIS_DEV_PUBKEY_BYTES + sizeof(GENESIS_DEV_PUBKEY_BYTES));
     CScript script;
     script << pubkey << OP_CHECKSIG;
     return script;
+}
+
+// Get wallet-derived dev script (block 1+ - spendable by backed up wallet)
+CScript GetWalletDevScript()
+{
+    std::vector<unsigned char> pubkey(WALLET_DEV_PUBKEY_BYTES, 
+                                       WALLET_DEV_PUBKEY_BYTES + sizeof(WALLET_DEV_PUBKEY_BYTES));
+    CScript script;
+    script << pubkey << OP_CHECKSIG;
+    return script;
+}
+
+CScript GetDevScriptPlaceholder()
+{
+    // For backward compatibility - returns the wallet-derived script
+    // which is used for all blocks from height 1 onwards
+    return GetWalletDevScript();
 }
 
 // ---------------------------------------------------------------------------
@@ -159,57 +180,40 @@ void InitializeDevMultisig(const CScript& /*script*/, int /*threshold*/, int /*t
 
 CScript GetDevScriptForHeight(int nHeight)
 {
-    // Provably fair launch:
-    // This function returns the REQUIRED dev script for a given height.
-    // It is the source of truth for what script miners MUST pay to.
+    // Dev script selection by height:
+    // - Height 0 (genesis): Genesis dev script (immutable, baked into genesis)
+    // - Height 1+ to Epoch 1: Wallet-derived dev script (from backed up wallet)
+    // - Epoch 1+: Multisig (deferred - not enforced at launch)
     
-    if (nHeight >= DEV_MULTISIG_ENFORCEMENT_HEIGHT) {
-        // Epoch 1+: Multisig is mandatory
-        // If not initialized, GetDevScriptMultisig() will assert
+    if (nHeight == 0) {
+        // Genesis block uses the genesis dev script (cannot be changed)
+        return GetGenesisDevScript();
+    } else if (nHeight >= DEV_MULTISIG_ENFORCEMENT_HEIGHT) {
+        // Epoch 1+: Multisig is mandatory (deferred)
         return GetDevScriptMultisig();
     } else {
-        // Epoch 0: Use placeholder (multisig also acceptable if initialized)
-        return GetDevScriptPlaceholder();
+        // Height 1+ during Epoch 0: Wallet-derived dev script
+        return GetWalletDevScript();
     }
 }
 
 bool IsValidDevScript(const CScript& script, int nHeight)
 {
-    // Provably fair launch:
-    // This is the consensus enforcement function.
-    // It determines whether a coinbase dev output is valid.
+    // Consensus enforcement: validates dev allocation output script
     
-    // Get the placeholder script for comparison
-    CScript placeholderScript = GetDevScriptPlaceholder();
-    
-    if (nHeight >= DEV_MULTISIG_ENFORCEMENT_HEIGHT) {
-        // Epoch 1+: ONLY multisig is valid
-        // Placeholder is explicitly INVALID after Epoch 0
-        
+    if (nHeight == 0) {
+        // Genesis block: must match genesis dev script exactly
+        return script == GetGenesisDevScript();
+    } else if (nHeight >= DEV_MULTISIG_ENFORCEMENT_HEIGHT) {
+        // Epoch 1+: ONLY multisig is valid (deferred)
         if (!IsDevScriptMultisigInitialized()) {
-            // FATAL: Chain cannot proceed without multisig initialization
-            // This should never happen in production - caught before Epoch 1
             return false;
         }
-        
-        CScript multisigScript = GetDevScriptMultisig();
-        return script == multisigScript;
+        return script == GetDevScriptMultisig();
     } else {
-        // Epoch 0: Either placeholder OR multisig is valid
-        // This allows early adoption of multisig before it becomes mandatory
-        
-        if (script == placeholderScript) {
-            return true;
-        }
-        
-        if (IsDevScriptMultisigInitialized()) {
-            CScript multisigScript = GetDevScriptMultisig();
-            if (script == multisigScript) {
-                return true;
-            }
-        }
-        
-        return false;
+        // Height 1+ during Epoch 0: ONLY wallet-derived script is valid
+        // This ensures all dev allocation goes to the backed-up wallet
+        return script == GetWalletDevScript();
     }
 }
 

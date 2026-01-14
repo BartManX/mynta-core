@@ -21,8 +21,14 @@ extern double algoHashTotal[16];
 extern int algoHashHits[16];
 
 // =============================================================================
-// MYNTA GENESIS BLOCK CREATION - PROVABLY FAIR LAUNCH
+// MYNTA GENESIS BLOCK - PERMANENTLY LOCKED
 // =============================================================================
+//
+// GENESIS LOCK NOTICE:
+// --------------------
+// The genesis blocks for all networks (mainnet, testnet, regtest) were
+// generated ONCE on January 13, 2026 and are now PERMANENTLY LOCKED.
+// Any modification to genesis parameters requires a coordinated hard fork.
 //
 // PROVABLY FAIR LAUNCH DECLARATION:
 // ---------------------------------
@@ -36,6 +42,28 @@ extern int algoHashHits[16];
 //
 // This structure is IDENTICAL to all future blocks, ensuring provably fair
 // issuance from the very first block.
+//
+// FIXED GENESIS PARAMETERS (ALL NETWORKS):
+// ----------------------------------------
+// Timestamp:   1768374000 (Jan 13, 2026 11:00 PM PST / Jan 14, 2026 07:00 UTC)
+// Headline:    "Mynta 14/Jan/2026 - No premine. Equal rules from block zero."
+// Subsidy:     5000 MYNTA
+// Dev alloc:   150 MYNTA (3%)
+// Miner share: 4850 MYNTA (97% - effectively burned in genesis)
+//
+// NETWORK-SPECIFIC PARAMETERS:
+// ----------------------------
+// Mainnet:  nonce=2151963, nBits=0x1e00ffff
+//           hash=0x0000003435e201dbb29b89415444b9cc8adeefcec50ba2678c562ef8cc4928c5
+// Testnet:  nonce=2151963, nBits=0x1e00ffff (same as mainnet)
+//           hash=0x0000003435e201dbb29b89415444b9cc8adeefcec50ba2678c562ef8cc4928c5
+// Regtest:  nonce=1,       nBits=0x207fffff (easy difficulty)
+//           hash=0x504dbce9d1c9d323b561f64e6e6e522705887b4a51b4287e0843023b3e32be62
+//
+// Merkle Root (all networks): 0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877
+//
+// GENESIS WAS MINED ON JANUARY 13, 2026 USING X16R HASH ALGORITHM.
+// GENESIS MINING CODE HAS BEEN PERMANENTLY REMOVED.
 // =============================================================================
 
 /**
@@ -113,7 +141,8 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
     
     // Dev allocation output script (same as placeholder for Epoch 0)
     // This is the SAME script used for all dev allocations during Epoch 0
-    const CScript devOutputScript = Consensus::GetDevScriptPlaceholder();
+    // Genesis block uses the immutable genesis dev script (not wallet-derived)
+    const CScript devOutputScript = Consensus::GetGenesisDevScript();
     
     return CreateGenesisBlock(pszTimestamp, minerOutputScript, devOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
@@ -249,8 +278,10 @@ public:
         nPruneAfterHeight = 100000;
 
         // =====================================================================
-        // MYNTA MAINNET GENESIS BLOCK - PROVABLY FAIR LAUNCH
+        // MAINNET GENESIS BLOCK - PROVABLY FAIR LAUNCH
         // =====================================================================
+        // GENESIS WAS GENERATED ONCE AND IS NOW PERMANENTLY LOCKED.
+        // DO NOT modify these parameters without a hard fork.
         //
         // Provably fair launch:
         // This genesis block is created with the SAME consensus rules as all
@@ -259,32 +290,46 @@ public:
         // - Output 1: Dev allocation (3% = 150 MYNTA)
         //
         // There is NO premine. The genesis follows standard subsidy rules.
-        // =====================================================================
-        
-        // Genesis timestamp: January 15, 2026 00:00:00 UTC (January 14, 2026 4:00 PM PST)
-        // This matches the chain start time for fair launch coordination
-        uint32_t nGenesisTime = 1768435200;  // Jan 15, 2026 00:00:00 UTC
-        
-        // =====================================================================
-        // MAINNET GENESIS BLOCK - PROVABLY FAIR LAUNCH
-        // =====================================================================
-        // Genesis coinbase structure (enforced at consensus):
-        // - Output 0: Miner reward (97% = 4850 MYNTA)
-        // - Output 1: Dev allocation (3% = 150 MYNTA)
         //
-        // Headline: "Mynta 14/Jan/2026 - No premine. Equal rules from block zero."
-        // Dev Placeholder Address: MUnwxykRqLsGctiHPEy8waP46L9oyUsztz
+        // Genesis parameters:
+        // - nTime:     1768374000 (Jan 13, 2026 11:00 PM PST / Jan 14, 2026 07:00 UTC)
+        // - nNonce:    2151963
+        // - nBits:     0x1e00ffff
+        // - nVersion:  4
+        // - Subsidy:   5000 MYNTA
+        //
+        // Headline rationale:
+        // "Mynta 14/Jan/2026 - No premine. Equal rules from block zero."
+        // - Clearly signals a fair launch (no premine, equal rules)
+        // - Mentions no people, brands, or hype
+        // - Is timeless and factual
+        // - Applies equally to all networks (mainnet, testnet, regtest)
+        // - Date stamps the genesis for provenance (following Bitcoin tradition)
+        //
+        // Coinbase outputs:
+        // - Output 0: 4850 MYNTA to Satoshi's unspendable public key (effectively burned)
+        // - Output 1: 150 MYNTA to dev placeholder MUnwxykRqLsGctiHPEy8waP46L9oyUsztz
+        //
+        // GENESIS MINED ON: January 13, 2026 using X16R hash algorithm
+        // REGENERATION OF GENESIS REQUIRES A HARD FORK.
         // =====================================================================
-        genesis = CreateGenesisBlock(nGenesisTime, 45133052, 0x1e00ffff, 4, 5000 * COIN);
+        
+        // Genesis timestamp: January 13, 2026 11:00:00 PM PST (January 14, 2026 07:00:00 UTC)
+        // This is a FIXED value. DO NOT use time(nullptr) or any runtime value.
+        uint32_t nGenesisTime = 1768374000;  // LOCKED: Jan 13, 2026 11:00 PM PST
+        
+        genesis = CreateGenesisBlock(nGenesisTime, 2151963, 0x1e00ffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
         // Genesis verification - provably fair launch
-        assert(consensus.hashGenesisBlock == uint256S("0x000000d0614ed54a193ec7f5fc17318bc66a967b8f6ec77bebe7d799d5f4452e"));
+        // Hash verified to meet target 0x000000ffff... (nBits 0x1e00ffff)
+        assert(consensus.hashGenesisBlock == uint256S("0x0000003435e201dbb29b89415444b9cc8adeefcec50ba2678c562ef8cc4928c5"));
         assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
-        // DNS seeds removed for independent operation
+        // DNS seeds for peer discovery
         vSeeds.clear();
+        vSeeds.emplace_back("dns.myntacoin.org");
 
         // Mynta address prefixes - 'M' for mainnet
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,50);  // 'M' prefix
@@ -468,91 +513,25 @@ public:
         nDefaultPort = 18770;
         nPruneAfterHeight = 1000;
 
-        // Testnet uses same launch time as mainnet for consistency
-        uint32_t nGenesisTime = 1768435200;  // Jan 15, 2026 00:00:00 UTC
-
-        // This is used inorder to mine the genesis block. Once found, we can use the nonce and block hash found to create a valid genesis block
-//        /////////////////////////////////////////////////////////////////
-
-
-//        arith_uint256 test;
-//        bool fNegative;
-//        bool fOverflow;
-//        test.SetCompact(0x1e00ffff, &fNegative, &fOverflow);
-//        std::cout << "Test threshold: " << test.GetHex() << "\n\n";
-//
-//        int genesisNonce = 0;
-//        uint256 TempHashHolding = uint256S("0x0000000000000000000000000000000000000000000000000000000000000000");
-//        uint256 BestBlockHash = uint256S("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-//        for (int i=0;i<40000000;i++) {
-//            genesis = CreateGenesisBlock(nGenesisTime, i, 0x1e00ffff, 2, 5000 * COIN);
-//            //genesis.hashPrevBlock = TempHashHolding;
-//            // Depending on when the timestamp is on the genesis block. You will need to use GetX16RHash or GetX16RV2Hash. Replace GetHash() with these below
-//            consensus.hashGenesisBlock = genesis.GetHash();
-//
-//            arith_uint256 BestBlockHashArith = UintToArith256(BestBlockHash);
-//            if (UintToArith256(consensus.hashGenesisBlock) < BestBlockHashArith) {
-//                BestBlockHash = consensus.hashGenesisBlock;
-//                std::cout << BestBlockHash.GetHex() << " Nonce: " << i << "\n";
-//                std::cout << "   PrevBlockHash: " << genesis.hashPrevBlock.GetHex() << "\n";
-//            }
-//
-//            TempHashHolding = consensus.hashGenesisBlock;
-//
-//            if (BestBlockHashArith < test) {
-//                genesisNonce = i - 1;
-//                break;
-//            }
-//            //std::cout << consensus.hashGenesisBlock.GetHex() << "\n";
-//        }
-//        std::cout << "\n";
-//        std::cout << "\n";
-//        std::cout << "\n";
-//
-//        std::cout << "hashGenesisBlock to 0x" << BestBlockHash.GetHex() << std::endl;
-//        std::cout << "Genesis Nonce to " << genesisNonce << std::endl;
-//        std::cout << "Genesis Merkle " << genesis.hashMerkleRoot.GetHex() << std::endl;
-//
-//        std::cout << "\n";
-//        std::cout << "\n";
-//        int totalHits = 0;
-//        double totalTime = 0.0;
-//
-//        for(int x = 0; x < 16; x++) {
-//            totalHits += algoHashHits[x];
-//            totalTime += algoHashTotal[x];
-//            std::cout << "hash algo " << x << " hits " << algoHashHits[x] << " total " << algoHashTotal[x] << " avg " << algoHashTotal[x]/algoHashHits[x] << std::endl;
-//        }
-//
-//        std::cout << "Totals: hash algo " <<  " hits " << totalHits << " total " << totalTime << " avg " << totalTime/totalHits << std::endl;
-//
-//        genesis.hashPrevBlock = TempHashHolding;
-//
-//        return;
-
-//        /////////////////////////////////////////////////////////////////
-
-        // =====================================================================
-        // TESTNET GENESIS BLOCK - PROVABLY FAIR LAUNCH
-        // =====================================================================
-        // Testnet follows the same fair launch rules as mainnet.
-        // Coinbase contains miner reward (97%) + dev allocation (3%)
-        // Same genesis as mainnet (same params, same timestamp)
-        // =====================================================================
-        genesis = CreateGenesisBlock(nGenesisTime, 45133052, 0x1e00ffff, 4, 5000 * COIN);
+        // Genesis timestamp: January 13, 2026 11:00:00 PM PST (January 14, 2026 07:00:00 UTC)
+        // This is a FIXED value. DO NOT use time(nullptr) or any runtime value.
+        uint32_t nGenesisTime = 1768374000;  // LOCKED: Jan 13, 2026 11:00 PM PST
+        
+        // Same genesis as mainnet (same params, same timestamp, same nonce)
+        genesis = CreateGenesisBlock(nGenesisTime, 2151963, 0x1e00ffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
         // Genesis verification - provably fair launch
-        assert(consensus.hashGenesisBlock == uint256S("0x000000d0614ed54a193ec7f5fc17318bc66a967b8f6ec77bebe7d799d5f4452e"));
+        // Hash verified to meet target 0x000000ffff... (nBits 0x1e00ffff)
+        assert(consensus.hashGenesisBlock == uint256S("0x0000003435e201dbb29b89415444b9cc8adeefcec50ba2678c562ef8cc4928c5"));
         assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
         vFixedSeeds.clear();
+        
+        // DNS seeds for testnet peer discovery
         vSeeds.clear();
-
-        // vSeeds.emplace_back("seed-testnet-raven.bitactivate.com", false);
-        // vSeeds.emplace_back("seed-testnet-raven.ravencoin.com", false);
-        // vSeeds.emplace_back("seed-testnet-raven.ravencoin.org", false);
+        vSeeds.emplace_back("testnet-dns.myntacoin.org");
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
@@ -728,80 +707,35 @@ public:
         nDefaultPort = 18444;
         nPruneAfterHeight = 1000;
 
-// This is used inorder to mine the genesis block. Once found, we can use the nonce and block hash found to create a valid genesis block
-//        /////////////////////////////////////////////////////////////////
-//
-//
-//        arith_uint256 test;
-//        bool fNegative;
-//        bool fOverflow;
-//        test.SetCompact(0x207fffff, &fNegative, &fOverflow);
-//        std::cout << "Test threshold: " << test.GetHex() << "\n\n";
-//
-//        int genesisNonce = 0;
-//        uint256 TempHashHolding = uint256S("0x0000000000000000000000000000000000000000000000000000000000000000");
-//        uint256 BestBlockHash = uint256S("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-//        for (int i=0;i<40000000;i++) {
-//            genesis = CreateGenesisBlock(1533751200, i, 0x207fffff, 2, 5000 * COIN);
-//            //genesis.hashPrevBlock = TempHashHolding;
-//            consensus.hashGenesisBlock = genesis.GetHash();
-//
-//            arith_uint256 BestBlockHashArith = UintToArith256(BestBlockHash);
-//            if (UintToArith256(consensus.hashGenesisBlock) < BestBlockHashArith) {
-//                BestBlockHash = consensus.hashGenesisBlock;
-//                std::cout << BestBlockHash.GetHex() << " Nonce: " << i << "\n";
-//                std::cout << "   PrevBlockHash: " << genesis.hashPrevBlock.GetHex() << "\n";
-//            }
-//
-//            TempHashHolding = consensus.hashGenesisBlock;
-//
-//            if (BestBlockHashArith < test) {
-//                genesisNonce = i - 1;
-//                break;
-//            }
-//            //std::cout << consensus.hashGenesisBlock.GetHex() << "\n";
-//        }
-//        std::cout << "\n";
-//        std::cout << "\n";
-//        std::cout << "\n";
-//
-//        std::cout << "hashGenesisBlock to 0x" << BestBlockHash.GetHex() << std::endl;
-//        std::cout << "Genesis Nonce to " << genesisNonce << std::endl;
-//        std::cout << "Genesis Merkle " << genesis.hashMerkleRoot.GetHex() << std::endl;
-//
-//        std::cout << "\n";
-//        std::cout << "\n";
-//        int totalHits = 0;
-//        double totalTime = 0.0;
-//
-//        for(int x = 0; x < 16; x++) {
-//            totalHits += algoHashHits[x];
-//            totalTime += algoHashTotal[x];
-//            std::cout << "hash algo " << x << " hits " << algoHashHits[x] << " total " << algoHashTotal[x] << " avg " << algoHashTotal[x]/algoHashHits[x] << std::endl;
-//        }
-//
-//        std::cout << "Totals: hash algo " <<  " hits " << totalHits << " total " << totalTime << " avg " << totalTime/totalHits << std::endl;
-//
-//        genesis.hashPrevBlock = TempHashHolding;
-//
-//        return;
-
-//        /////////////////////////////////////////////////////////////////
-
-
         // =====================================================================
         // REGTEST GENESIS BLOCK - PROVABLY FAIR LAUNCH
         // =====================================================================
+        // GENESIS WAS GENERATED ONCE AND IS NOW PERMANENTLY LOCKED.
+        // DO NOT modify these parameters without a hard fork.
+        //
         // Regtest follows the same fair launch rules with easy difficulty.
         // Coinbase contains miner reward (97%) + dev allocation (3%)
+        //
+        // Genesis parameters:
+        // - nTime:     1768374000 (Jan 13, 2026 11:00 PM PST / Jan 14, 2026 07:00 UTC)
+        // - nNonce:    0 (easy difficulty - nBits 0x207fffff meets target)
+        // - nBits:     0x207fffff
+        // - nVersion:  4
+        // - Subsidy:   5000 MYNTA
+        // - Headline:  "Mynta 14/Jan/2026 - No premine. Equal rules from block zero."
+        //
+        // REGENERATION OF GENESIS REQUIRES A HARD FORK.
         // =====================================================================
-        uint32_t nGenesisTime = 1768435200;  // Same as mainnet
-        genesis = CreateGenesisBlock(nGenesisTime, 0, 0x207fffff, 4, 5000 * COIN);
+        // Genesis timestamp: January 13, 2026 11:00:00 PM PST (January 14, 2026 07:00:00 UTC)
+        // This is a FIXED value. DO NOT use time(nullptr) or any runtime value.
+        uint32_t nGenesisTime = 1768374000;  // LOCKED: Jan 13, 2026 11:00 PM PST
+        genesis = CreateGenesisBlock(nGenesisTime, 1, 0x207fffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
-
-        // Genesis verification - provably fair launch
-        assert(consensus.hashGenesisBlock == uint256S("0x7cfaf0dbe96d9aa7cda2181012aeff92a3f5f2e6d0cfee0f8e1eaf4817d9a9dc"));
+        
+        // Genesis verification - provably fair launch (regtest has easy difficulty)
+        // Hash verified to meet target 0x7fffff... (nBits 0x207fffff)
+        assert(consensus.hashGenesisBlock == uint256S("0x504dbce9d1c9d323b561f64e6e6e522705887b4a51b4287e0843023b3e32be62"));
         assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.

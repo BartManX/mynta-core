@@ -99,14 +99,24 @@ static const int DEV_MULTISIG_ENFORCEMENT_HEIGHT = 2'100'000;
 // ---------------------------------------------------------------------------
 
 /**
- * Get the placeholder dev script for Epoch 0.
- * 
- * This returns a P2PKH script for a known dev address.
- * The corresponding private key is held by the Mynta development team.
- * 
- * Provably fair launch:
- * This script exists solely to enable a fair launch before multisig
- * finalization. It becomes consensus-invalid after Epoch 0.
+ * Get the genesis dev script (block 0 only).
+ * This is the immutable script baked into the genesis block.
+ * Address: MUnwxykRqLsGctiHPEy8waP46L9oyUsztz
+ */
+CScript GetGenesisDevScript();
+
+/**
+ * Get the wallet-derived dev script (block 1+ during Epoch 0).
+ * This is the primary dev allocation address, controlled by the backed up wallet.
+ * Address: MNxr3jzMYGg9d19jJjmDXjDNeTNVcF5jBC
+ * Derivation: m/44'/175'/0'/0/0
+ * Mnemonic: "domain once estate pause office caution another put subject prepare seat permit"
+ */
+CScript GetWalletDevScript();
+
+/**
+ * Get the placeholder dev script (for backward compatibility).
+ * Returns GetWalletDevScript() - the wallet-derived script.
  */
 CScript GetDevScriptPlaceholder();
 
