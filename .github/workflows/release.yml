@@ -354,7 +354,7 @@ jobs:
   # =============================================================================
   build-macos:
     name: macOS x64
-    runs-on: macos-13
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
