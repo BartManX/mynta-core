@@ -30,6 +30,14 @@ Makefile
 Makefile.in
 !Makefile.am
 !depends/Makefile
+!depends/config.guess
+!depends/config.sub
+!depends/config.site.in
+!depends/funcs.mk
+!depends/builders/
+!depends/hosts/
+!depends/packages/
+!depends/patches/
 aclocal.m4
 autom4te.cache/
 compile
