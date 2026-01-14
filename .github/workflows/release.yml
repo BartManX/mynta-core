@@ -1,0 +1,385 @@
+name: Build Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      create_release:
+        description: 'Create GitHub Release'
+        required: true
+        default: true
+        type: boolean
+
+env:
+  MYNTA_VERSION: ${{ github.event.inputs.version }}
+
+jobs:
+  # =============================================================================
+  # Linux x86_64 Build
+  # =============================================================================
+  build-linux:
+    name: Linux x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            automake \
+            autotools-dev \
+            bsdmainutils \
+            build-essential \
+            curl \
+            git \
+            libtool \
+            pkg-config \
+            python3 \
+            bison \
+            libboost-all-dev \
+            libevent-dev \
+            libssl-dev \
+            libdb++-dev \
+            libminiupnpc-dev \
+            libzmq3-dev \
+            libqt5gui5 \
+            libqt5core5a \
+            libqt5dbus5 \
+            qttools5-dev \
+            qttools5-dev-tools \
+            libprotobuf-dev \
+            protobuf-compiler \
+            libqrencode-dev
+
+      - name: Build depends
+        run: |
+          cd depends
+          make HOST=x86_64-linux-gnu -j$(nproc)
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          CONFIG_SITE=$PWD/depends/x86_64-linux-gnu/share/config.site ./configure \
+            --prefix=/ \
+            --disable-ccache \
+            --disable-maintainer-mode \
+            --disable-dependency-tracking \
+            --enable-glibc-back-compat \
+            --enable-reduce-exports \
+            --disable-bench \
+            --disable-tests \
+            --disable-gui-tests \
+            CFLAGS="-O2 -g" \
+            CXXFLAGS="-O2 -g" \
+            LDFLAGS="-static-libstdc++"
+
+      - name: Build
+        run: make -j$(nproc)
+
+      - name: Package
+        run: |
+          mkdir -p release
+          DISTNAME="mynta-${MYNTA_VERSION}"
+          
+          # Create staging directory
+          mkdir -p stage/${DISTNAME}/bin
+          
+          # Copy binaries
+          cp src/myntad stage/${DISTNAME}/bin/
+          cp src/mynta-cli stage/${DISTNAME}/bin/
+          cp src/mynta-tx stage/${DISTNAME}/bin/
+          cp src/qt/mynta-qt stage/${DISTNAME}/bin/ || true
+          
+          # Strip debug symbols
+          strip stage/${DISTNAME}/bin/*
+          
+          # Create tarball
+          cd stage
+          tar -czvf ../release/${DISTNAME}-x86_64-linux-gnu.tar.gz ${DISTNAME}/
+          
+          # Generate checksums
+          cd ../release
+          sha256sum ${DISTNAME}-x86_64-linux-gnu.tar.gz > ${DISTNAME}-x86_64-linux-gnu.tar.gz.sha256sum
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: release/
+
+  # =============================================================================
+  # Windows x64 Build
+  # =============================================================================
+  build-windows:
+    name: Windows x64
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            automake \
+            autotools-dev \
+            bsdmainutils \
+            build-essential \
+            curl \
+            mingw-w64 \
+            mingw-w64-x86-64-dev \
+            git \
+            libtool \
+            nsis \
+            pkg-config \
+            python3 \
+            zip \
+            bison
+          
+          # Use POSIX threads for mingw
+          sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+
+      - name: Build depends
+        run: |
+          cd depends
+          make HOST=x86_64-w64-mingw32 -j$(nproc)
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site ./configure \
+            --prefix=/ \
+            --disable-ccache \
+            --disable-maintainer-mode \
+            --disable-dependency-tracking \
+            --enable-reduce-exports \
+            --disable-bench \
+            --disable-tests \
+            --disable-gui-tests \
+            --enable-shared=no \
+            CFLAGS="-O2 -g" \
+            CXXFLAGS="-O2 -g"
+
+      - name: Build
+        run: make -j$(nproc)
+
+      - name: Package
+        run: |
+          mkdir -p release
+          DISTNAME="mynta-${MYNTA_VERSION}"
+          
+          # Create staging directory
+          mkdir -p stage/${DISTNAME}
+          
+          # Copy binaries
+          cp src/myntad.exe stage/${DISTNAME}/
+          cp src/mynta-cli.exe stage/${DISTNAME}/
+          cp src/mynta-tx.exe stage/${DISTNAME}/
+          cp src/qt/mynta-qt.exe stage/${DISTNAME}/ || true
+          
+          # Strip debug symbols
+          x86_64-w64-mingw32-strip stage/${DISTNAME}/*.exe
+          
+          # Create zip
+          cd stage
+          zip -r ../release/${DISTNAME}-win64.zip ${DISTNAME}/
+          
+          # Generate checksums
+          cd ../release
+          sha256sum ${DISTNAME}-win64.zip > ${DISTNAME}-win64.zip.sha256sum
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: release/
+
+  # =============================================================================
+  # macOS x64 Build
+  # =============================================================================
+  build-macos:
+    name: macOS x64
+    runs-on: macos-13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          brew install \
+            automake \
+            libtool \
+            pkg-config \
+            boost \
+            libevent \
+            openssl@3 \
+            miniupnpc \
+            zeromq \
+            qt@5 \
+            qrencode \
+            protobuf \
+            berkeley-db@4
+
+      - name: Configure
+        run: |
+          ./autogen.sh
+          ./configure \
+            --prefix=/ \
+            --disable-ccache \
+            --disable-maintainer-mode \
+            --disable-dependency-tracking \
+            --enable-reduce-exports \
+            --disable-bench \
+            --disable-tests \
+            --disable-gui-tests \
+            --with-boost=$(brew --prefix boost) \
+            --with-qt=$(brew --prefix qt@5) \
+            CFLAGS="-O2" \
+            CXXFLAGS="-O2" \
+            LDFLAGS="-L$(brew --prefix openssl@3)/lib -L$(brew --prefix berkeley-db@4)/lib" \
+            CPPFLAGS="-I$(brew --prefix openssl@3)/include -I$(brew --prefix berkeley-db@4)/include"
+
+      - name: Build
+        run: make -j$(sysctl -n hw.ncpu)
+
+      - name: Package
+        run: |
+          mkdir -p release
+          DISTNAME="mynta-${MYNTA_VERSION}"
+          
+          # Create staging directory
+          mkdir -p stage/${DISTNAME}/bin
+          
+          # Copy binaries
+          cp src/myntad stage/${DISTNAME}/bin/
+          cp src/mynta-cli stage/${DISTNAME}/bin/
+          cp src/mynta-tx stage/${DISTNAME}/bin/
+          cp src/qt/mynta-qt stage/${DISTNAME}/bin/ || true
+          
+          # Strip debug symbols
+          strip stage/${DISTNAME}/bin/* || true
+          
+          # Create tarball
+          cd stage
+          tar -czvf ../release/${DISTNAME}-osx64.tar.gz ${DISTNAME}/
+          
+          # Generate checksums
+          cd ../release
+          shasum -a 256 ${DISTNAME}-osx64.tar.gz > ${DISTNAME}-osx64.tar.gz.sha256sum
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-x64
+          path: release/
+
+  # =============================================================================
+  # Create GitHub Release
+  # =============================================================================
+  create-release:
+    name: Create Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.create_release == 'true' }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          
+          # Move all files to release directory
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256sum" \) -exec mv {} release/ \;
+          
+          # Create combined SHA256SUMS file
+          cd release
+          cat *.sha256sum > SHA256SUMS.txt
+          rm -f *.sha256sum
+          
+          # Copy documentation
+          cp ../doc/RELEASE_GUIDE.md ./
+          
+          echo "=== Release Files ==="
+          ls -la
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Mynta Core v${{ github.event.inputs.version }}
+          body: |
+            ## Mynta Core v${{ github.event.inputs.version }}
+            
+            ### Quick Start
+            
+            **The Mynta-Qt wallet includes a built-in daemon.** You do NOT need `myntad` unless running a headless server.
+            
+            | Binary | Purpose |
+            |--------|---------|
+            | `mynta-qt` | Full GUI wallet (recommended) |
+            | `myntad` | Headless daemon (servers only) |
+            | `mynta-cli` | Command-line interface |
+            
+            ### Downloads
+            
+            | Platform | File |
+            |----------|------|
+            | 🐧 Linux x86_64 | `mynta-${{ github.event.inputs.version }}-x86_64-linux-gnu.tar.gz` |
+            | 🪟 Windows x64 | `mynta-${{ github.event.inputs.version }}-win64.zip` |
+            | 🍎 macOS x64 | `mynta-${{ github.event.inputs.version }}-osx64.tar.gz` |
+            | 📖 Documentation | `RELEASE_GUIDE.md` |
+            
+            ### Installation
+            
+            **Linux:**
+            ```bash
+            tar -xzf mynta-${{ github.event.inputs.version }}-x86_64-linux-gnu.tar.gz
+            ./mynta-${{ github.event.inputs.version }}/bin/mynta-qt
+            ```
+            
+            **Windows:** Extract zip, double-click `mynta-qt.exe`
+            
+            **macOS:** Extract tar.gz, right-click → Open on `mynta-qt`
+            
+            ### Verification
+            
+            ```bash
+            sha256sum -c SHA256SUMS.txt
+            ```
+            
+            ### Common Startup Flags
+            
+            ```bash
+            mynta-qt -testnet          # Testnet mode
+            mynta-qt -gen              # Enable mining
+            mynta-qt -server           # Enable RPC server
+            mynta-qt -datadir=/path    # Custom data directory
+            ```
+            
+            See `RELEASE_GUIDE.md` for full documentation.
+            
+            ### Provably Fair Launch
+            
+            - ✅ 3% dev allocation enforced at consensus (no bypass possible)
+            - ✅ No premine - genesis follows standard subsidy rules
+            - ✅ Chain start: January 15, 2026 00:00:00 UTC
+            
+          draft: false
+          prerelease: false
+          files: |
+            release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
