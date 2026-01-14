@@ -60,24 +60,19 @@ jobs:
             desktop-file-utils \
             appstream
 
-      - name: Build depends
-        run: |
-          cd depends
-          make HOST=x86_64-linux-gnu -j$(nproc)
-
       - name: Configure
         run: |
           ./autogen.sh
-          CONFIG_SITE=$PWD/depends/x86_64-linux-gnu/share/config.site ./configure \
+          ./configure \
             --prefix=/ \
             --disable-ccache \
             --disable-maintainer-mode \
             --disable-dependency-tracking \
-            --enable-glibc-back-compat \
             --enable-reduce-exports \
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --with-incompatible-bdb \
             CFLAGS="-O2 -g" \
             CXXFLAGS="-O2 -g" \
             LDFLAGS="-static-libstdc++"
@@ -373,8 +368,26 @@ jobs:
             qt@5 \
             qrencode \
             protobuf \
-            berkeley-db@4 \
             create-dmg
+
+      - name: Build Berkeley DB 4.8
+        run: |
+          # Download and build BDB 4.8 from source (deprecated in Homebrew)
+          curl -LO https://download.oracle.com/berkeley-db/db-4.8.30.NC.tar.gz
+          echo "12edc0df75bf9abd7f82f821795bcee50f42cb2e5f76a6a281b85732798364ef  db-4.8.30.NC.tar.gz" | shasum -a 256 -c
+          tar -xzf db-4.8.30.NC.tar.gz
+          
+          # Fix for modern Clang
+          sed -i '' 's/__atomic_compare_exchange/__atomic_compare_exchange_db/' db-4.8.30.NC/dbinc/atomic.h
+          
+          cd db-4.8.30.NC/build_unix
+          ../dist/configure \
+            --prefix=/usr/local/opt/berkeley-db@4.8 \
+            --enable-cxx \
+            --disable-shared \
+            --with-pic
+          make -j$(sysctl -n hw.ncpu)
+          sudo make install
 
       - name: Configure
         run: |
@@ -392,8 +405,8 @@ jobs:
             --with-qt=$(brew --prefix qt@5) \
             CFLAGS="-O2" \
             CXXFLAGS="-O2" \
-            LDFLAGS="-L$(brew --prefix openssl@3)/lib -L$(brew --prefix berkeley-db@4)/lib" \
-            CPPFLAGS="-I$(brew --prefix openssl@3)/include -I$(brew --prefix berkeley-db@4)/include"
+            LDFLAGS="-L$(brew --prefix openssl@3)/lib -L/usr/local/opt/berkeley-db@4.8/lib" \
+            CPPFLAGS="-I$(brew --prefix openssl@3)/include -I/usr/local/opt/berkeley-db@4.8/include"
 
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
