@@ -329,7 +329,7 @@ public:
 
         // DNS seeds for peer discovery
         vSeeds.clear();
-        vSeeds.emplace_back("dns.myntacoin.org");
+        vSeeds.emplace_back("dns.myntacoin.org", true);
 
         // Mynta address prefixes - 'M' for mainnet
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,50);  // 'M' prefix
@@ -531,7 +531,7 @@ public:
         
         // DNS seeds for testnet peer discovery
         vSeeds.clear();
-        vSeeds.emplace_back("testnet-dns.myntacoin.org");
+        vSeeds.emplace_back("testnet-dns.myntacoin.org", true);
 
         base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
         base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
