@@ -71,6 +71,7 @@ src/mynta-wallet
 src/qt/mynta-qt
 src/test/test_mynta
 src/test/test_mynta_*
+!src/test/test_mynta_*.cpp
 src/bench/bench_mynta
 # Legacy names
 src/ravend
@@ -96,6 +97,7 @@ moc_*.cpp
 moc_*.h
 moc_predefs.h
 ui_*.h
+!src/ui_interface.h
 qrc_*.cpp
 .qmake.cache
 .qmake.stash
