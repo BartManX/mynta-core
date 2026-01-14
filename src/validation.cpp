@@ -12,6 +12,7 @@
 #include "checkpoints.h"
 #include "checkqueue.h"
 #include "consensus/consensus.h"
+#include "consensus/devalloc.h"
 #include "consensus/merkle.h"
 #include "consensus/tx_verify.h"
 #include "consensus/validation.h"
@@ -2782,6 +2783,60 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
                          error("ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)",
                                block.vtx[0]->GetValueOut(AreEnforcedValuesDeployed()), blockReward),
                                REJECT_INVALID, "bad-cb-amount");
+
+    // =========================================================================
+    // DEVELOPMENT ALLOCATION ENFORCEMENT - PROVABLY FAIR LAUNCH
+    // =========================================================================
+    //
+    // Provably fair launch:
+    // This enforcement applies equally to ALL blocks mined by ANY miner.
+    // It is a consensus rule that cannot be bypassed, altered, or redirected
+    // without a network-wide hard fork.
+    //
+    // Rules enforced:
+    // 1. Coinbase MUST contain a dev allocation output
+    // 2. Dev allocation MUST be exactly DEV_FEE_PERCENT of block subsidy
+    // 3. Dev script MUST be valid for the current height (epoch rules)
+    // 4. Violations result in block rejection at consensus
+    //
+    // Audit note: No runtime flags, configs, or RPC can disable this check.
+    // =========================================================================
+    {
+        CAmount nBlockSubsidy = GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
+        CAmount nRequiredDevAllocation = Consensus::GetDevAllocation(pindex->nHeight, nBlockSubsidy);
+        
+        // Find dev allocation output in coinbase
+        bool fFoundDevOutput = false;
+        CAmount nActualDevAmount = 0;
+        
+        const CTransaction& coinbase = *block.vtx[0];
+        for (const CTxOut& out : coinbase.vout) {
+            if (Consensus::IsValidDevScript(out.scriptPubKey, pindex->nHeight)) {
+                fFoundDevOutput = true;
+                nActualDevAmount = out.nValue;
+                break;
+            }
+        }
+        
+        // Provably fair launch: Dev output is mandatory for ALL blocks
+        if (!fFoundDevOutput) {
+            return state.DoS(100,
+                error("ConnectBlock(): missing dev allocation output (required=%s at height %d)",
+                      FormatMoney(nRequiredDevAllocation), pindex->nHeight),
+                REJECT_INVALID, "bad-cb-missing-devalloc");
+        }
+        
+        // Provably fair launch: Dev allocation must be exactly correct
+        if (nActualDevAmount != nRequiredDevAllocation) {
+            return state.DoS(100,
+                error("ConnectBlock(): incorrect dev allocation (actual=%s vs required=%s at height %d)",
+                      FormatMoney(nActualDevAmount), FormatMoney(nRequiredDevAllocation), pindex->nHeight),
+                REJECT_INVALID, "bad-cb-devalloc-amount");
+        }
+        
+        LogPrint(BCLog::VALIDATION, "ConnectBlock(): dev allocation verified: %s at height %d\n",
+                 FormatMoney(nActualDevAmount), pindex->nHeight);
+    }
 
     if (!control.Wait())
         return state.DoS(100, error("%s: CheckQueue failed", __func__), REJECT_INVALID, "block-validation-failed");

@@ -12,6 +12,7 @@
 #include "chainparams.h"
 #include "coins.h"
 #include "consensus/consensus.h"
+#include "consensus/devalloc.h"
 #include "consensus/tx_verify.h"
 #include "consensus/merkle.h"
 #include "consensus/validation.h"
@@ -180,14 +181,32 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     CAmount nBlockSubsidy = GetBlockSubsidy(nHeight, chainparams.GetConsensus());
     CAmount nBlockReward = nFees + nBlockSubsidy;
     
+    const auto& consensusParams = chainparams.GetConsensus();
+    
+    // =========================================================================
+    // DEVELOPMENT ALLOCATION - PROVABLY FAIR LAUNCH
+    // =========================================================================
+    //
+    // Provably fair launch:
+    // This development allocation is enforced at consensus and applies equally
+    // to ALL blocks mined by ANY miner. It cannot be bypassed, altered, or
+    // redirected without a network-wide hard fork.
+    //
+    // Calculation: DEV_FEE_PERCENT (3%) of block subsidy (not fees)
+    // The dev allocation is deducted from the miner's share, not the total.
+    // =========================================================================
+    CAmount nDevAllocation = Consensus::GetDevAllocation(nHeight, nBlockSubsidy);
+    CScript devScript = Consensus::GetDevScriptForHeight(nHeight);
+    
+    LogPrint(BCLog::VALIDATION, "CreateNewBlock: Dev allocation %s at height %d\n",
+             FormatMoney(nDevAllocation), nHeight);
+    
     // Calculate masternode payment (if active)
     // Masternode payment is calculated from subsidy only - fees go entirely to miner
     // This follows Dash Core behavior and ensures consistent, predictable MN payments
     CAmount nMasternodePayment = 0;
     CScript masternodePayoutScript;
     bool bMasternodePayment = false;
-    
-    const auto& consensusParams = chainparams.GetConsensus();
     
     // Use centralized activation check for consistency with validation
     // This ensures miner creates blocks that will pass validation
@@ -211,20 +230,42 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         }
     }
     
-    // Create outputs
+    // =========================================================================
+    // CREATE COINBASE OUTPUTS
+    // =========================================================================
+    //
+    // Provably fair launch - output structure:
+    // Output 0: Miner reward (subsidy - dev - masternode + all fees)
+    // Output 1: Dev allocation (always present, consensus-enforced)
+    // Output 2: Masternode payment (if masternodes active)
+    //
+    // The dev allocation output is MANDATORY for all blocks.
+    // Blocks without correct dev allocation are rejected at consensus.
+    // =========================================================================
+    
+    // Calculate miner's share: subsidy - dev allocation - masternode payment + all fees
+    CAmount nMinerReward = nBlockSubsidy - nDevAllocation - nMasternodePayment + nFees;
+    
     if (bMasternodePayment) {
-        // Two outputs: miner gets (subsidy * 55% + all fees), masternode gets (subsidy * 45%)
+        // Three outputs: miner, dev, masternode
+        coinbaseTx.vout.resize(3);
+        coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
+        coinbaseTx.vout[0].nValue = nMinerReward;
+        coinbaseTx.vout[1].scriptPubKey = devScript;
+        coinbaseTx.vout[1].nValue = nDevAllocation;
+        coinbaseTx.vout[2].scriptPubKey = masternodePayoutScript;
+        coinbaseTx.vout[2].nValue = nMasternodePayment;
+    } else {
+        // Two outputs: miner, dev (no masternode payment yet)
         coinbaseTx.vout.resize(2);
         coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
-        coinbaseTx.vout[0].nValue = nBlockReward - nMasternodePayment; // Miner: 55% of subsidy + ALL fees
-        coinbaseTx.vout[1].scriptPubKey = masternodePayoutScript;
-        coinbaseTx.vout[1].nValue = nMasternodePayment; // Masternode: 45% of subsidy (no fees)
-    } else {
-        // Single output: all to miner (no masternode payment)
-        coinbaseTx.vout.resize(1);
-        coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
-        coinbaseTx.vout[0].nValue = nBlockReward;
+        coinbaseTx.vout[0].nValue = nMinerReward;
+        coinbaseTx.vout[1].scriptPubKey = devScript;
+        coinbaseTx.vout[1].nValue = nDevAllocation;
     }
+    
+    LogPrint(BCLog::VALIDATION, "CreateNewBlock: Coinbase outputs - Miner: %s, Dev: %s, MN: %s\n",
+             FormatMoney(nMinerReward), FormatMoney(nDevAllocation), FormatMoney(nMasternodePayment));
     
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));

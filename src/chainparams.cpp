@@ -6,6 +6,7 @@
 
 #include "chainparams.h"
 #include "consensus/merkle.h"
+#include "consensus/devalloc.h"
 
 #include "tinyformat.h"
 #include "util.h"
@@ -19,16 +20,54 @@
 extern double algoHashTotal[16];
 extern int algoHashHits[16];
 
+// =============================================================================
+// MYNTA GENESIS BLOCK CREATION - PROVABLY FAIR LAUNCH
+// =============================================================================
+//
+// PROVABLY FAIR LAUNCH DECLARATION:
+// ---------------------------------
+// The Mynta genesis block follows the same consensus rules as all subsequent
+// blocks. There is NO premine - the genesis coinbase follows standard subsidy
+// rules with the mandatory 3% development allocation.
+//
+// Genesis coinbase structure:
+// - Output 0: Miner reward (97% of 5000 MYNTA = 4850 MYNTA)
+// - Output 1: Dev allocation (3% of 5000 MYNTA = 150 MYNTA)
+//
+// This structure is IDENTICAL to all future blocks, ensuring provably fair
+// issuance from the very first block.
+// =============================================================================
 
-static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
+/**
+ * Create the genesis block coinbase transaction with dev allocation.
+ * 
+ * Provably fair launch:
+ * The genesis coinbase follows the same rules as all other blocks:
+ * - Standard subsidy (5000 MYNTA at height 0)
+ * - 3% dev allocation enforced (150 MYNTA)
+ * - 97% to miner (4850 MYNTA)
+ * - No premine, no special allocations, no hidden outputs
+ */
+static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& minerOutputScript, const CScript& devOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
+    // Calculate dev allocation for genesis (3% of subsidy)
+    CAmount devAllocation = genesisReward * Consensus::DEV_FEE_PERCENT / 100;
+    CAmount minerReward = genesisReward - devAllocation;
+    
     CMutableTransaction txNew;
     txNew.nVersion = 1;
     txNew.vin.resize(1);
-    txNew.vout.resize(1);
+    txNew.vout.resize(2);  // Two outputs: miner + dev
     txNew.vin[0].scriptSig = CScript() << CScriptNum(0) << 486604799 << CScriptNum(4) << std::vector<unsigned char>((const unsigned char*)pszTimestamp, (const unsigned char*)pszTimestamp + strlen(pszTimestamp));
-    txNew.vout[0].nValue = genesisReward;
-    txNew.vout[0].scriptPubKey = genesisOutputScript;
+    
+    // Output 0: Miner reward (97% of subsidy)
+    txNew.vout[0].nValue = minerReward;
+    txNew.vout[0].scriptPubKey = minerOutputScript;
+    
+    // Output 1: Dev allocation (3% of subsidy) - PROVABLY FAIR
+    // This output exists in genesis and ALL future blocks equally
+    txNew.vout[1].nValue = devAllocation;
+    txNew.vout[1].scriptPubKey = devOutputScript;
 
     CBlock genesis;
     genesis.nTime    = nTime;
@@ -42,22 +81,41 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
 }
 
 /**
- * Build the genesis block. Note that the output of its generation
- * transaction cannot be spent since it did not originally exist in the
- * database.
- *
- * CBlock(hash=000000000019d6, ver=1, hashPrevBlock=00000000000000, hashMerkleRoot=4a5e1e, nTime=1231006505, nBits=1d00ffff, nNonce=2083236893, vtx=1)
- *   CTransaction(hash=4a5e1e, ver=1, vin.size=1, vout.size=1, nLockTime=0)
- *     CTxIn(COutPoint(000000, -1), coinbase 04ffff001d0104455468652054696d65732030332f4a616e2f32303039204368616e63656c6c6f72206f6e206272696e6b206f66207365636f6e64206261696c6f757420666f722062616e6b73)
- *     CTxOut(nValue=50.00000000, scriptPubKey=0x5F1DF16B2B704C8A578D0B)
- *   vMerkleTree: 4a5e1e
+ * Build the Mynta genesis block with provably fair launch parameters.
+ * 
+ * GENESIS HEADLINE: "No premine. Equal rules from block zero."
+ * 
+ * This headline explicitly declares the provably fair launch model:
+ * - No premine exists
+ * - Rules are identical for all participants
+ * - Dev allocation is mechanical and consensus-enforced
+ * 
+ * Provably fair launch:
+ * The genesis block is NOT special - it follows the exact same
+ * consensus rules as every other block on the network.
  */
 static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
-    // Mynta genesis block - new chain identity with KawPoW from the start
-    const char* pszTimestamp = "Mynta Genesis 02/Jan/2026 - A new beginning with KawPoW";
-    const CScript genesisOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
-    return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
+    // =========================================================================
+    // GENESIS HEADLINE - PROVABLY FAIR LAUNCH
+    // =========================================================================
+    // This message is embedded in the genesis coinbase and cannot be changed.
+    // It explicitly declares the fair launch model for all to verify.
+    // =========================================================================
+    const char* pszTimestamp = "Mynta 14/Jan/2026 - No premine. Equal rules from block zero.";
+    
+    // Genesis miner output script (standard P2PK, matches Bitcoin genesis format)
+    // This uses Satoshi's well-known genesis public key - the private key is unknown.
+    // PROVABLY FAIR: The 4850 MYNTA miner reward in genesis is effectively BURNED.
+    // Only the 150 MYNTA dev allocation (output 1) is spendable.
+    // This ensures no hidden premine exists in the genesis block.
+    const CScript minerOutputScript = CScript() << ParseHex("04678afdb0fe5548271967f1a67130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef38c4f35504e51ec112de5c384df7ba0b8d578a4c702b6bf11d5f") << OP_CHECKSIG;
+    
+    // Dev allocation output script (same as placeholder for Epoch 0)
+    // This is the SAME script used for all dev allocations during Epoch 0
+    const CScript devOutputScript = Consensus::GetDevScriptPlaceholder();
+    
+    return CreateGenesisBlock(pszTimestamp, minerOutputScript, devOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
 }
 
 void CChainParams::UpdateVersionBitsParameters(Consensus::DeploymentPos d, int64_t nStartTime, int64_t nTimeout)
@@ -190,22 +248,47 @@ public:
         nDefaultPort = 8770;  // Mynta mainnet P2P port
         nPruneAfterHeight = 100000;
 
-        // Mynta mainnet genesis - new chain with new timestamp
-        // nTime: 1767326913 = 02/Jan/2026 ~04:08 UTC
-        // Genesis uses X16R hash, KawPoW activates at nTime + 1
-        uint32_t nGenesisTime = 1767326913;
-        genesis = CreateGenesisBlock(nGenesisTime, 26620867, 0x1e00ffff, 4, 5000 * COIN);
+        // =====================================================================
+        // MYNTA MAINNET GENESIS BLOCK - PROVABLY FAIR LAUNCH
+        // =====================================================================
+        //
+        // Provably fair launch:
+        // This genesis block is created with the SAME consensus rules as all
+        // future blocks. The coinbase contains:
+        // - Output 0: Miner reward (97% = 4850 MYNTA)
+        // - Output 1: Dev allocation (3% = 150 MYNTA)
+        //
+        // There is NO premine. The genesis follows standard subsidy rules.
+        // =====================================================================
+        
+        // Genesis timestamp: January 15, 2026 00:00:00 UTC (January 14, 2026 4:00 PM PST)
+        // This matches the chain start time for fair launch coordination
+        uint32_t nGenesisTime = 1768435200;  // Jan 15, 2026 00:00:00 UTC
+        
+        // =====================================================================
+        // MAINNET GENESIS BLOCK - PROVABLY FAIR LAUNCH
+        // =====================================================================
+        // Genesis coinbase structure (enforced at consensus):
+        // - Output 0: Miner reward (97% = 4850 MYNTA)
+        // - Output 1: Dev allocation (3% = 150 MYNTA)
+        //
+        // Headline: "Mynta 14/Jan/2026 - No premine. Equal rules from block zero."
+        // Dev Placeholder Address: MUnwxykRqLsGctiHPEy8waP46L9oyUsztz
+        // =====================================================================
+        genesis = CreateGenesisBlock(nGenesisTime, 45133052, 0x1e00ffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
-        assert(consensus.hashGenesisBlock == uint256S("0x00000072ecf97dee02f6136cf6b92232a3f175ee6a38f5f140f87a2e16d30193"));
-        assert(genesis.hashMerkleRoot == uint256S("0x80923df2083734f77af0853689681cd8fa9eb83bfcb0ffc145873b18bab8cb78"));
+        // Genesis verification - provably fair launch
+        assert(consensus.hashGenesisBlock == uint256S("0x000000d0614ed54a193ec7f5fc17318bc66a967b8f6ec77bebe7d799d5f4452e"));
+        assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
         // DNS seeds removed for independent operation
         vSeeds.clear();
 
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,60);
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,122);
+        // Mynta address prefixes - 'M' for mainnet
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,50);  // 'M' prefix
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,110); // 'm' prefix (P2SH)
         base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,128);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1E};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE4};
@@ -247,19 +330,20 @@ public:
         nIssueRestrictedAssetBurnAmount = 1500 * COIN;
         nAddNullQualifierTagBurnAmount = .1 * COIN;
 
-        // Burn Addresses
-        strIssueAssetBurnAddress = "RXissueAssetXXXXXXXXXXXXXXXXXhhZGt";
-        strReissueAssetBurnAddress = "RXReissueAssetXXXXXXXXXXXXXXVEFAWu";
-        strIssueSubAssetBurnAddress = "RXissueSubAssetXXXXXXXXXXXXXWcwhwL";
-        strIssueUniqueAssetBurnAddress = "RXissueUniqueAssetXXXXXXXXXXWEAe58";
-        strIssueMsgChannelAssetBurnAddress = "RXissueMsgChanneLAssetXXXXXXSjHvAY";
-        strIssueQualifierAssetBurnAddress = "RXissueQuaLifierXXXXXXXXXXXXUgEDbC";
-        strIssueSubQualifierAssetBurnAddress = "RXissueSubQuaLifierXXXXXXXXXVTzvv5";
-        strIssueRestrictedAssetBurnAddress = "RXissueRestrictedXXXXXXXXXXXXzJZ1q";
-        strAddNullQualifierTagBurnAddress = "RXaddTagBurnXXXXXXXXXXXXXXXXZQm5ya";
+        // Burn Addresses - Mynta mainnet (MR prefix = Mynta Reserve)
+        // These are provably unspendable addresses for asset operations
+        strIssueAssetBurnAddress = "MRA1DeK1yCiJRsPVXAampd2XB5xFwah9f6";
+        strReissueAssetBurnAddress = "MRBUCZXSCMQtwz6Dvk1soyKKwgLLfdgDQ7";
+        strIssueSubAssetBurnAddress = "MRCXvyv1qjg35CpjC2h9hryMekj1Y9BLyb";
+        strIssueUniqueAssetBurnAddress = "MRDgGujZL3u4iHybWJje6djaUw4CsqDuhP";
+        strIssueMsgChannelAssetBurnAddress = "MRESYWD5JfxnRGRxHopEwzFckzD8AP3n2t";
+        strIssueQualifierAssetBurnAddress = "MRFNefMQm2buZ1BQ7qaBJoFRWLGsjKSsoj";
+        strIssueSubQualifierAssetBurnAddress = "MRG6hiRfgnE3jz3HkbMtRaAJm2YJ8iNYd5";
+        strIssueRestrictedAssetBurnAddress = "MRHLry6K16n49cg6SiL6rBwxy678uCQ9or";
+        strAddNullQualifierTagBurnAddress = "MRJ565JV1B4TRaUeVDe5b282FpV139tBx6";
 
-            //Global Burn Address
-        strGlobalBurnAddress = "RXBurnXXXXXXXXXXXXXXXXXXXXXXWUo9FV";
+        // Global Burn Address
+        strGlobalBurnAddress = "MRKxSezjRVEYzBSA8tKKtmnVDS53EApS4q";
 
         // DGW Activation
         // Dark Gravity Wave activates at block 10 for faster difficulty adjustment
@@ -384,8 +468,8 @@ public:
         nDefaultPort = 18770;
         nPruneAfterHeight = 1000;
 
-        // Mynta testnet genesis time - same as mainnet
-        uint32_t nGenesisTime = 1767326913;  // 02/Jan/2026 04:08 UTC
+        // Testnet uses same launch time as mainnet for consistency
+        uint32_t nGenesisTime = 1768435200;  // Jan 15, 2026 00:00:00 UTC
 
         // This is used inorder to mine the genesis block. Once found, we can use the nonce and block hash found to create a valid genesis block
 //        /////////////////////////////////////////////////////////////////
@@ -448,14 +532,20 @@ public:
 
 //        /////////////////////////////////////////////////////////////////
 
-        // Mynta testnet genesis - same timestamp as mainnet
-        // NOTE: Testnet uses same genesis as mainnet for simplicity
-        genesis = CreateGenesisBlock(nGenesisTime, 26620867, 0x1e00ffff, 4, 5000 * COIN);
+        // =====================================================================
+        // TESTNET GENESIS BLOCK - PROVABLY FAIR LAUNCH
+        // =====================================================================
+        // Testnet follows the same fair launch rules as mainnet.
+        // Coinbase contains miner reward (97%) + dev allocation (3%)
+        // Same genesis as mainnet (same params, same timestamp)
+        // =====================================================================
+        genesis = CreateGenesisBlock(nGenesisTime, 45133052, 0x1e00ffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
-        assert(consensus.hashGenesisBlock == uint256S("0x00000072ecf97dee02f6136cf6b92232a3f175ee6a38f5f140f87a2e16d30193"));
-        assert(genesis.hashMerkleRoot == uint256S("0x80923df2083734f77af0853689681cd8fa9eb83bfcb0ffc145873b18bab8cb78"));
+        // Genesis verification - provably fair launch
+        assert(consensus.hashGenesisBlock == uint256S("0x000000d0614ed54a193ec7f5fc17318bc66a967b8f6ec77bebe7d799d5f4452e"));
+        assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -507,19 +597,19 @@ public:
         nIssueRestrictedAssetBurnAmount = 1500 * COIN;
         nAddNullQualifierTagBurnAmount = .1 * COIN;
 
-        // Burn Addresses
-        strIssueAssetBurnAddress = "n1issueAssetXXXXXXXXXXXXXXXXWdnemQ";
-        strReissueAssetBurnAddress = "n1ReissueAssetXXXXXXXXXXXXXXWG9NLd";
-        strIssueSubAssetBurnAddress = "n1issueSubAssetXXXXXXXXXXXXXbNiH6v";
-        strIssueUniqueAssetBurnAddress = "n1issueUniqueAssetXXXXXXXXXXS4695i";
-        strIssueMsgChannelAssetBurnAddress = "n1issueMsgChanneLAssetXXXXXXT2PBdD";
-        strIssueQualifierAssetBurnAddress = "n1issueQuaLifierXXXXXXXXXXXXUysLTj";
-        strIssueSubQualifierAssetBurnAddress = "n1issueSubQuaLifierXXXXXXXXXYffPLh";
-        strIssueRestrictedAssetBurnAddress = "n1issueRestrictedXXXXXXXXXXXXZVT9V";
-        strAddNullQualifierTagBurnAddress = "n1addTagBurnXXXXXXXXXXXXXXXXX5oLMH";
+        // Burn Addresses - Mynta testnet
+        strIssueAssetBurnAddress = "n1A35ngXmPq6MhnkLJKei6CgDUEJv3HuSE";
+        strReissueAssetBurnAddress = "n1Bwj4MXRhQC3chisWYUyCe6X12TU2Utga";
+        strIssueSubAssetBurnAddress = "n1C6wYiGQ3mJQwAzw3pUVJwnNs3hwCuNoZ";
+        strIssueUniqueAssetBurnAddress = "n1D23T6iUjzrQ7qQcQC2nBMEisB5Feku2U";
+        strIssueMsgChannelAssetBurnAddress = "n1EvEPZqBnNHAMgFHjsm8atWiBTcnYFpF1";
+        strIssueQualifierAssetBurnAddress = "n1FWV3dVFSCTGCAUUe7oB8DfrKAS8XvbY4";
+        strIssueSubQualifierAssetBurnAddress = "n1GZHTKwy7sFEYgBxbMJ6SbWHaBTLpLGqi";
+        strIssueRestrictedAssetBurnAddress = "n1HWp3BwpGcdUSBevrjVocfgoKgkfDaCZS";
+        strAddNullQualifierTagBurnAddress = "n1JnvETYcwMtwnECzNLmFdS6TSj6HZeyow";
 
         // Global Burn Address
-        strGlobalBurnAddress = "n1BurnXXXXXXXXXXXXXXXXXXXXXXU1qejP";
+        strGlobalBurnAddress = "n1KSyqiGfCcYJHA8AHUiG9YUX68zZx5xcB";
 
         // DGW Activation
         nDGWActivationBlock = 1;
@@ -699,14 +789,20 @@ public:
 //        /////////////////////////////////////////////////////////////////
 
 
-        // Mynta regtest genesis - same timestamp as mainnet, easy difficulty
-        uint32_t nGenesisTime = 1767326913;  // 02/Jan/2026 04:08 UTC
-        genesis = CreateGenesisBlock(nGenesisTime, 3, 0x207fffff, 4, 5000 * COIN);
+        // =====================================================================
+        // REGTEST GENESIS BLOCK - PROVABLY FAIR LAUNCH
+        // =====================================================================
+        // Regtest follows the same fair launch rules with easy difficulty.
+        // Coinbase contains miner reward (97%) + dev allocation (3%)
+        // =====================================================================
+        uint32_t nGenesisTime = 1768435200;  // Same as mainnet
+        genesis = CreateGenesisBlock(nGenesisTime, 0, 0x207fffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
-        assert(consensus.hashGenesisBlock == uint256S("0x6fb28e601cf40196cce7d0d7d56aa1bff6c82ef2736bc1934a54402305c73879"));
-        assert(genesis.hashMerkleRoot == uint256S("0x80923df2083734f77af0853689681cd8fa9eb83bfcb0ffc145873b18bab8cb78"));
+        // Genesis verification - provably fair launch
+        assert(consensus.hashGenesisBlock == uint256S("0x7cfaf0dbe96d9aa7cda2181012aeff92a3f5f2e6d0cfee0f8e1eaf4817d9a9dc"));
+        assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();      //!< Regtest mode doesn't have any DNS seeds.
@@ -747,19 +843,19 @@ public:
         nIssueRestrictedAssetBurnAmount = 1500 * COIN;
         nAddNullQualifierTagBurnAmount = .1 * COIN;
 
-        // Burn Addresses
-        strIssueAssetBurnAddress = "n1issueAssetXXXXXXXXXXXXXXXXWdnemQ";
-        strReissueAssetBurnAddress = "n1ReissueAssetXXXXXXXXXXXXXXWG9NLd";
-        strIssueSubAssetBurnAddress = "n1issueSubAssetXXXXXXXXXXXXXbNiH6v";
-        strIssueUniqueAssetBurnAddress = "n1issueUniqueAssetXXXXXXXXXXS4695i";
-        strIssueMsgChannelAssetBurnAddress = "n1issueMsgChanneLAssetXXXXXXT2PBdD";
-        strIssueQualifierAssetBurnAddress = "n1issueQuaLifierXXXXXXXXXXXXUysLTj";
-        strIssueSubQualifierAssetBurnAddress = "n1issueSubQuaLifierXXXXXXXXXYffPLh";
-        strIssueRestrictedAssetBurnAddress = "n1issueRestrictedXXXXXXXXXXXXZVT9V";
-        strAddNullQualifierTagBurnAddress = "n1addTagBurnXXXXXXXXXXXXXXXXX5oLMH";
+        // Burn Addresses - Mynta regtest (same as testnet)
+        strIssueAssetBurnAddress = "n1A35ngXmPq6MhnkLJKei6CgDUEJv3HuSE";
+        strReissueAssetBurnAddress = "n1Bwj4MXRhQC3chisWYUyCe6X12TU2Utga";
+        strIssueSubAssetBurnAddress = "n1C6wYiGQ3mJQwAzw3pUVJwnNs3hwCuNoZ";
+        strIssueUniqueAssetBurnAddress = "n1D23T6iUjzrQ7qQcQC2nBMEisB5Feku2U";
+        strIssueMsgChannelAssetBurnAddress = "n1EvEPZqBnNHAMgFHjsm8atWiBTcnYFpF1";
+        strIssueQualifierAssetBurnAddress = "n1FWV3dVFSCTGCAUUe7oB8DfrKAS8XvbY4";
+        strIssueSubQualifierAssetBurnAddress = "n1GZHTKwy7sFEYgBxbMJ6SbWHaBTLpLGqi";
+        strIssueRestrictedAssetBurnAddress = "n1HWp3BwpGcdUSBevrjVocfgoKgkfDaCZS";
+        strAddNullQualifierTagBurnAddress = "n1JnvETYcwMtwnECzNLmFdS6TSj6HZeyow";
 
         // Global Burn Address
-        strGlobalBurnAddress = "n1BurnXXXXXXXXXXXXXXXXXXXXXXU1qejP";
+        strGlobalBurnAddress = "n1KSyqiGfCcYJHA8AHUiG9YUX68zZx5xcB";
 
         // DGW Activation
         nDGWActivationBlock = 200;
