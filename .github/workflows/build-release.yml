@@ -127,35 +127,11 @@ jobs:
           cp src/qt/mynta-qt ${DEB_DIR}/usr/bin/ 2>/dev/null || echo "Qt wallet not available"
           strip ${DEB_DIR}/usr/bin/* 2>/dev/null || true
           
-          # Create control file (no leading whitespace!)
-          cat > ${DEB_DIR}/DEBIAN/control << 'EOF'
-Package: mynta
-Version: ${MYNTA_VERSION}
-Section: utils
-Priority: optional
-Architecture: amd64
-Depends: libc6 (>= 2.31), libgcc-s1 (>= 3.0), libstdc++6 (>= 11)
-Maintainer: Mynta Developers <dev@myntacoin.org>
-Description: Mynta Core - Full node and wallet
- Mynta is a peer-to-peer digital currency with asset support.
- This package includes the Qt wallet and command-line tools.
- The Qt wallet includes a built-in daemon - you do NOT need myntad.
-EOF
-          # Replace version in control file
-          sed -i "s/\${MYNTA_VERSION}/${MYNTA_VERSION}/g" ${DEB_DIR}/DEBIAN/control
+          # Create control file
+          printf 'Package: mynta\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: amd64\nDepends: libc6 (>= 2.31), libgcc-s1 (>= 3.0), libstdc++6 (>= 11)\nMaintainer: Mynta Developers <dev@myntacoin.org>\nDescription: Mynta Core - Full node and wallet\n Mynta is a peer-to-peer digital currency with asset support.\n This package includes the Qt wallet and command-line tools.\n The Qt wallet includes a built-in daemon - you do NOT need myntad.\n' "${MYNTA_VERSION}" > ${DEB_DIR}/DEBIAN/control
           
           # Create desktop file
-          cat > ${DEB_DIR}/usr/share/applications/mynta-qt.desktop << 'EOF'
-[Desktop Entry]
-Name=Mynta Core
-Comment=Mynta wallet and full node
-Exec=mynta-qt %u
-Terminal=false
-Type=Application
-Icon=mynta
-Categories=Finance;Network;
-MimeType=x-scheme-handler/mynta;
-EOF
+          printf '[Desktop Entry]\nName=Mynta Core\nComment=Mynta wallet and full node\nExec=mynta-qt %%u\nTerminal=false\nType=Application\nIcon=mynta\nCategories=Finance;Network;\nMimeType=x-scheme-handler/mynta;\n' > ${DEB_DIR}/usr/share/applications/mynta-qt.desktop
           
           # Copy icon
           cp share/pixmaps/mynta256.png ${DEB_DIR}/usr/share/icons/hicolor/256x256/apps/mynta.png
@@ -192,16 +168,7 @@ EOF
           cp src/mynta-cli AppDir/usr/bin/
           
           # Create desktop file
-          cat > AppDir/usr/share/applications/mynta-qt.desktop << 'EOF'
-[Desktop Entry]
-Name=Mynta Core
-Comment=Mynta wallet and full node
-Exec=mynta-qt
-Terminal=false
-Type=Application
-Icon=mynta
-Categories=Finance;Network;
-EOF
+          printf '[Desktop Entry]\nName=Mynta Core\nComment=Mynta wallet and full node\nExec=mynta-qt\nTerminal=false\nType=Application\nIcon=mynta\nCategories=Finance;Network;\n' > AppDir/usr/share/applications/mynta-qt.desktop
           
           # Copy icon
           cp share/pixmaps/mynta256.png AppDir/usr/share/icons/hicolor/256x256/apps/mynta.png
@@ -438,32 +405,30 @@ EOF
           cp src/qt/mynta-qt "Mynta-Qt.app/Contents/MacOS/Mynta-Qt"
           
           # Create Info.plist
-          cat > "Mynta-Qt.app/Contents/Info.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>Mynta-Qt</string>
-  <key>CFBundleIdentifier</key>
-  <string>org.myntacoin.Mynta-Qt</string>
-  <key>CFBundleName</key>
-  <string>Mynta-Qt</string>
-  <key>CFBundleVersion</key>
-  <string>${MYNTA_VERSION}</string>
-  <key>CFBundleShortVersionString</key>
-  <string>${MYNTA_VERSION}</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>10.14</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-</dict>
-</plist>
-EOF
+          echo '<?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>Mynta-Qt</string>
+            <key>CFBundleIdentifier</key>
+            <string>org.myntacoin.Mynta-Qt</string>
+            <key>CFBundleName</key>
+            <string>Mynta-Qt</string>
+            <key>CFBundleVersion</key>
+            <string>'"${MYNTA_VERSION}"'</string>
+            <key>CFBundleShortVersionString</key>
+            <string>'"${MYNTA_VERSION}"'</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>10.14</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSPrincipalClass</key>
+            <string>NSApplication</string>
+          </dict>
+          </plist>' > "Mynta-Qt.app/Contents/Info.plist"
           
           # Copy icon if available
           if [ -f "share/pixmaps/mynta256.png" ]; then
@@ -584,32 +549,30 @@ EOF
           
           cp src/qt/mynta-qt "Mynta-Qt.app/Contents/MacOS/Mynta-Qt"
           
-          cat > "Mynta-Qt.app/Contents/Info.plist" << EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>Mynta-Qt</string>
-  <key>CFBundleIdentifier</key>
-  <string>org.myntacoin.Mynta-Qt</string>
-  <key>CFBundleName</key>
-  <string>Mynta-Qt</string>
-  <key>CFBundleVersion</key>
-  <string>${MYNTA_VERSION}</string>
-  <key>CFBundleShortVersionString</key>
-  <string>${MYNTA_VERSION}</string>
-  <key>CFBundlePackageType</key>
-  <string>APPL</string>
-  <key>LSMinimumSystemVersion</key>
-  <string>11.0</string>
-  <key>NSHighResolutionCapable</key>
-  <true/>
-  <key>NSPrincipalClass</key>
-  <string>NSApplication</string>
-</dict>
-</plist>
-EOF
+          echo '<?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key>
+            <string>Mynta-Qt</string>
+            <key>CFBundleIdentifier</key>
+            <string>org.myntacoin.Mynta-Qt</string>
+            <key>CFBundleName</key>
+            <string>Mynta-Qt</string>
+            <key>CFBundleVersion</key>
+            <string>'"${MYNTA_VERSION}"'</string>
+            <key>CFBundleShortVersionString</key>
+            <string>'"${MYNTA_VERSION}"'</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>11.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+            <key>NSPrincipalClass</key>
+            <string>NSApplication</string>
+          </dict>
+          </plist>' > "Mynta-Qt.app/Contents/Info.plist"
           
           if [ -f "share/pixmaps/mynta256.png" ]; then
             cp share/pixmaps/mynta256.png "Mynta-Qt.app/Contents/Resources/mynta.png"
