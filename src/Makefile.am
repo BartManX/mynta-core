@@ -19,7 +19,7 @@ else
 LIBUNIVALUE = $(UNIVALUE_LIBS)
 endif
 
-MYNTA_INCLUDES=-I$(builddir) -I$(builddir)/obj $(BDB_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
+MYNTA_INCLUDES=-I$(builddir) -I$(builddir)/obj $(SQLITE_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
 
 MYNTA_INCLUDES += -I$(srcdir)/secp256k1/include
 MYNTA_INCLUDES += $(UNIVALUE_CFLAGS)
@@ -45,6 +45,14 @@ endif
 
 $(LIBSECP256K1): $(wildcard secp256k1/src/*) $(wildcard secp256k1/include/*)
 	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F)
+
+# BLST BLS signature library - must be built before linking
+LIBBLST=$(top_srcdir)/src/bls/blst/libblst.a
+BUILT_SOURCES = $(LIBBLST)
+
+$(LIBBLST):
+	$(AM_V_at)echo "Building BLST library..."
+	$(AM_V_at)cd $(top_srcdir)/src/bls/blst && ./build.sh
 
 # Make is not made aware of per-object dependencies to avoid limiting building parallelization
 # But to build the less dependent modules first, we manually select their order here:
@@ -531,8 +539,8 @@ myntad_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-myntad_LDADD += $(BOOST_LIBS) $(BDB_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
-myntad_LDADD += $(top_srcdir)/src/bls/blst/libblst.a
+myntad_LDADD += $(BOOST_LIBS) $(SQLITE_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
+myntad_LDADD += $(LIBBLST)
 
 # raven-cli binary #
 mynta_cli_SOURCES = mynta-cli.cpp
