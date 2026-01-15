@@ -1,6 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2016 The Bitcoin Core developers
 // Copyright (c) 2017-2019 The Raven Core developers
+// Copyright (c) 2024-2026 The Mynta Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -15,358 +16,439 @@
 #include "version.h"
 
 #include <atomic>
-#include <map>
+#include <memory>
 #include <string>
 #include <vector>
+#include <map>
+#include <functional>
 
-#include <db_cxx.h>
+#include <sqlite3.h>
 
 static const unsigned int DEFAULT_WALLET_DBLOGSIZE = 100;
 static const bool DEFAULT_WALLET_PRIVDB = true;
 
-class CDBEnv
+// Forward declarations
+class WalletDatabase;
+class WalletBatch;
+class WalletCursor;
+
+/** RAII class for SQLite statement management */
+class SQLiteStatement
 {
 private:
-    bool fDbEnvInit;
-    bool fMockDb;
-    // Don't change into fs::path, as that can result in
-    // shutdown problems/crashes caused by a static initialized internal pointer.
-    std::string strPath;
-
-    void EnvShutdown();
-
+    sqlite3_stmt* m_stmt{nullptr};
+    
 public:
-    mutable CCriticalSection cs_db;
-    DbEnv *dbenv;
-    std::map<std::string, int> mapFileUseCount;
-    std::map<std::string, Db*> mapDb;
-
-    CDBEnv();
-    ~CDBEnv();
+    SQLiteStatement() = default;
+    ~SQLiteStatement();
+    
+    SQLiteStatement(const SQLiteStatement&) = delete;
+    SQLiteStatement& operator=(const SQLiteStatement&) = delete;
+    SQLiteStatement(SQLiteStatement&& other) noexcept;
+    SQLiteStatement& operator=(SQLiteStatement&& other) noexcept;
+    
+    bool Prepare(sqlite3* db, const char* sql);
     void Reset();
-
-    void MakeMock();
-    bool IsMock() const { return fMockDb; }
-
-    /**
-     * Verify that database file strFile is OK. If it is not,
-     * call the callback to try to recover.
-     * This must be called BEFORE strFile is opened.
-     * Returns true if strFile is OK.
-     */
-    enum VerifyResult { VERIFY_OK,
-                        RECOVER_OK,
-                        RECOVER_FAIL };
-    typedef bool (*recoverFunc_type)(const std::string& strFile, std::string& out_backup_filename);
-    VerifyResult Verify(const std::string& strFile, recoverFunc_type recoverFunc, std::string& out_backup_filename);
-    /**
-     * Salvage data from a file that Verify says is bad.
-     * fAggressive sets the DB_AGGRESSIVE flag (see berkeley DB->verify() method documentation).
-     * Appends binary key/value pairs to vResult, returns true if successful.
-     * NOTE: reads the entire database into memory, so cannot be used
-     * for huge databases.
-     */
-    typedef std::pair<std::vector<unsigned char>, std::vector<unsigned char> > KeyValPair;
-    bool Salvage(const std::string& strFile, bool fAggressive, std::vector<KeyValPair>& vResult);
-
-    bool Open(const fs::path& path);
-    void Close();
-    void Flush(bool fShutdown);
-    void CheckpointLSN(const std::string& strFile);
-
-    void CloseDb(const std::string& strFile);
-
-    DbTxn* TxnBegin(int flags = DB_TXN_WRITE_NOSYNC)
-    {
-        DbTxn* ptxn = nullptr;
-        int ret = dbenv->txn_begin(nullptr, &ptxn, flags);
-        if (!ptxn || ret != 0)
-            return nullptr;
-        return ptxn;
-    }
+    void Finalize();
+    
+    sqlite3_stmt* Get() { return m_stmt; }
+    operator sqlite3_stmt*() { return m_stmt; }
 };
 
-extern CDBEnv bitdb;
-
-/** An instance of this class represents one database.
- * For BerkeleyDB this is just a (env, strFile) tuple.
- **/
-class CWalletDBWrapper
+/**
+ * SQLite-backed wallet database.
+ * 
+ * This class manages a single SQLite database file that stores all wallet data.
+ * It operates in WAL mode with FULL synchronous mode for crash safety.
+ * 
+ * Key design principles:
+ * - Atomic transactions with explicit commit/rollback
+ * - Crash consistency through SQLite's WAL mode
+ * - No legacy BDB compatibility
+ * - Explicit failure paths with no silent corruption
+ */
+class WalletDatabase
 {
-    friend class CDB;
-public:
-    /** Create dummy DB handle */
-    CWalletDBWrapper() : nUpdateCounter(0), nLastSeen(0), nLastFlushed(0), nLastWalletUpdate(0), env(nullptr)
-    {
-    }
-
-    /** Create DB handle to real database */
-    CWalletDBWrapper(CDBEnv *env_in, const std::string &strFile_in) :
-        nUpdateCounter(0), nLastSeen(0), nLastFlushed(0), nLastWalletUpdate(0), env(env_in), strFile(strFile_in)
-    {
-    }
-
-    /** Rewrite the entire database on disk, with the exception of key pszSkip if non-zero
-     */
-    bool Rewrite(const char* pszSkip=nullptr);
-
-    /** Back up the entire database to a file.
-     */
-    bool Backup(const std::string& strDest);
-
-    /** Get a name for this database, for debugging etc.
-     */
-    std::string GetName() const { return strFile; }
-
-    /** Make sure all changes are flushed to disk.
-     */
-    void Flush(bool shutdown);
-
-    void IncrementUpdateCounter();
-
-    std::atomic<unsigned int> nUpdateCounter;
-    unsigned int nLastSeen;
-    unsigned int nLastFlushed;
-    int64_t nLastWalletUpdate;
-
+    friend class WalletBatch;
+    friend class WalletCursor;
+    
 private:
-    /** BerkeleyDB specific */
-    CDBEnv *env;
-    std::string strFile;
-
-    /** Return whether this database handle is a dummy for testing.
-     * Only to be used at a low level, application should ideally not care
-     * about this.
-     */
-    bool IsDummy() { return env == nullptr; }
-};
-
-
-/** RAII class that provides access to a Berkeley database */
-class CDB
-{
-protected:
-    Db* pdb;
-    std::string strFile;
-    DbTxn* activeTxn;
-    bool fReadOnly;
-    bool fFlushOnClose;
-    CDBEnv *env;
-
+    //! SQLite database handle
+    sqlite3* m_db{nullptr};
+    
+    //! Path to the wallet file
+    std::string m_file_path;
+    
+    //! Wallet filename (for legacy compatibility)
+    std::string m_wallet_file;
+    
+    //! Whether the database is open
+    bool m_is_open{false};
+    
+    //! Whether this is a mock/dummy database for testing
+    bool m_mock{false};
+    
+    //! Mutex for thread safety
+    mutable CCriticalSection cs_db;
+    
+    //! Active reference count (number of open batches)
+    int m_refcount{0};
+    
+    //! Schema version for migrations
+    static const int CURRENT_SCHEMA_VERSION = 1;
+    
+    //! Initialize the database schema
+    bool InitializeSchema();
+    
+    //! Check and migrate schema if needed
+    bool MigrateSchema(int current_version);
+    
+    //! Get current schema version
+    int GetSchemaVersion();
+    
+    //! Set schema version
+    bool SetSchemaVersion(int version);
+    
 public:
-    explicit CDB(CWalletDBWrapper& dbw, const char* pszMode = "r+", bool fFlushOnCloseIn=true);
-    ~CDB() { Close(); }
-
-    CDB(const CDB&) = delete;
-    CDB& operator=(const CDB&) = delete;
-
-    void Flush();
+    WalletDatabase();
+    
+    //! Legacy constructor for compatibility - takes an env pointer (ignored) and filename
+    WalletDatabase(WalletDatabase* env_in, const std::string& wallet_file);
+    
+    ~WalletDatabase();
+    
+    WalletDatabase(const WalletDatabase&) = delete;
+    WalletDatabase& operator=(const WalletDatabase&) = delete;
+    
+    //! Open the database
+    bool Open(const fs::path& path);
+    
+    //! Close the database
     void Close();
-    static bool Recover(const std::string& filename, void *callbackDataIn, bool (*recoverKVcallback)(void* callbackData, CDataStream ssKey, CDataStream ssValue), std::string& out_backup_filename);
-
-    /* flush the wallet passively (TRY_LOCK)
-       ideal to be called periodically */
-    static bool PeriodicFlush(CWalletDBWrapper& dbw);
-    /* verifies the database environment */
-    static bool VerifyEnvironment(const std::string& walletFile, const fs::path& dataDir, std::string& errorStr);
-    /* verifies the database file */
-    static bool VerifyDatabaseFile(const std::string& walletFile, const fs::path& dataDir, std::string& warningStr, std::string& errorStr, CDBEnv::recoverFunc_type recoverFunc);
-
-public:
-    template <typename K, typename T>
-    bool Read(const K& key, T& value)
-    {
-        if (!pdb)
-            return false;
-
-        // Key
-        CDataStream ssKey(SER_DISK, CLIENT_VERSION);
-        ssKey.reserve(1000);
-        ssKey << key;
-        Dbt datKey(ssKey.data(), ssKey.size());
-
-        // Read
-        Dbt datValue;
-        datValue.set_flags(DB_DBT_MALLOC);
-        int ret = pdb->get(activeTxn, &datKey, &datValue, 0);
-        memory_cleanse(datKey.get_data(), datKey.get_size());
-        bool success = false;
-        if (datValue.get_data() != nullptr) {
-            // Unserialize value
-            try {
-                CDataStream ssValue((char*)datValue.get_data(), (char*)datValue.get_data() + datValue.get_size(), SER_DISK, CLIENT_VERSION);
-                ssValue >> value;
-                success = true;
-            } catch (const std::exception&) {
-                // In this case success remains 'false'
-            }
-
-            // Clear and free memory
-            memory_cleanse(datValue.get_data(), datValue.get_size());
-            free(datValue.get_data());
-        }
-        return ret == 0 && success;
-    }
-
-    template <typename K, typename T>
-    bool Write(const K& key, const T& value, bool fOverwrite = true)
-    {
-        if (!pdb)
-            return true;
-        if (fReadOnly)
-            assert(!"Write called on database in read-only mode");
-
-        // Key
-        CDataStream ssKey(SER_DISK, CLIENT_VERSION);
-        ssKey.reserve(1000);
-        ssKey << key;
-        Dbt datKey(ssKey.data(), ssKey.size());
-
-        // Value
-        CDataStream ssValue(SER_DISK, CLIENT_VERSION);
-        ssValue.reserve(10000);
-        ssValue << value;
-        Dbt datValue(ssValue.data(), ssValue.size());
-
-        // Write
-        int ret = pdb->put(activeTxn, &datKey, &datValue, (fOverwrite ? 0 : DB_NOOVERWRITE));
-
-        // Clear memory in case it was a private key
-        memory_cleanse(datKey.get_data(), datKey.get_size());
-        memory_cleanse(datValue.get_data(), datValue.get_size());
-        return (ret == 0);
-    }
-
-    template <typename K>
-    bool Erase(const K& key)
-    {
-        if (!pdb)
-            return false;
-        if (fReadOnly)
-            assert(!"Erase called on database in read-only mode");
-
-        // Key
-        CDataStream ssKey(SER_DISK, CLIENT_VERSION);
-        ssKey.reserve(1000);
-        ssKey << key;
-        Dbt datKey(ssKey.data(), ssKey.size());
-
-        // Erase
-        int ret = pdb->del(activeTxn, &datKey, 0);
-
-        // Clear memory
-        memory_cleanse(datKey.get_data(), datKey.get_size());
-        return (ret == 0 || ret == DB_NOTFOUND);
-    }
-
-    template <typename K>
-    bool Exists(const K& key)
-    {
-        if (!pdb)
-            return false;
-
-        // Key
-        CDataStream ssKey(SER_DISK, CLIENT_VERSION);
-        ssKey.reserve(1000);
-        ssKey << key;
-        Dbt datKey(ssKey.data(), ssKey.size());
-
-        // Exists
-        int ret = pdb->exists(activeTxn, &datKey, 0);
-
-        // Clear memory
-        memory_cleanse(datKey.get_data(), datKey.get_size());
-        return (ret == 0);
-    }
-
-    Dbc* GetCursor()
-    {
-        if (!pdb)
-            return nullptr;
-        Dbc* pcursor = nullptr;
-        int ret = pdb->cursor(nullptr, &pcursor, 0);
-        if (ret != 0)
-            return nullptr;
-        return pcursor;
-    }
-
-    int ReadAtCursor(Dbc* pcursor, CDataStream& ssKey, CDataStream& ssValue, bool setRange = false)
-    {
-        // Read at cursor
-        Dbt datKey;
-        unsigned int fFlags = DB_NEXT;
-        if (setRange) {
-            datKey.set_data(ssKey.data());
-            datKey.set_size(ssKey.size());
-            fFlags = DB_SET_RANGE;
-        }
-        Dbt datValue;
-        datKey.set_flags(DB_DBT_MALLOC);
-        datValue.set_flags(DB_DBT_MALLOC);
-        int ret = pcursor->get(&datKey, &datValue, fFlags);
-        if (ret != 0)
-            return ret;
-        else if (datKey.get_data() == nullptr || datValue.get_data() == nullptr)
-            return 99999;
-
-        // Convert to streams
-        ssKey.SetType(SER_DISK);
-        ssKey.clear();
-        ssKey.write((char*)datKey.get_data(), datKey.get_size());
-        ssValue.SetType(SER_DISK);
-        ssValue.clear();
-        ssValue.write((char*)datValue.get_data(), datValue.get_size());
-
-        // Clear and free memory
-        memory_cleanse(datKey.get_data(), datKey.get_size());
-        memory_cleanse(datValue.get_data(), datValue.get_size());
-        free(datKey.get_data());
-        free(datValue.get_data());
-        return 0;
-    }
-
-public:
-    bool TxnBegin()
-    {
-        if (!pdb || activeTxn)
-            return false;
-        DbTxn* ptxn = bitdb.TxnBegin();
-        if (!ptxn)
-            return false;
-        activeTxn = ptxn;
-        return true;
-    }
-
-    bool TxnCommit()
-    {
-        if (!pdb || !activeTxn)
-            return false;
-        int ret = activeTxn->commit(0);
-        activeTxn = nullptr;
-        return (ret == 0);
-    }
-
-    bool TxnAbort()
-    {
-        if (!pdb || !activeTxn)
-            return false;
-        int ret = activeTxn->abort();
-        activeTxn = nullptr;
-        return (ret == 0);
-    }
-
-    bool ReadVersion(int& nVersion)
-    {
-        nVersion = 0;
-        return Read(std::string("version"), nVersion);
-    }
-
-    bool WriteVersion(int nVersion)
-    {
-        return Write(std::string("version"), nVersion);
-    }
-
-    bool static Rewrite(CWalletDBWrapper& dbw, const char* pszSkip = nullptr);
+    
+    //! Check if database is open
+    bool IsOpen() const { return m_is_open; }
+    
+    //! Create a mock database for testing
+    void MakeMock();
+    
+    //! Check if this is a mock database
+    bool IsMock() const { return m_mock; }
+    
+    //! Get the database file path
+    std::string GetPath() const { return m_file_path; }
+    
+    //! Get the database name
+    std::string GetName() const;
+    
+    //! Flush database to disk
+    void Flush(bool shutdown);
+    
+    //! Backup database to file
+    bool Backup(const std::string& dest_path);
+    
+    //! Rewrite the database (vacuum and optimize)
+    bool Rewrite(const char* pszSkip = nullptr);
+    
+    //! Verify database integrity
+    bool Verify(std::string& error_str);
+    
+    //! Increment update counter
+    void IncrementUpdateCounter();
+    
+    //! Counters for periodic flush logic
+    std::atomic<unsigned int> nUpdateCounter{0};
+    unsigned int nLastSeen{0};
+    unsigned int nLastFlushed{0};
+    int64_t nLastWalletUpdate{0};
+    
+    //! Get SQLite handle (for advanced operations)
+    sqlite3* GetHandle() { return m_db; }
+    
+    //! Reset the database (for testing)
+    void Reset();
 };
+
+/**
+ * RAII class for database write batches.
+ * 
+ * Provides transactional semantics for database operations.
+ * Changes are not committed until TxnCommit() is called.
+ * If the batch is destroyed without commit, changes are rolled back.
+ */
+class WalletBatch
+{
+private:
+    WalletDatabase& m_database;
+    sqlite3* m_db{nullptr};
+    bool m_in_transaction{false};
+    bool m_flush_on_close{true};
+    
+    //! Prepared statements for performance
+    SQLiteStatement m_read_stmt;
+    SQLiteStatement m_write_stmt;
+    SQLiteStatement m_erase_stmt;
+    SQLiteStatement m_exists_stmt;
+    
+    //! Prepare common statements
+    bool PrepareStatements();
+    
+public:
+    explicit WalletBatch(WalletDatabase& database, const char* mode = "r+", bool flush_on_close = true);
+    ~WalletBatch();
+    
+    WalletBatch(const WalletBatch&) = delete;
+    WalletBatch& operator=(const WalletBatch&) = delete;
+    
+    //! Read a key-value pair
+    template <typename K, typename T>
+    bool Read(const K& key, T& value);
+    
+    //! Write a key-value pair
+    template <typename K, typename T>
+    bool Write(const K& key, const T& value, bool overwrite = true);
+    
+    //! Erase a key
+    template <typename K>
+    bool Erase(const K& key);
+    
+    //! Check if a key exists
+    template <typename K>
+    bool Exists(const K& key);
+    
+    //! Begin a transaction
+    bool TxnBegin();
+    
+    //! Commit current transaction
+    bool TxnCommit();
+    
+    //! Abort current transaction
+    bool TxnAbort();
+    
+    //! Read database version
+    bool ReadVersion(int& version);
+    
+    //! Write database version
+    bool WriteVersion(int version);
+    
+    //! Get cursor for iteration
+    std::unique_ptr<WalletCursor> GetCursor();
+    
+    //! Flush changes to disk
+    void Flush();
+    
+    //! Close the batch
+    void Close();
+    
+    //! Static functions for compatibility
+    static bool PeriodicFlush(WalletDatabase& database);
+    static bool VerifyEnvironment(const std::string& wallet_file, const fs::path& data_dir, std::string& error_str);
+    static bool VerifyDatabaseFile(const std::string& wallet_file, const fs::path& data_dir, std::string& warning_str, std::string& error_str);
+    static bool Recover(const std::string& filename, void* callback_data, bool (*recover_kv_callback)(void*, CDataStream, CDataStream), std::string& backup_filename);
+    static bool Rewrite(WalletDatabase& database, const char* skip = nullptr);
+};
+
+/**
+ * Cursor for iterating over database entries.
+ */
+class WalletCursor
+{
+private:
+    sqlite3_stmt* m_stmt{nullptr};
+    bool m_valid{false};
+    
+public:
+    WalletCursor(sqlite3* db);
+    ~WalletCursor();
+    
+    WalletCursor(const WalletCursor&) = delete;
+    WalletCursor& operator=(const WalletCursor&) = delete;
+    
+    //! Move to next entry
+    bool Next();
+    
+    //! Get current key
+    bool GetKey(CDataStream& key);
+    
+    //! Get current value
+    bool GetValue(CDataStream& value);
+    
+    //! Get key and value together
+    int ReadAtCursor(CDataStream& key, CDataStream& value, bool set_range = false);
+    
+    //! Check if cursor is valid
+    bool IsValid() const { return m_valid; }
+    
+    //! Close the cursor
+    void Close();
+};
+
+// Template implementations
+
+template <typename K, typename T>
+bool WalletBatch::Read(const K& key, T& value)
+{
+    if (!m_db) return false;
+    
+    // Serialize the key
+    CDataStream ssKey(SER_DISK, CLIENT_VERSION);
+    ssKey.reserve(1000);
+    ssKey << key;
+    
+    // Prepare read statement if needed
+    const char* sql = "SELECT value FROM main WHERE key = ?";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    
+    // Bind key
+    if (sqlite3_bind_blob(stmt, 1, ssKey.data(), ssKey.size(), SQLITE_STATIC) != SQLITE_OK) {
+        sqlite3_finalize(stmt);
+        return false;
+    }
+    
+    // Execute
+    int rc = sqlite3_step(stmt);
+    if (rc != SQLITE_ROW) {
+        sqlite3_finalize(stmt);
+        return false;
+    }
+    
+    // Get value
+    const void* data = sqlite3_column_blob(stmt, 0);
+    int size = sqlite3_column_bytes(stmt, 0);
+    
+    if (data == nullptr || size == 0) {
+        sqlite3_finalize(stmt);
+        return false;
+    }
+    
+    try {
+        CDataStream ssValue((const char*)data, (const char*)data + size, SER_DISK, CLIENT_VERSION);
+        ssValue >> value;
+    } catch (const std::exception&) {
+        sqlite3_finalize(stmt);
+        return false;
+    }
+    
+    // Clear sensitive data from memory
+    memory_cleanse((void*)data, size);
+    sqlite3_finalize(stmt);
+    
+    return true;
+}
+
+template <typename K, typename T>
+bool WalletBatch::Write(const K& key, const T& value, bool overwrite)
+{
+    if (!m_db) return false;
+    
+    // Serialize key and value
+    CDataStream ssKey(SER_DISK, CLIENT_VERSION);
+    ssKey.reserve(1000);
+    ssKey << key;
+    
+    CDataStream ssValue(SER_DISK, CLIENT_VERSION);
+    ssValue.reserve(10000);
+    ssValue << value;
+    
+    // Use INSERT OR REPLACE for overwrite, INSERT OR IGNORE otherwise
+    const char* sql = overwrite ? 
+        "INSERT OR REPLACE INTO main (key, value) VALUES (?, ?)" :
+        "INSERT OR IGNORE INTO main (key, value) VALUES (?, ?)";
+    
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    
+    // Bind key and value
+    if (sqlite3_bind_blob(stmt, 1, ssKey.data(), ssKey.size(), SQLITE_STATIC) != SQLITE_OK ||
+        sqlite3_bind_blob(stmt, 2, ssValue.data(), ssValue.size(), SQLITE_STATIC) != SQLITE_OK) {
+        sqlite3_finalize(stmt);
+        return false;
+    }
+    
+    // Execute
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    // Clear sensitive data
+    memory_cleanse(ssKey.data(), ssKey.size());
+    memory_cleanse(ssValue.data(), ssValue.size());
+    
+    return rc == SQLITE_DONE;
+}
+
+template <typename K>
+bool WalletBatch::Erase(const K& key)
+{
+    if (!m_db) return false;
+    
+    // Serialize the key
+    CDataStream ssKey(SER_DISK, CLIENT_VERSION);
+    ssKey.reserve(1000);
+    ssKey << key;
+    
+    const char* sql = "DELETE FROM main WHERE key = ?";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    
+    if (sqlite3_bind_blob(stmt, 1, ssKey.data(), ssKey.size(), SQLITE_STATIC) != SQLITE_OK) {
+        sqlite3_finalize(stmt);
+        return false;
+    }
+    
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    memory_cleanse(ssKey.data(), ssKey.size());
+    
+    // Return true even if key didn't exist
+    return rc == SQLITE_DONE;
+}
+
+template <typename K>
+bool WalletBatch::Exists(const K& key)
+{
+    if (!m_db) return false;
+    
+    // Serialize the key
+    CDataStream ssKey(SER_DISK, CLIENT_VERSION);
+    ssKey.reserve(1000);
+    ssKey << key;
+    
+    const char* sql = "SELECT 1 FROM main WHERE key = ? LIMIT 1";
+    sqlite3_stmt* stmt;
+    if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false;
+    }
+    
+    if (sqlite3_bind_blob(stmt, 1, ssKey.data(), ssKey.size(), SQLITE_STATIC) != SQLITE_OK) {
+        sqlite3_finalize(stmt);
+        return false;
+    }
+    
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    
+    memory_cleanse(ssKey.data(), ssKey.size());
+    
+    return rc == SQLITE_ROW;
+}
+
+//
+// Legacy type aliases for compatibility during transition
+//
+
+using CDBEnv = WalletDatabase;
+using CWalletDBWrapper = WalletDatabase;
+using CDB = WalletBatch;
+
+// Global database instance (legacy compatibility)
+extern WalletDatabase bitdb;
 
 #endif // MYNTA_WALLET_DB_H

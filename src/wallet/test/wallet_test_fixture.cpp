@@ -1,5 +1,6 @@
 // Copyright (c) 2016 The Bitcoin Core developers
 // Copyright (c) 2017-2019 The Raven Core developers
+// Copyright (c) 2024-2026 The Mynta Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,10 +15,11 @@ CWallet *pwalletMain;
 WalletTestingSetup::WalletTestingSetup(const std::string &chainName) :
         TestingSetup(chainName)
 {
-    bitdb.MakeMock();
-
+    // Create a mock in-memory database for testing
+    std::unique_ptr<WalletDatabase> dbw(new WalletDatabase());
+    dbw->MakeMock();
+    
     bool fFirstRun;
-    std::unique_ptr<CWalletDBWrapper> dbw(new CWalletDBWrapper(&bitdb, "wallet_test.dat"));
     pwalletMain = new CWallet(std::move(dbw));
     pwalletMain->LoadWallet(fFirstRun);
     RegisterValidationInterface(pwalletMain);
@@ -30,7 +32,4 @@ WalletTestingSetup::~WalletTestingSetup()
     UnregisterValidationInterface(pwalletMain);
     delete pwalletMain;
     pwalletMain = nullptr;
-
-    bitdb.Flush(true);
-    bitdb.Reset();
 }

@@ -1,7 +1,7 @@
 dnl require autoconf 2.60 (AS_ECHO/AS_ECHO_N)
 AC_PREREQ([2.60])
-define(_CLIENT_VERSION_MAJOR, 0)
-define(_CLIENT_VERSION_MINOR, 1)
+define(_CLIENT_VERSION_MAJOR, 1)
+define(_CLIENT_VERSION_MINOR, 0)
 define(_CLIENT_VERSION_REVISION, 0)
 define(_CLIENT_VERSION_BUILD, 0)
 define(_CLIENT_VERSION_RC, 0)
@@ -412,15 +412,15 @@ case $host in
          dnl the user (--without-wallet or --without-gui for example).
 
          openssl_prefix=`$BREW --prefix openssl 2>/dev/null`
-         bdb_prefix=`$BREW --prefix berkeley-db 2>/dev/null`
          qt5_prefix=`$BREW --prefix qt5 2>/dev/null`
+         sqlite_prefix=`$BREW --prefix sqlite 2>/dev/null`
          if test x$openssl_prefix != x; then
            PKG_CONFIG_PATH="$openssl_prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
            export PKG_CONFIG_PATH
          fi
-         if test x$bdb_prefix != x; then
-           CPPFLAGS="$CPPFLAGS -I$bdb_prefix/include"
-           LIBS="$LIBS -L$bdb_prefix/lib"
+         if test x$sqlite_prefix != x; then
+           CPPFLAGS="$CPPFLAGS -I$sqlite_prefix/include"
+           LIBS="$LIBS -L$sqlite_prefix/lib"
          fi
          if test x$qt5_prefix != x; then
            PKG_CONFIG_PATH="$qt5_prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
@@ -722,8 +722,8 @@ AC_SUBST(LIBLEVELDB)
 AC_SUBST(LIBMEMENV)
 
 if test x$enable_wallet != xno; then
-    dnl Check for libdb_cxx only if wallet enabled
-    MYNTA_FIND_BDB48
+    dnl Check for SQLite only if wallet enabled
+    MYNTA_FIND_SQLITE
 fi
 
 dnl Check for libminiupnpc (optional)

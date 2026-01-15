@@ -627,8 +627,10 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
         ListCoinsTestingSetup()
         {
             CreateAndProcessBlock({}, GetScriptForRawPubKey(coinbaseKey.GetPubKey()));
-            ::bitdb.MakeMock();
-            wallet.reset(new CWallet(std::unique_ptr<CWalletDBWrapper>(new CWalletDBWrapper(&bitdb, "wallet_test.dat"))));
+            // Create a mock in-memory database for testing
+            std::unique_ptr<WalletDatabase> dbw(new WalletDatabase());
+            dbw->MakeMock();
+            wallet.reset(new CWallet(std::move(dbw)));
             bool firstRun;
             wallet->LoadWallet(firstRun);
             AddKey(*wallet, coinbaseKey);
@@ -638,8 +640,6 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
         ~ListCoinsTestingSetup()
         {
             wallet.reset();
-            ::bitdb.Flush(true);
-            ::bitdb.Reset();
         }
 
         CWalletTx &AddTx(CRecipient recipient)

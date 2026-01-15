@@ -1,4 +1,9 @@
-packages:=boost openssl libevent zeromq
+packages:=boost openssl libevent
+# ZeroMQ is optional - only include if not disabled
+zmq_packages_:=zeromq
+zmq_packages_1:=
+packages += $(zmq_packages_$(NO_ZMQ))
+
 native_packages := native_ccache native_b2
 
 qt_native_packages = native_protobuf
@@ -12,7 +17,7 @@ qt_aarch64_linux_packages:=$(qt_x86_64_linux_packages)
 qt_darwin_packages=qt
 qt_mingw32_packages=qt
 
-wallet_packages=bdb
+wallet_packages=sqlite
 
 upnp_packages=miniupnpc
 

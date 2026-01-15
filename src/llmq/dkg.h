@@ -57,7 +57,7 @@ enum class DKGPhase : uint8_t {
     JUSTIFICATION = 4,
     COMMITMENT = 5,
     FINALIZATION = 6,
-    ERROR = 255
+    DKG_ERROR = 255  // Cannot use 'ERROR' - conflicts with Windows macro
 };
 
 std::string DKGPhaseToString(DKGPhase phase);

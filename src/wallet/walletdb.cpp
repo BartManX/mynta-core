@@ -1,6 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2016 The Bitcoin Core developers
 // Copyright (c) 2017-2020 The Raven Core developers
+// Copyright (c) 2024-2026 The Mynta Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -183,43 +184,36 @@ void CWalletDB::ListAccountCreditDebit(const std::string& strAccount, std::list<
 {
     bool fAllAccounts = (strAccount == "*");
 
-    Dbc* pcursor = batch.GetCursor();
-    if (!pcursor)
+    std::unique_ptr<WalletCursor> cursor = batch.GetCursor();
+    if (!cursor) {
         throw std::runtime_error(std::string(__func__) + ": cannot create DB cursor");
-    bool setRange = true;
-    while (true)
+    }
+    
+    while (cursor->Next())
     {
-        // Read next record
+        // Get key and value
         CDataStream ssKey(SER_DISK, CLIENT_VERSION);
-        if (setRange)
-            ssKey << std::make_pair(std::string("acentry"), std::make_pair((fAllAccounts ? std::string("") : strAccount), uint64_t(0)));
         CDataStream ssValue(SER_DISK, CLIENT_VERSION);
-        int ret = batch.ReadAtCursor(pcursor, ssKey, ssValue, setRange);
-        setRange = false;
-        if (ret == DB_NOTFOUND)
+        
+        if (!cursor->GetKey(ssKey) || !cursor->GetValue(ssValue)) {
             break;
-        else if (ret != 0)
-        {
-            pcursor->close();
-            throw std::runtime_error(std::string(__func__) + ": error scanning DB");
         }
 
         // Unserialize
         std::string strType;
         ssKey >> strType;
         if (strType != "acentry")
-            break;
+            continue;
+            
         CAccountingEntry acentry;
         ssKey >> acentry.strAccount;
         if (!fAllAccounts && acentry.strAccount != strAccount)
-            break;
+            continue;
 
         ssValue >> acentry;
         ssKey >> acentry.nEntryNo;
         entries.push_back(acentry);
     }
-
-    pcursor->close();
 }
 
 class CWalletScanState {
@@ -612,23 +606,20 @@ DBErrors CWalletDB::LoadWallet(CWallet* pwallet)
         }
 
         // Get cursor
-        Dbc* pcursor = batch.GetCursor();
-        if (!pcursor)
+        std::unique_ptr<WalletCursor> cursor = batch.GetCursor();
+        if (!cursor)
         {
             LogPrintf("Error getting wallet database cursor\n");
             return DB_CORRUPT;
         }
 
-        while (true)
+        while (cursor->Next())
         {
-            // Read next record
+            // Get key and value
             CDataStream ssKey(SER_DISK, CLIENT_VERSION);
             CDataStream ssValue(SER_DISK, CLIENT_VERSION);
-            int ret = batch.ReadAtCursor(pcursor, ssKey, ssValue);
-            if (ret == DB_NOTFOUND)
-                break;
-            else if (ret != 0)
-            {
+            
+            if (!cursor->GetKey(ssKey) || !cursor->GetValue(ssValue)) {
                 LogPrintf("Error reading next record from wallet database\n");
                 return DB_CORRUPT;
             }
@@ -655,7 +646,6 @@ DBErrors CWalletDB::LoadWallet(CWallet* pwallet)
             if (!strErr.empty())
                 LogPrintf("%s\n", strErr);
         }
-        pcursor->close();
     }
     catch (const boost::thread_interrupted&) {
         throw;
@@ -717,23 +707,20 @@ DBErrors CWalletDB::FindWalletTx(std::vector<uint256>& vTxHash, std::vector<CWal
         }
 
         // Get cursor
-        Dbc* pcursor = batch.GetCursor();
-        if (!pcursor)
+        std::unique_ptr<WalletCursor> cursor = batch.GetCursor();
+        if (!cursor)
         {
             LogPrintf("Error getting wallet database cursor\n");
             return DB_CORRUPT;
         }
 
-        while (true)
+        while (cursor->Next())
         {
-            // Read next record
+            // Get key and value
             CDataStream ssKey(SER_DISK, CLIENT_VERSION);
             CDataStream ssValue(SER_DISK, CLIENT_VERSION);
-            int ret = batch.ReadAtCursor(pcursor, ssKey, ssValue);
-            if (ret == DB_NOTFOUND)
-                break;
-            else if (ret != 0)
-            {
+            
+            if (!cursor->GetKey(ssKey) || !cursor->GetValue(ssValue)) {
                 LogPrintf("Error reading next record from wallet database\n");
                 return DB_CORRUPT;
             }
@@ -751,7 +738,6 @@ DBErrors CWalletDB::FindWalletTx(std::vector<uint256>& vTxHash, std::vector<CWal
                 vWtx.push_back(wtx);
             }
         }
-        pcursor->close();
     }
     catch (const boost::thread_interrupted&) {
         throw;
@@ -828,11 +814,12 @@ void MaybeCompactWalletDB()
         return;
     }
     if (!gArgs.GetBoolArg("-flushwallet", DEFAULT_FLUSHWALLET)) {
+        fOneThread = false;
         return;
     }
 
     for (CWalletRef pwallet : vpwallets) {
-        CWalletDBWrapper& dbh = pwallet->GetDBHandle();
+        WalletDatabase& dbh = pwallet->GetDBHandle();
 
         unsigned int nUpdateCounter = dbh.nUpdateCounter;
 
@@ -842,7 +829,7 @@ void MaybeCompactWalletDB()
         }
 
         if (dbh.nLastFlushed != nUpdateCounter && GetTime() - dbh.nLastWalletUpdate >= 2) {
-            if (CDB::PeriodicFlush(dbh)) {
+            if (WalletBatch::PeriodicFlush(dbh)) {
                 dbh.nLastFlushed = nUpdateCounter;
             }
         }
@@ -856,7 +843,7 @@ void MaybeCompactWalletDB()
 //
 bool CWalletDB::Recover(const std::string& filename, void *callbackDataIn, bool (*recoverKVcallback)(void* callbackData, CDataStream ssKey, CDataStream ssValue), std::string& out_backup_filename)
 {
-    return CDB::Recover(filename, callbackDataIn, recoverKVcallback, out_backup_filename);
+    return WalletBatch::Recover(filename, callbackDataIn, recoverKVcallback, out_backup_filename);
 }
 
 bool CWalletDB::Recover(const std::string& filename, std::string& out_backup_filename)
@@ -891,12 +878,12 @@ bool CWalletDB::RecoverKeysOnlyFilter(void *callbackData, CDataStream ssKey, CDa
 
 bool CWalletDB::VerifyEnvironment(const std::string& walletFile, const fs::path& dataDir, std::string& errorStr)
 {
-    return CDB::VerifyEnvironment(walletFile, dataDir, errorStr);
+    return WalletBatch::VerifyEnvironment(walletFile, dataDir, errorStr);
 }
 
 bool CWalletDB::VerifyDatabaseFile(const std::string& walletFile, const fs::path& dataDir, std::string& warningStr, std::string& errorStr)
 {
-    return CDB::VerifyDatabaseFile(walletFile, dataDir, warningStr, errorStr, CWalletDB::Recover);
+    return WalletBatch::VerifyDatabaseFile(walletFile, dataDir, warningStr, errorStr);
 }
 
 bool CWalletDB::WriteDestData(const std::string &address, const std::string &key, const std::string &value)

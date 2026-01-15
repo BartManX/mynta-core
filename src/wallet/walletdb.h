@@ -1,6 +1,7 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2016 The Bitcoin Core developers
 // Copyright (c) 2017-2020 The Raven Core developers
+// Copyright (c) 2024-2026 The Mynta Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -18,20 +19,18 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <memory>
 
 /**
  * Overview of wallet database classes:
  *
- * - CDBEnv is an environment in which the database exists (has no analog in dbwrapper.h)
- * - CWalletDBWrapper represents a wallet database (similar to CDBWrapper in dbwrapper.h)
- * - CDB is a low-level database transaction (similar to CDBBatch in dbwrapper.h)
- * - CWalletDB is a modifier object for the wallet, and encapsulates a database
- *   transaction as well as methods to act on the database (no analog in
- *   dbwrapper.h)
+ * - WalletDatabase is the SQLite database handle (manages connection and schema)
+ * - WalletBatch is a database transaction/batch (provides CRUD operations)
+ * - WalletCursor is an iterator over database entries
+ * - CWalletDB is a modifier object for the wallet, encapsulating a database
+ *   transaction as well as methods to act on the database
  *
- * The latter two are named confusingly, in contrast to what the names CDB
- * and CWalletDB suggest they are transient transaction objects and don't
- * represent the database itself.
+ * This is a clean SQLite implementation with no Berkeley DB compatibility code.
  */
 
 static const bool DEFAULT_FLUSHWALLET = true;
@@ -190,7 +189,7 @@ private:
     }
 
 public:
-    explicit CWalletDB(CWalletDBWrapper& dbw, const char* pszMode = "r+", bool _fFlushOnClose = true) :
+    explicit CWalletDB(WalletDatabase& dbw, const char* pszMode = "r+", bool _fFlushOnClose = true) :
         batch(dbw, pszMode, _fFlushOnClose),
         m_dbw(dbw)
     {
@@ -245,6 +244,7 @@ public:
     DBErrors FindWalletTx(std::vector<uint256>& vTxHash, std::vector<CWalletTx>& vWtx);
     DBErrors ZapWalletTx(std::vector<CWalletTx>& vWtx);
     DBErrors ZapSelectTx(std::vector<uint256>& vHashIn, std::vector<uint256>& vHashOut);
+    
     /* Try to (very carefully!) recover wallet database (with a possible key type filter) */
     static bool Recover(const std::string& filename, void *callbackDataIn, bool (*recoverKVcallback)(void* callbackData, CDataStream ssKey, CDataStream ssValue), std::string& out_backup_filename);
     /* Recover convenience-function to bypass the key filter callback, called when verify fails, recovers everything */
@@ -281,12 +281,16 @@ public:
     bool EraseBip39Words(bool fEncrypted);
     bool EraseBip39Passphrase(bool fEncrypted);
     bool EraseBip39VchSeed(bool fEncrypted);
+    
+    //! Get a cursor for iteration
+    std::unique_ptr<WalletCursor> GetCursor() { return batch.GetCursor(); }
+    
 private:
-    CDB batch;
-    CWalletDBWrapper& m_dbw;
+    WalletBatch batch;
+    WalletDatabase& m_dbw;
 };
 
-//! Compacts BDB state so that wallet.dat is self-contained (if there are changes)
+//! Compacts the wallet database (vacuum and optimize)
 void MaybeCompactWalletDB();
 
 #endif // MYNTA_WALLET_WALLETDB_H

@@ -26,7 +26,7 @@
 #include <univalue.h>
 
 #ifdef ENABLE_WALLET
-#include <db_cxx.h>
+#include <sqlite3.h>
 #include <wallet/wallet.h>
 #endif
 
@@ -469,7 +469,7 @@ RPCConsole::RPCConsole(const PlatformStyle *_platformStyle, QWidget *parent) :
 
     // set library version labels
 #ifdef ENABLE_WALLET
-    ui->berkeleyDBVersion->setText(DbEnv::version(0, 0, 0));
+    ui->berkeleyDBVersion->setText(QString::fromStdString(sqlite3_libversion()));
     std::string walletPath = GetDataDir().string();
     walletPath += QDir::separator().toLatin1() + gArgs.GetArg("-wallet", "wallet.dat");
     ui->wallet_path->setText(QString::fromStdString(walletPath));

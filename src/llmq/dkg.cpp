@@ -38,7 +38,7 @@ std::string DKGPhaseToString(DKGPhase phase)
         case DKGPhase::JUSTIFICATION: return "JUSTIFICATION";
         case DKGPhase::COMMITMENT: return "COMMITMENT";
         case DKGPhase::FINALIZATION: return "FINALIZATION";
-        case DKGPhase::ERROR: return "ERROR";
+        case DKGPhase::DKG_ERROR: return "ERROR";
         default: return "UNKNOWN";
     }
 }

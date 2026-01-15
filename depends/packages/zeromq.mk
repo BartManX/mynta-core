@@ -11,6 +11,9 @@ define $(package)_set_vars
   $(package)_config_opts_linux=--with-pic
   $(package)_config_opts_android=--with-pic
   $(package)_cxxflags=-std=c++17
+  # Fix MinGW GCC 13+ build: prevent Windows.h min/max macro conflicts
+  $(package)_cppflags_mingw32=-DNOMINMAX -DWIN32_LEAN_AND_MEAN
+  $(package)_cxxflags_mingw32=-std=c++17 -DNOMINMAX -DWIN32_LEAN_AND_MEAN
 endef
 
 define $(package)_preprocess_cmds

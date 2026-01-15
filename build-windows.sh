@@ -64,7 +64,8 @@ export CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site
     --without-gui \
     --with-incompatible-bdb \
     PTHREAD_LIBS='-lpthread' \
-    LIBS='-lpthread'
+    LIBS='-lpthread' \
+    CXXFLAGS="-O2 -fpermissive -Wno-error=incompatible-pointer-types"
 
 make -j$(nproc)
 
