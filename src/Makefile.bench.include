@@ -32,7 +32,7 @@ bench_bench_raven_SOURCES = \
 
 nodist_bench_bench_raven_SOURCES = $(GENERATED_BENCH_FILES)
 
-bench_bench_raven_CPPFLAGS = $(AM_CPPFLAGS) $(RAVEN_INCLUDES) $(EVENT_CLFAGS) $(EVENT_PTHREADS_CFLAGS) -I$(builddir)/bench/
+bench_bench_raven_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES) $(EVENT_CLFAGS) $(EVENT_PTHREADS_CFLAGS) -I$(builddir)/bench/
 bench_bench_raven_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 bench_bench_raven_LDADD = \
   $(LIBRAVEN_SERVER) \

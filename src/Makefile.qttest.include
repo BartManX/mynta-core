@@ -31,7 +31,7 @@ TEST_RAVEN_CPP = \
 TEST_RAVEN_H = \
   test/test_raven.h
 
-qt_test_test_raven_qt_CPPFLAGS = $(AM_CPPFLAGS) $(RAVEN_INCLUDES) $(RAVEN_QT_INCLUDES) \
+qt_test_test_raven_qt_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES) $(MYNTA_QT_INCLUDES) \
   $(QT_INCLUDES) $(QT_TEST_INCLUDES) $(PROTOBUF_CFLAGS)
 
 qt_test_test_raven_qt_SOURCES = \
