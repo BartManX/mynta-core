@@ -426,7 +426,7 @@ public:
         // =======================================================================
         consensus.nMasternodeCollateral = 100000 * COIN;      // 100,000 MYNTA
         consensus.nMasternodeCollateralConfirmations = 15;    // ~15 minutes
-        consensus.nMasternodeActivationHeight = 1000;         // MNs active after block 1000
+        consensus.nMasternodeActivationHeight = 50000;        // MNs active after block 50000 (~35 days from launch)
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs
         consensus.nPoSePenaltyIncrement = 66;                 // Penalty per missed session
         consensus.nPoSeBanThreshold = 100;                    // Ban at 100 penalty points

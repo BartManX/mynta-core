@@ -17,6 +17,7 @@
 #include "script/sign.h"
 #include "script/standard.h"
 #include "util.h"
+#include "utilmoneystr.h"
 #include "validation.h"
 
 #ifdef ENABLE_WALLET
@@ -169,6 +170,95 @@ UniValue masternode_count(const JSONRPCRequest& request)
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("total", (int)mnList->GetAllMNsCount());
     obj.pushKV("enabled", (int)mnList->GetValidMNsCount());
+    
+    return obj;
+}
+
+UniValue masternode_status(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() > 0)
+        throw std::runtime_error(
+            "masternode status\n"
+            "\nGet masternode activation status and payment information.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"current_height\": n,              (numeric) Current blockchain height\n"
+            "  \"activation_height\": n,           (numeric) Block height when masternodes activate\n"
+            "  \"blocks_until_activation\": n,     (numeric) Blocks remaining until activation (-1 if active)\n"
+            "  \"masternodes_active\": true|false, (boolean) Whether masternodes are active\n"
+            "  \"payments_enforced\": true|false,  (boolean) Whether MN payments are enforced\n"
+            "  \"grace_period_blocks\": n,         (numeric) Grace period after activation\n"
+            "  \"total_registered\": n,            (numeric) Total registered masternodes\n"
+            "  \"enabled_count\": n,               (numeric) Enabled/valid masternodes\n"
+            "  \"next_payee\": {...},              (object) Next masternode to receive payment\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("masternode", "status")
+            + HelpExampleRpc("masternode", "status")
+        );
+
+    LOCK(cs_main);
+    
+    const CBlockIndex* pindex = chainActive.Tip();
+    if (!pindex) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Chain tip not available");
+    }
+    
+    int nHeight = pindex->nHeight;
+    int nNextHeight = nHeight + 1;
+    const auto& consensusParams = GetParams().GetConsensus();
+    
+    UniValue obj(UniValue::VOBJ);
+    
+    // Current state
+    obj.pushKV("current_height", nHeight);
+    obj.pushKV("activation_height", consensusParams.nMasternodeActivationHeight);
+    
+    // Blocks until activation
+    int blocksUntilActivation = consensusParams.nMasternodeActivationHeight - nNextHeight;
+    obj.pushKV("blocks_until_activation", blocksUntilActivation > 0 ? blocksUntilActivation : -1);
+    
+    // Activation status
+    bool bMasternodesActive = IsMasternodeActivationHeight(nNextHeight);
+    bool bPaymentsEnforced = IsMasternodePaymentEnforced(nNextHeight);
+    obj.pushKV("masternodes_active", bMasternodesActive);
+    obj.pushKV("payments_enforced", bPaymentsEnforced);
+    obj.pushKV("grace_period_blocks", GetMasternodePaymentGracePeriod());
+    
+    // Masternode counts
+    if (deterministicMNManager) {
+        auto mnList = deterministicMNManager->GetListAtChainTip();
+        obj.pushKV("total_registered", (int)mnList->GetAllMNsCount());
+        obj.pushKV("enabled_count", (int)mnList->GetValidMNsCount());
+        
+        // Next payee (if masternodes are active)
+        if (bMasternodesActive) {
+            CDeterministicMNCPtr payee = deterministicMNManager->GetMNPayee(pindex);
+            if (payee) {
+                UniValue payeeObj(UniValue::VOBJ);
+                payeeObj.pushKV("proTxHash", payee->proTxHash.ToString());
+                
+                CTxDestination dest;
+                if (ExtractDestination(payee->state.scriptPayout, dest)) {
+                    payeeObj.pushKV("payoutAddress", EncodeDestination(dest));
+                }
+                
+                CAmount nBlockSubsidy = GetBlockSubsidy(nNextHeight, consensusParams);
+                CAmount nMNPayment = nBlockSubsidy * consensusParams.nMasternodeRewardPercent / 100;
+                payeeObj.pushKV("expected_payment", FormatMoney(nMNPayment));
+                
+                obj.pushKV("next_payee", payeeObj);
+            } else {
+                obj.pushKV("next_payee", "no_valid_masternodes");
+            }
+        } else {
+            obj.pushKV("next_payee", "masternodes_not_active");
+        }
+    } else {
+        obj.pushKV("total_registered", 0);
+        obj.pushKV("enabled_count", 0);
+        obj.pushKV("next_payee", "manager_not_initialized");
+    }
     
     return obj;
 }
@@ -571,6 +661,7 @@ UniValue masternode(const JSONRPCRequest& request)
             "\nAvailable commands:\n"
             "  count        - Get masternode count\n"
             "  list         - Get list of masternodes\n"
+            "  status       - Get masternode activation status and payment info\n"
             "  winner       - Get next masternode winner(s)\n"
         );
     }
@@ -586,6 +677,8 @@ UniValue masternode(const JSONRPCRequest& request)
         return masternode_count(newRequest);
     } else if (strCommand == "list") {
         return masternode_list(newRequest);
+    } else if (strCommand == "status") {
+        return masternode_status(newRequest);
     } else if (strCommand == "winner") {
         return masternode_winner(newRequest);
     }

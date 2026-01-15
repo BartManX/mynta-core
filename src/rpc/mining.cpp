@@ -27,6 +27,7 @@
 #include "utilstrencodings.h"
 #include "validationinterface.h"
 #include "warnings.h"
+#include "evo/deterministicmns.h"
 
 #include <memory>
 #include <stdint.h>
@@ -727,6 +728,66 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
         
         result.push_back(Pair("devallocation", nDevAllocation));
         result.push_back(Pair("devscript", HexStr(devScript.begin(), devScript.end())));
+    }
+    
+    // =========================================================================
+    // MASTERNODE PAYMENT INFO FOR MINING POOLS
+    // =========================================================================
+    // Pools MUST include a masternode payment output when masternodes are active.
+    // This section provides:
+    // - masternode_payments_enforced: whether payments are required (post-grace period)
+    // - masternode_payments_started: whether MNs are active (pre-enforcement, optional)
+    // - masternode_activation_height: consensus height when MNs activate
+    // - masternode: payment details (script, amount, address) when applicable
+    //
+    // IMPORTANT: Pools should include MN payments when EITHER:
+    // 1. masternode_payments_enforced is true (REQUIRED - blocks rejected without)
+    // 2. masternode_payments_started is true (OPTIONAL - but recommended for consistency)
+    // =========================================================================
+    {
+        int nHeight = pindexPrev->nHeight + 1;
+        bool bMasternodePaymentsStarted = IsMasternodeActivationHeight(nHeight);
+        bool bMasternodePaymentsEnforced = IsMasternodePaymentEnforced(nHeight);
+        
+        result.push_back(Pair("masternode_payments_started", bMasternodePaymentsStarted));
+        result.push_back(Pair("masternode_payments_enforced", bMasternodePaymentsEnforced));
+        result.push_back(Pair("masternode_activation_height", consensusParams.nMasternodeActivationHeight));
+        
+        // Include MN payment info when masternodes are active (even during grace period)
+        // This allows pools to prepare and optionally include payments early
+        if (bMasternodePaymentsStarted && deterministicMNManager) {
+            // Get the masternode that should be paid using proper method signature
+            // CRITICAL: Use pindexPrev as the reference point for deterministic payee selection
+            CDeterministicMNCPtr payee = deterministicMNManager->GetMNPayee(pindexPrev);
+            
+            if (payee) {
+                CAmount nBlockSubsidy = GetBlockSubsidy(nHeight, consensusParams);
+                CAmount nMasternodePayment = nBlockSubsidy * consensusParams.nMasternodeRewardPercent / 100;
+                
+                UniValue mnObj(UniValue::VOBJ);
+                mnObj.push_back(Pair("proTxHash", payee->proTxHash.GetHex()));
+                mnObj.push_back(Pair("amount", nMasternodePayment));
+                mnObj.push_back(Pair("script", HexStr(payee->state.scriptPayout.begin(), payee->state.scriptPayout.end())));
+                
+                // Extract payee address for human-readable display
+                CTxDestination dest;
+                if (ExtractDestination(payee->state.scriptPayout, dest)) {
+                    mnObj.push_back(Pair("payee", EncodeDestination(dest)));
+                }
+                
+                // Include operator payout info if applicable
+                if (payee->nOperatorReward > 0 && !payee->state.scriptOperatorPayout.empty()) {
+                    CAmount nOperatorPayment = nMasternodePayment * payee->nOperatorReward / 10000;
+                    mnObj.push_back(Pair("operator_reward", nOperatorPayment));
+                    mnObj.push_back(Pair("operator_script", HexStr(payee->state.scriptOperatorPayout.begin(), payee->state.scriptOperatorPayout.end())));
+                }
+                
+                result.push_back(Pair("masternode", mnObj));
+            } else {
+                // No valid masternodes registered yet - inform the pool
+                result.push_back(Pair("masternode", "no_valid_masternodes"));
+            }
+        }
     }
     
     // MYNTA LAUNCH: Chain start time information for mining pools
