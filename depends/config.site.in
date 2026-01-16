@@ -60,8 +60,10 @@ if test x@host_os@ = xmingw32; then
     with_qt_libdir=$depends_prefix/lib
   fi
   # MinGW with posix threading needs pthread library
-  # LIBS is appended to link commands (after objects)
+  # Set both LIBS (for general linking) and PTHREAD_LIBS (for libmyntaconsensus)
   LIBS="-lpthread $LIBS"
+  PTHREAD_LIBS="-lpthread"
+  PTHREAD_CFLAGS=""
 fi
 
 PATH=$depends_prefix/native/bin:$PATH
