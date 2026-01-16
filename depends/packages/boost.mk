@@ -23,7 +23,8 @@ else
 $(package)_toolset_$(host_os)=gcc
 endif
 $(package)_config_libraries=chrono,filesystem,program_options,system,thread,test
-$(package)_cxxflags=-std=c++17 -fvisibility=hidden
+# -Wno-nonnull: Suppress Boost 1.71 false positive with GCC 11+
+$(package)_cxxflags=-std=c++17 -fvisibility=hidden -Wno-nonnull
 $(package)_cxxflags_linux=-fPIC
 $(package)_cxxflags_android=-fPIC
 endef
