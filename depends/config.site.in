@@ -59,6 +59,8 @@ if test x@host_os@ = xmingw32; then
   if test -z $with_qt_libdir; then
     with_qt_libdir=$depends_prefix/lib
   fi
+  # MinGW with posix threading needs pthread library
+  LDFLAGS="-lpthread $LDFLAGS"
 fi
 
 PATH=$depends_prefix/native/bin:$PATH
