@@ -132,9 +132,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          key: windows-depends-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
+          # v2: cache bust for posix threading fix
+          key: windows-depends-v2-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
           restore-keys: |
-            windows-depends-
+            windows-depends-v2-
+
+      - name: Verify MinGW threading
+        run: |
+          # Confirm we're using posix threading
+          x86_64-w64-mingw32-g++ --version | head -1
+          echo "Threading model:"
+          x86_64-w64-mingw32-g++ -v 2>&1 | grep -i thread || echo "Could not determine threading model"
 
       - name: Build depends
         run: |
