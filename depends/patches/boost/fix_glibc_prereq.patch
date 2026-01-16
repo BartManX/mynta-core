@@ -1,11 +1,14 @@
 --- a/boost/thread/pthread/thread_data.hpp
 +++ b/boost/thread/pthread/thread_data.hpp
-@@ -57,7 +57,7 @@
- #include <pthread.h>
- #include <unistd.h>
- 
--#if __GLIBC_PREREQ(2, 12)
-+#if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2, 12)
- #define BOOST_THREAD_HAS_PTHREAD_NP 1
+@@ -57,7 +57,9 @@
+ #ifdef BOOST_THREAD_USES_GETPAGESIZE
+           std::size_t page_size = getpagesize();
+ #else
+           std::size_t page_size = ::sysconf( _SC_PAGESIZE);
  #endif
- 
+-#if PTHREAD_STACK_MIN > 0
++// PTHREAD_STACK_MIN may use __GLIBC_PREREQ which is not always defined
++// Use ifdef check to avoid preprocessor errors on some systems
++#if defined(PTHREAD_STACK_MIN) && PTHREAD_STACK_MIN > 0
+           if (size<PTHREAD_STACK_MIN) size=PTHREAD_STACK_MIN;
+ #endif
