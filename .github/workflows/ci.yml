@@ -175,7 +175,7 @@ jobs:
   # =============================================================================
   build-macos:
     name: macOS (native)
-    runs-on: macos-13
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:
