@@ -12,7 +12,8 @@ $(package)_config_opts=--layout=tagged --build-type=complete --user-config=user-
 $(package)_config_opts+=threading=multi link=static -sNO_COMPRESSION=1
 $(package)_config_opts_linux=target-os=linux threadapi=pthread runtime-link=shared
 $(package)_config_opts_darwin=target-os=darwin runtime-link=shared
-$(package)_config_opts_mingw32=target-os=windows binary-format=pe threadapi=win32 runtime-link=static
+# Use pthread for mingw32 to match posix threading MinGW variant
+$(package)_config_opts_mingw32=target-os=windows binary-format=pe threadapi=pthread runtime-link=static
 $(package)_config_opts_x86_64=architecture=x86 address-model=64
 $(package)_config_opts_i686=architecture=x86 address-model=32
 $(package)_config_opts_aarch64=address-model=64

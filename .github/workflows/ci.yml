@@ -131,10 +131,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v2: cache bust for posix threading fix
-          key: windows-depends-v2-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
+          # v3: cache bust for boost pthread fix
+          key: windows-depends-v3-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
           restore-keys: |
-            windows-depends-v2-
+            windows-depends-v3-
 
       - name: Verify MinGW threading
         run: |
