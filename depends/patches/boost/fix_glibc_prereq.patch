@@ -1,0 +1,11 @@
+--- a/boost/thread/pthread/thread_data.hpp
++++ b/boost/thread/pthread/thread_data.hpp
+@@ -57,7 +57,7 @@
+ #include <pthread.h>
+ #include <unistd.h>
+ 
+-#if __GLIBC_PREREQ(2, 12)
++#if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2, 12)
+ #define BOOST_THREAD_HAS_PTHREAD_NP 1
+ #endif
+ 

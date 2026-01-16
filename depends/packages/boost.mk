@@ -12,8 +12,7 @@ $(package)_config_opts=--layout=tagged --build-type=complete --user-config=user-
 $(package)_config_opts+=threading=multi link=static -sNO_COMPRESSION=1
 $(package)_config_opts_linux=target-os=linux threadapi=pthread runtime-link=shared
 $(package)_config_opts_darwin=target-os=darwin runtime-link=shared
-# Use pthread for mingw32 to match posix threading MinGW variant
-$(package)_config_opts_mingw32=target-os=windows binary-format=pe threadapi=pthread runtime-link=static
+$(package)_config_opts_mingw32=target-os=windows binary-format=pe threadapi=win32 runtime-link=static
 $(package)_config_opts_x86_64=architecture=x86 address-model=64
 $(package)_config_opts_i686=architecture=x86 address-model=32
 $(package)_config_opts_aarch64=address-model=64
@@ -24,14 +23,14 @@ else
 $(package)_toolset_$(host_os)=gcc
 endif
 $(package)_config_libraries=chrono,filesystem,program_options,system,thread,test
-# -Wno-nonnull: Suppress Boost 1.71 false positive with GCC 11+
-$(package)_cxxflags=-std=c++17 -fvisibility=hidden -Wno-nonnull
+$(package)_cxxflags=-std=c++17 -fvisibility=hidden
 $(package)_cxxflags_linux=-fPIC
 $(package)_cxxflags_android=-fPIC
 endef
 
 define $(package)_preprocess_cmds
-  echo "using $($(package)_toolset_$(host_os)) : : $($(package)_cxx) : <cflags>\"$($(package)_cflags)\" <cxxflags>\"$($(package)_cxxflags)\" <compileflags>\"$($(package)_cppflags)\" <linkflags>\"$($(package)_ldflags)\" <archiver>\"$($(package)_ar)\" <striper>\"$(host_STRIP)\"  <ranlib>\"$(host_RANLIB)\" <rc>\"$(host_WINDRES)\" : ;" > user-config.jam
+  echo "using $($(package)_toolset_$(host_os)) : : $($(package)_cxx) : <cflags>\"$($(package)_cflags)\" <cxxflags>\"$($(package)_cxxflags)\" <compileflags>\"$($(package)_cppflags)\" <linkflags>\"$($(package)_ldflags)\" <archiver>\"$($(package)_ar)\" <striper>\"$(host_STRIP)\"  <ranlib>\"$(host_RANLIB)\" <rc>\"$(host_WINDRES)\" : ;" > user-config.jam && \
+  patch -p1 < $($(package)_patch_dir)/fix_glibc_prereq.patch
 endef
 
 define $(package)_config_cmds

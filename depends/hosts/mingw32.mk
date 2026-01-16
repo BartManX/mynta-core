@@ -1,6 +1,9 @@
 mingw32_CFLAGS=-pipe
 mingw32_CXXFLAGS=$(mingw32_CFLAGS)
 
+# Required for mingw-posix threading variant
+mingw32_LDFLAGS=-pthread
+
 mingw32_release_CFLAGS=-O2
 mingw32_release_CXXFLAGS=$(mingw32_release_CFLAGS)
 
