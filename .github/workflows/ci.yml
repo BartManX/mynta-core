@@ -19,12 +19,12 @@ concurrency:
 
 jobs:
   # =============================================================================
-  # Linux Native Build (Fast - uses system packages)
+  # Linux Build (uses depends for reproducibility)
   # =============================================================================
   build-linux:
     name: Linux x86_64
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -38,49 +38,45 @@ jobs:
             autotools-dev \
             bsdmainutils \
             build-essential \
-            libevent-dev \
-            libboost-dev \
-            libboost-system-dev \
-            libboost-filesystem-dev \
-            libboost-thread-dev \
-            libboost-chrono-dev \
-            libdb5.3-dev \
-            libdb5.3++-dev \
-            libssl-dev \
-            libminiupnpc-dev \
-            libzmq3-dev \
+            curl \
             libtool \
             pkg-config \
-            python3
+            python3 \
+            bison
 
-      - name: Cache ccache
+      - name: Cache depends sources
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
-          key: linux-ccache-${{ github.sha }}
+          path: depends/sources
+          key: depends-sources-${{ hashFiles('depends/packages/*.mk') }}
           restore-keys: |
-            linux-ccache-
+            depends-sources-
 
-      - name: Setup ccache
+      - name: Cache depends built (Linux)
+        uses: actions/cache@v4
+        with:
+          path: depends/built
+          key: linux-depends-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/linux.mk') }}
+          restore-keys: |
+            linux-depends-
+
+      - name: Build depends
         run: |
-          sudo apt-get install -y ccache
-          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
-          ccache --max-size=500M
-          ccache --zero-stats
+          cd depends
+          make HOST=x86_64-linux-gnu NO_QT=1 -j$(nproc)
 
       - name: Autogen
         run: ./autogen.sh
 
       - name: Configure
         run: |
-          ./configure \
+          CONFIG_SITE=$PWD/depends/x86_64-linux-gnu/share/config.site ./configure \
+            --prefix=/ \
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
             --without-gui \
-            --with-incompatible-bdb \
-            CC="ccache gcc" \
-            CXX="ccache g++"
+            --enable-reduce-exports
 
       - name: Build
         run: make -j$(nproc)
@@ -90,9 +86,6 @@ jobs:
           ./src/myntad --version
           ./src/mynta-cli --version
           ./src/mynta-tx --version
-
-      - name: ccache stats
-        run: ccache --show-stats
 
   # =============================================================================
   # Windows Cross-Compile (Uses depends for accuracy)
@@ -171,12 +164,12 @@ jobs:
           file src/mynta-tx.exe
 
   # =============================================================================
-  # macOS Native Build
+  # macOS Build (uses depends for reproducibility)
   # =============================================================================
   build-macos:
     name: macOS (native)
     runs-on: macos-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -184,45 +177,41 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install \
-            automake \
-            libtool \
-            boost \
-            libevent \
-            miniupnpc \
-            pkg-config \
-            zeromq \
-            berkeley-db@5
+          brew install automake libtool pkg-config
 
-      - name: Cache ccache
+      - name: Cache depends sources
         uses: actions/cache@v4
         with:
-          path: ~/Library/Caches/ccache
-          key: macos-ccache-${{ github.sha }}
+          path: depends/sources
+          key: depends-sources-${{ hashFiles('depends/packages/*.mk') }}
           restore-keys: |
-            macos-ccache-
+            depends-sources-
 
-      - name: Setup ccache
+      - name: Cache depends built (macOS)
+        uses: actions/cache@v4
+        with:
+          path: depends/built
+          key: macos-depends-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          restore-keys: |
+            macos-depends-
+
+      - name: Build depends
         run: |
-          brew install ccache
-          ccache --max-size=500M
-          ccache --zero-stats
+          cd depends
+          make NO_QT=1 -j$(sysctl -n hw.ncpu)
 
       - name: Autogen
         run: ./autogen.sh
 
       - name: Configure
         run: |
-          ./configure \
+          CONFIG_SITE=$PWD/depends/$(depends/config.guess)/share/config.site ./configure \
+            --prefix=/ \
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
             --without-gui \
-            --with-boost=$(brew --prefix boost) \
-            CC="ccache clang" \
-            CXX="ccache clang++" \
-            BDB_LIBS="-L$(brew --prefix berkeley-db@5)/lib -ldb_cxx-5.3" \
-            BDB_CFLAGS="-I$(brew --prefix berkeley-db@5)/include"
+            --enable-reduce-exports
 
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
@@ -232,9 +221,6 @@ jobs:
           ./src/myntad --version
           ./src/mynta-cli --version
           ./src/mynta-tx --version
-
-      - name: ccache stats
-        run: ccache --show-stats
 
   # =============================================================================
   # Summary Job (Required for branch protection)
