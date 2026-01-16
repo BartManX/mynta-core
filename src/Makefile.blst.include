@@ -1,0 +1,72 @@
+# Makefile.blst.include - BLST BLS12-381 Library Integration
+#
+# This file integrates the BLST library into the Mynta Core build system.
+# BLST provides BLS12-381 elliptic curve cryptography used for BLS signatures.
+#
+# Copyright (c) 2026 The Mynta Core Developers
+# Distributed under the MIT software license.
+
+# BLST source directory paths
+BLST_SRCDIR = $(top_srcdir)/src/bls/blst
+BLST_BUILDDIR = $(top_srcdir)/src/bls/blst/build
+
+# Include paths for BLST headers  
+BLST_INCLUDES = -I$(BLST_SRCDIR)/bindings -I$(BLST_SRCDIR)/src
+
+# Compiler flags for BLST C code
+# -D__BLST_PORTABLE__ ensures maximum compatibility across CPU variants
+#   - Includes both ADX and non-ADX code paths
+#   - Works on older CPUs without ADX instruction support
+# -fno-builtin avoids potential conflicts with compiler built-ins
+BLST_COMMON_FLAGS = -O2 -fno-builtin -D__BLST_PORTABLE__
+
+# Add BLST to the list of convenience libraries
+EXTRA_LIBRARIES += libblst.a
+
+# BLST library sources
+# server.c includes all other C sources via #include
+# assembly.S uses preprocessor to select platform-specific assembly
+libblst_a_SOURCES = \
+    bls/blst/src/server.c \
+    bls/blst/build/assembly.S
+
+# Compiler flags for BLST
+libblst_a_CPPFLAGS = $(BLST_INCLUDES) -D__BLST_PORTABLE__
+libblst_a_CFLAGS = $(BLST_COMMON_FLAGS) $(PIC_FLAGS)
+
+# Assembly file handling
+# .S files are preprocessed by the C compiler before assembly
+# This allows assembly.S to use #if/#include directives for platform detection
+libblst_a_CCASFLAGS = $(BLST_INCLUDES) -D__BLST_PORTABLE__ $(PIC_FLAGS)
+
+# Clean up any stale libblst.a from legacy build.sh (in source directory)
+CLEANFILES += $(BLST_SRCDIR)/libblst.a
+
+# ============================================================================
+# Platform Support Documentation
+# ============================================================================
+#
+# BLST supports the following platforms:
+#
+# FULLY SUPPORTED (optimized assembly):
+#   - Linux x86_64    : Uses elf/*.s assembly
+#   - Linux aarch64   : Uses elf/*-armv8.S assembly
+#   - Windows x86_64  : Uses coff/*.s assembly (cross-compile)
+#   - macOS x86_64    : Uses mach-o/*.s assembly
+#   - macOS aarch64   : Uses mach-o/*-armv8.S assembly
+#
+# LIMITED SUPPORT (pure C, 32-bit only):
+#   - 32-bit systems  : Uses no_asm.h fallback (slower)
+#
+# NOT SUPPORTED:
+#   - Other 64-bit architectures (RISC-V 64, MIPS64, PPC64, etc.)
+#   - BLS12-381 requires efficient 64-bit arithmetic
+#   - These will produce "unsupported platform" error at compile time
+#
+# The __BLST_PORTABLE__ flag ensures:
+#   - Both ADX and non-ADX code paths are included
+#   - Works on any x86_64 CPU (even older ones without ADX)
+#   - Runtime detection selects optimal code path
+#
+# Cross-compilation is handled automatically because the same CC/CCAS
+# used for the main build is used for BLST compilation.

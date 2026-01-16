@@ -53,6 +53,11 @@ else
   CXXFLAGS_overridden=no
 fi
 AC_PROG_CXX
+AC_PROG_CC
+
+dnl Assembly compiler for BLST library
+dnl This enables compilation of .S files (preprocessed assembly)
+AM_PROG_AS
 
 dnl By default, libtool for mingw refuses to link static libs into a dll for
 dnl fear of mixing pic/non-pic objects, and import/export complications. Since

@@ -1,0 +1,42 @@
+# CODEOWNERS - Mynta Core Build Infrastructure
+#
+# This file defines code ownership for automatic review requests.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Build Infrastructure Protection
+# ================================
+# These files affect reproducible builds and cross-platform compatibility.
+# Changes require review from build system maintainers.
+
+# Root build configuration
+/configure.ac                    @MyntaProject/build-maintainers
+/Makefile.am                     @MyntaProject/build-maintainers
+/autogen.sh                      @MyntaProject/build-maintainers
+/.gitattributes                  @MyntaProject/build-maintainers
+
+# Source build configuration
+/src/Makefile.am                 @MyntaProject/build-maintainers
+/src/Makefile.*.include          @MyntaProject/build-maintainers
+
+# Autoconf macros
+/build-aux/                      @MyntaProject/build-maintainers
+
+# Cross-compilation and dependencies
+/depends/                        @MyntaProject/build-maintainers
+
+# CI/CD workflows
+/.github/workflows/              @MyntaProject/build-maintainers
+/.github/scripts/                @MyntaProject/build-maintainers
+
+# Build modernization documentation
+/BUILD_MODERNIZATION.md          @MyntaProject/build-maintainers
+/BUILD.md                        @MyntaProject/build-maintainers
+
+# BLST library integration
+/src/bls/blst/build.sh           @MyntaProject/build-maintainers
+/src/bls/blst/build.zig          @MyntaProject/build-maintainers
+
+# Release packaging
+/contrib/windeploy/              @MyntaProject/build-maintainers
+/contrib/macdeploy/              @MyntaProject/build-maintainers
+/share/setup.nsi.in              @MyntaProject/build-maintainers

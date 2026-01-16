@@ -46,13 +46,10 @@ endif
 $(LIBSECP256K1): $(wildcard secp256k1/src/*) $(wildcard secp256k1/include/*)
 	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F)
 
-# BLST BLS signature library - must be built before linking
-LIBBLST=$(top_srcdir)/src/bls/blst/libblst.a
-BUILT_SOURCES = $(LIBBLST)
-
-$(LIBBLST):
-	$(AM_V_at)echo "Building BLST library..."
-	$(AM_V_at)cd $(top_srcdir)/src/bls/blst && ./build.sh
+# BLST BLS12-381 signature library
+# Built as a convenience library via Makefile.blst.include
+# No longer requires manual build.sh invocation
+LIBBLST = libblst.a
 
 # Make is not made aware of per-object dependencies to avoid limiting building parallelization
 # But to build the less dependent modules first, we manually select their order here:
@@ -264,7 +261,8 @@ obj/build.h: FORCE
 libmynta_util_a-clientversion.$(OBJEXT): obj/build.h
 
 # server: shared between ravend and mynta-qt
-BLST_CPPFLAGS = -I$(top_srcdir)/src/bls
+# BLST include paths - both the wrapper and the underlying BLST bindings
+BLST_CPPFLAGS = -I$(top_srcdir)/src/bls -I$(top_srcdir)/src/bls/blst/bindings
 libmynta_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES) $(BLST_CPPFLAGS) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
 libmynta_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libmynta_server_a_SOURCES = \
@@ -658,6 +656,9 @@ endif
 %.pb.cc %.pb.h: %.proto
 	@test -f $(PROTOC)
 	$(AM_V_GEN) $(PROTOC) --cpp_out=$(@D) --proto_path=$(<D) $<
+
+# BLST BLS12-381 signature library (required for BLS signatures)
+include Makefile.blst.include
 
 if EMBEDDED_LEVELDB
 include Makefile.leveldb.include
