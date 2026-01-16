@@ -157,30 +157,47 @@ A first-time contributor can build without knowing BLST exists. ✓
 
 ## Section 2 — CI Resurrection & Enforcement
 
-**Status:** Not Started
+**Status:** In Progress
 
 ### Goal
 No PR can merge without passing builds.
 
 ### Audit
-- [ ] Review existing `.github/workflows/*`
-- [ ] Identify manual-only triggers
-- [ ] Identify missing platforms
-- [ ] Identify missing caching
-- [ ] Review `.travis.yml` for obsolete assumptions
+- [x] Review existing `.github/workflows/*`
+- [x] Identify manual-only triggers
+- [x] Identify missing platforms
+- [x] Identify missing caching
+- [x] Review `.travis.yml` for obsolete assumptions
+
+### Audit Findings
+| Component | Finding |
+|-----------|---------|
+| Existing workflow | `build-release.yml` - manual trigger only |
+| Travis CI | Not present (already removed) |
+| PR/push triggers | Missing - no automated CI |
+| macOS job | Missing from workflow |
+| BLST build | Was manual, now uses autotools |
+| Caching | depends/ only, no ccache |
 
 ### Understand
-- [ ] Decide canonical CI behavior (PR, push, nightly)
-- [ ] Confirm minimum supported platforms
+- [x] Decide canonical CI behavior (PR, push, nightly)
+- [x] Confirm minimum supported platforms
+
+### Decision: Two-Workflow Strategy
+| Workflow | Trigger | Purpose | Est. Runtime |
+|----------|---------|---------|--------------|
+| `ci.yml` | PR + push | Fast build verification | 15-45 min |
+| `build-release.yml` | Manual | Full release builds | ~2 hours |
 
 ### Code
-- [ ] Delete `.travis.yml` (if exists)
-- [ ] Add GitHub Actions workflows:
-  - [ ] Linux native build (reference)
-  - [ ] Windows cross-compile
-  - [ ] macOS native build
-- [ ] Enable `on: pull_request` and `on: push`
-- [ ] Add basic caching (ccache, depends/)
+- [x] Delete `.travis.yml` (not present)
+- [x] Add GitHub Actions workflows:
+  - [x] Linux native build (reference)
+  - [x] Windows cross-compile
+  - [x] macOS native build
+- [x] Enable `on: pull_request` and `on: push`
+- [x] Add basic caching (ccache, depends/)
+- [x] Remove manual BLST build from `build-release.yml`
 
 ### Verify
 - [ ] Push branch → CI triggers automatically
