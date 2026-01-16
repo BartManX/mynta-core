@@ -132,10 +132,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v6: cache bust for miniupnpc.mk fix + PTHREAD_LIBS
-          key: windows-depends-v6-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
+          # v7: cache bust for miniupnpc.mk WINDRES fix
+          key: windows-depends-v7-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
           restore-keys: |
-            windows-depends-v6-
+            windows-depends-v7-
 
       - name: Verify MinGW threading
         run: |
@@ -186,9 +186,11 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install automake libtool pkg-config python-setuptools
-          # Ensure setuptools is available for depends build
-          python3 -m pip install --break-system-packages setuptools || true
+          brew install automake libtool pkg-config python@3.11
+          # Use brew python and install setuptools
+          /opt/homebrew/opt/python@3.11/bin/pip3 install setuptools
+          # Link brew python as default
+          echo "/opt/homebrew/opt/python@3.11/libexec/bin" >> $GITHUB_PATH
 
       - name: Cache depends sources
         uses: actions/cache@v4
@@ -202,14 +204,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v3: cache bust for miniupnpc.mk fix
-          key: macos-depends-v3-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v4: cache bust for miniupnpc.mk and python fix
+          key: macos-depends-v4-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
-            macos-depends-v3-
+            macos-depends-v4-
 
       - name: Build depends
         run: |
           cd depends
+          # Ensure brew python with setuptools is used
+          export PATH="/opt/homebrew/opt/python@3.11/libexec/bin:$PATH"
           make NO_QT=1 -j$(sysctl -n hw.ncpu)
 
       - name: Autogen
