@@ -204,3 +204,8 @@ db-4.8.30.NC.tar.gz
 db-*.tar.gz
 test/cache/
 /binaries/
+
+# Wallet backup files
+dev_wallet*.txt
+wallet*.dat
+wallet*.txt
