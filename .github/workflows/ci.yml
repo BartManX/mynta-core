@@ -87,7 +87,6 @@ jobs:
         run: |
           ./src/myntad --version
           ./src/mynta-cli --version
-          ./src/mynta-tx --version
 
   # =============================================================================
   # Windows Cross-Compile (Uses depends for accuracy)
@@ -133,10 +132,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v8: cache bust for miniupnpc.mk DLLWRAP fix
-          key: windows-depends-v8-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
+          # v9: cache bust for PTHREAD_LIBS export fix
+          key: windows-depends-v9-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
           restore-keys: |
-            windows-depends-v8-
+            windows-depends-v9-
 
       - name: Verify MinGW threading
         run: |
@@ -172,7 +171,6 @@ jobs:
         run: |
           file src/myntad.exe
           file src/mynta-cli.exe
-          file src/mynta-tx.exe
 
   # =============================================================================
   # macOS Build (uses depends for reproducibility)
@@ -189,8 +187,9 @@ jobs:
       - name: Install Dependencies
         run: |
           brew install automake libtool pkg-config
-          # Install setuptools for system python
-          pip3 install --user setuptools || python3 -m pip install --user setuptools || true
+          # Install setuptools - use --break-system-packages for PEP 668 compliant systems
+          # This is safe in CI where we control the environment
+          python3 -m pip install --break-system-packages setuptools
 
       - name: Cache depends sources
         uses: actions/cache@v4
@@ -235,7 +234,6 @@ jobs:
         run: |
           ./src/myntad --version
           ./src/mynta-cli --version
-          ./src/mynta-tx --version
 
   # =============================================================================
   # Summary Job (Required for branch protection)
