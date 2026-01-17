@@ -203,10 +203,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v4: cache bust for miniupnpc.mk and python fix
-          key: macos-depends-v4-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v5: cache bust for native_biplist python3 fix
+          key: macos-depends-v5-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
-            macos-depends-v4-
+            macos-depends-v5-
 
       - name: Build depends
         run: |

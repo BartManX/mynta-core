@@ -594,6 +594,11 @@ libmyntaconsensus_la_LIBADD = $(LIBSECP256K1) $(BOOST_LIBS) $(PTHREAD_LIBS)
 libmyntaconsensus_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include -DBUILD_MYNTA_INTERNAL
 libmyntaconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
+if TARGET_WINDOWS
+# MinGW with posix threading requires explicit pthread linkage
+libmyntaconsensus_la_LIBADD += -lpthread
+endif
+
 endif
 #
 
