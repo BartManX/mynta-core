@@ -130,16 +130,19 @@ darwin_CXX=env -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH \
                -Xclang -cxx-isystem$(OSX_SDK)/usr/include/c++/v1 \
                -Xclang -internal-externc-isystem$(clang_resource_dir)/include \
                -Xclang -internal-externc-isystem$(OSX_SDK)/usr/include
-else
-# Native compilation with system clang - use -isysroot, clang handles headers
-darwin_CC=$(clang_prog) -mmacosx-version-min=$(OSX_MIN_VERSION) \
-            -isysroot$(OSX_SDK)
-darwin_CXX=$(clangxx_prog) -mmacosx-version-min=$(OSX_MIN_VERSION) \
-             -isysroot$(OSX_SDK) -stdlib=libc++
-endif
 
 darwin_CFLAGS=-pipe
 darwin_CXXFLAGS=$(darwin_CFLAGS)
+else
+# Native compilation with system clang
+# Compiler paths only - flags go in CFLAGS/CXXFLAGS for b2/boost compatibility
+darwin_CC=$(clang_prog)
+darwin_CXX=$(clangxx_prog)
+
+# SDK and version flags as CFLAGS so they're passed to all build systems including b2
+darwin_CFLAGS=-pipe -isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION)
+darwin_CXXFLAGS=$(darwin_CFLAGS) -stdlib=libc++
+endif
 
 darwin_release_CFLAGS=-O2
 darwin_release_CXXFLAGS=$(darwin_release_CFLAGS)
