@@ -21,8 +21,7 @@ RUN apt-get update && apt-get install -y \
     libboost-test-dev \
     libboost-thread-dev \
     libboost-program-options-dev \
-    libdb-dev \
-    libdb++-dev \
+    libsqlite3-dev \
     libminiupnpc-dev \
     libzmq3-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -40,7 +39,6 @@ RUN make distclean 2>/dev/null || true && \
     ./configure \
         --disable-bench \
         --disable-tests \
-        --with-incompatible-bdb \
         --without-gui \
         --disable-man && \
     make -j$(nproc)
@@ -58,7 +56,7 @@ RUN apt-get update && apt-get install -y \
     libboost-chrono1.74.0 \
     libboost-thread1.74.0 \
     libboost-program-options1.74.0 \
-    libdb5.3++ \
+    libsqlite3-0 \
     libminiupnpc17 \
     libzmq5 \
     && rm -rf /var/lib/apt/lists/*
