@@ -203,8 +203,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v6: cache bust for FORCE_USE_SYSTEM_CLANG
-          key: macos-depends-v6-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v7: cache bust for native SDK detection fix
+          key: macos-depends-v7-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
