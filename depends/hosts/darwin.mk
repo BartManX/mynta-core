@@ -154,6 +154,9 @@ darwin_CXXFLAGS=$(darwin_CFLAGS)
 darwin_CPPFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION) \
                -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION \
                -Wno-enum-constexpr-conversion
+
+# Linker also needs sysroot to find system libraries (libSystem, etc.)
+darwin_LDFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION)
 endif
 
 darwin_release_CFLAGS=-O2
