@@ -204,8 +204,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v24: cache bust for miniupnpc _DARWIN_C_SOURCE
-          key: macos-depends-v24-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v25: cache bust for miniupnpc CPPFLAGS in build_opts
+          key: macos-depends-v25-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
