@@ -3,13 +3,16 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "assets/atomicswap.h"
+#include "coins.h"
 #include "hash.h"
 #include "key.h"
+#include "primitives/block.h"
 #include "pubkey.h"
 #include "random.h"
 #include "script/script.h"
 #include "script/standard.h"
 #include "util.h"
+#include "validation.h"
 
 #include <algorithm>
 #include <sstream>
@@ -521,6 +524,7 @@ std::string GetTradingPairKey(const std::string& assetA, const std::string& asse
 // HTLC Transaction Builders Implementation
 // ============================================================================
 
+#ifdef ENABLE_WALLET
 #include "base58.h"
 #include "chainparams.h"
 #include "coins.h"
@@ -988,6 +992,7 @@ bool GetHTLCStatus(
 }
 
 } // namespace HTLCTransactions
+#endif // ENABLE_WALLET
 
 // ============================================================================
 // Persistent Order Book Implementation

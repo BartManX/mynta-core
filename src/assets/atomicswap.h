@@ -322,6 +322,7 @@ std::string GetTradingPairKey(const std::string& assetA, const std::string& asse
 // HTLC Transaction Builders
 // ============================================================================
 
+#ifdef ENABLE_WALLET
 class CWallet;
 class CReserveKey;
 
@@ -447,6 +448,7 @@ bool GetHTLCStatus(
 );
 
 } // namespace HTLCTransactions
+#endif // ENABLE_WALLET
 
 // ============================================================================
 // Persistent Order Book with Reorg Safety
