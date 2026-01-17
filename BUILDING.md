@@ -1,116 +1,99 @@
 # Building Mynta Core
 
-This document describes how to build Mynta Core (myntad, mynta-cli, mynta-qt) from source on Linux.
+This document describes how to build Mynta Core (myntad, mynta-cli, mynta-qt) from source.
 
-## Supported Platforms
+## Quick Start (Recommended)
 
-- Debian 12 (Bookworm)
-- Ubuntu 22.04 LTS (Jammy)
-- Ubuntu 24.04 LTS (Noble)
-- Windows 10/11 via WSL2 (Ubuntu)
-
-## Dependencies
-
-### Debian/Ubuntu
+The fastest way to build is using the depends system, which builds all dependencies
+with known-good versions. This is what CI uses and is tested on every commit.
 
 ```bash
-# Install base development tools
-sudo apt-get update
-sudo apt-get install -y \
-    build-essential \
-    libtool \
-    autotools-dev \
-    automake \
-    pkg-config \
-    bsdmainutils \
-    python3 \
-    git \
-    dos2unix
-
-# Install required libraries
-sudo apt-get install -y \
-    libssl-dev \
-    libevent-dev \
-    libboost-system-dev \
-    libboost-filesystem-dev \
-    libboost-chrono-dev \
-    libboost-test-dev \
-    libboost-thread-dev \
-    libboost-program-options-dev
-
-# Optional: BerkeleyDB 4.8 for wallet support
-# Note: You can use --with-incompatible-bdb if BDB 4.8 is not available
-sudo apt-get install -y libdb4.8-dev libdb4.8++-dev 2>/dev/null || \
-    sudo apt-get install -y libdb-dev libdb++-dev
-
-# Optional: MiniUPnP for UPnP support
-sudo apt-get install -y libminiupnpc-dev
-
-# Optional: ZeroMQ for ZMQ notifications
-sudo apt-get install -y libzmq3-dev
-
-# Optional: Qt5 for GUI
-sudo apt-get install -y \
-    libqt5gui5 \
-    libqt5core5a \
-    libqt5dbus5 \
-    qttools5-dev \
-    qttools5-dev-tools \
-    libprotobuf-dev \
-    protobuf-compiler \
-    libqrencode-dev
-```
-
-## Building
-
-### Clone Repository
-
-```bash
+# Clone and enter repository
 git clone https://github.com/Slashx124/mynta-core.git
 cd mynta-core
 
-# Initialize submodules (required for BLS library)
-git submodule update --init --recursive
-```
+# Install minimal build tools (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y build-essential libtool autotools-dev automake \
+    pkg-config bsdmainutils python3 curl bison
 
-### Build the BLS Library
+# Build dependencies (~10-15 min first time, cached after)
+cd depends && make -j$(nproc) && cd ..
 
-The BLST library must be built before the main project:
-
-```bash
-cd src/bls/blst
-./build.sh
-cd ../../..
-```
-
-### Build Steps
-
-```bash
-# Fix line endings if building on Windows/WSL
-dos2unix autogen.sh configure.ac Makefile.am
-
-# Generate build scripts
+# Build Mynta Core (~5 min)
 ./autogen.sh
-
-# Configure (adjust options as needed)
-./configure \
-    --disable-bench \
-    --disable-tests \
-    --with-incompatible-bdb \
-    --without-gui
-
-# Build (use number of CPU cores)
+CONFIG_SITE=$PWD/depends/$(depends/config.guess)/share/config.site ./configure
 make -j$(nproc)
 
-# Optional: Install
-sudo make install
+# Verify
+./src/myntad --version
 ```
+
+**Total time:** ~15-20 minutes (first build), ~5 minutes (subsequent builds with cached depends).
+
+## Supported Platforms
+
+| Platform | Build Method | CI Tested |
+|----------|--------------|-----------|
+| Ubuntu 22.04/24.04 | Native or depends | ✓ |
+| Debian 12 | Native or depends | ✓ |
+| macOS (ARM64/x86_64) | depends | ✓ |
+| Windows x64 | Cross-compile from Linux | ✓ |
+| Windows (WSL2) | Same as Linux | ✓ |
+
+## Build Methods
+
+### Method 1: Depends System (Recommended)
+
+The depends system builds all required libraries with pinned versions.
+This ensures reproducible builds across all platforms.
+
+```bash
+# Install build tools only (no library packages needed)
+sudo apt-get install -y build-essential libtool autotools-dev automake \
+    pkg-config bsdmainutils python3 curl bison
+
+# Build dependencies (results cached in depends/built/)
+cd depends
+make -j$(nproc)
+cd ..
+
+# Configure using depends
+./autogen.sh
+CONFIG_SITE=$PWD/depends/$(depends/config.guess)/share/config.site ./configure
+make -j$(nproc)
+```
+
+### Method 2: System Libraries (Linux Only)
+
+Use system-provided libraries. Faster for development but may have version differences.
+
+```bash
+# Install all dependencies
+sudo apt-get update
+sudo apt-get install -y \
+    build-essential libtool autotools-dev automake pkg-config \
+    bsdmainutils python3 libssl-dev libevent-dev libsqlite3-dev \
+    libboost-system-dev libboost-filesystem-dev libboost-chrono-dev \
+    libboost-test-dev libboost-thread-dev libboost-program-options-dev
+
+# Optional dependencies
+sudo apt-get install -y libminiupnpc-dev libzmq3-dev
+
+# Build
+./autogen.sh
+./configure --disable-bench --disable-tests --without-gui
+make -j$(nproc)
+```
+
+### Method 3: Docker (Easiest)
+
+No dependencies to install. See [Docker Build](#docker-build) section below.
 
 ### Configure Options
 
 | Option | Description |
 |--------|-------------|
-| `--with-incompatible-bdb` | Allow BerkeleyDB versions other than 4.8 |
 | `--disable-wallet` | Build without wallet support |
 | `--without-gui` | Build without Qt GUI |
 | `--without-miniupnpc` | Build without UPnP support |
@@ -182,16 +165,16 @@ If you see an error about `AC_CONFIG_MACRO_DIRS` conflicting with `ACLOCAL_AMFLA
 
 ### Missing ui_interface.h
 
-This header file should be present in `src/`. If missing, it can be obtained from the Ravencoin repository.
+This header file should be present in `src/`. If missing, check that the repository was cloned correctly.
 
-### Missing libblst.a
+### BLST Build Issues
 
-Build the BLST library first:
+The BLST library is now built automatically as part of the main build. If you encounter
+BLST-related errors, ensure you're using a clean build:
 
 ```bash
-cd src/bls/blst
-./build.sh
-cd ../../..
+make clean
+make -j$(nproc)
 ```
 
 ## Cross-Compiling for Windows
@@ -209,51 +192,35 @@ sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw3
 sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
 ```
 
-### Build Dependencies
+### Build Dependencies and Mynta Core
 
-The `depends` system builds all required libraries for Windows:
+The `depends` system builds all required libraries for Windows, including BLST:
 
 ```bash
+# IMPORTANT: Set MinGW to use POSIX threading (required for C++17)
+sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+
+# Build dependencies for Windows 64-bit (~15-20 minutes first time)
 cd depends
-
-# IMPORTANT: Clear Windows PATH if building in WSL (paths with spaces break the build)
-export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-
-# Build dependencies for Windows 64-bit (takes 15-30 minutes)
 make HOST=x86_64-w64-mingw32 NO_QT=1 -j$(nproc)
-
 cd ..
-```
 
-### Build BLST for Windows
-
-```bash
-cd src/bls/blst
-rm -f libblst.a *.o 2>/dev/null
-CC=x86_64-w64-mingw32-gcc ./build.sh
-cd ../../..
-```
-
-### Configure and Build
-
-```bash
-# Set PATH to avoid Windows path issues in WSL
-export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-
-# Configure with depends
-export CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site
-./configure \
+# Configure and build
+./autogen.sh
+CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site ./configure \
     --prefix=/ \
     --disable-bench \
     --disable-tests \
-    --disable-shared \
-    --without-gui \
-    --with-incompatible-bdb \
-    PTHREAD_LIBS='-lpthread' \
-    LIBS='-lpthread'
+    --without-gui
 
 # Build
 make -j$(nproc)
+```
+
+**Note:** If building in WSL and encountering PATH-related issues, use a clean PATH:
+```bash
+export PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 ```
 
 ### Windows Executables
@@ -281,9 +248,8 @@ Mynta inherits its genesis block from Ravencoin. The original pszTimestamp is pr
 
 ### Known Issues
 
-- If you encounter BerkeleyDB version errors, use `--with-incompatible-bdb`
+- Man page generation may fail; this is non-critical and can be disabled with `--disable-man`
 - On newer systems with miniupnpc 2.2+, the code includes compatibility fixes
-- Man page generation may fail; this is non-critical
 
 ## Docker Build
 
