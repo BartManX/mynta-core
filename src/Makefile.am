@@ -596,7 +596,7 @@ libmyntaconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
 if TARGET_WINDOWS
 # MinGW-posix threading requires static winpthread linkage
-libmyntaconsensus_la_LIBADD += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+libmyntaconsensus_la_LDFLAGS += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 endif
 
 endif

@@ -61,10 +61,10 @@ if test x@host_os@ = xmingw32; then
   fi
   # MinGW-posix threading requires winpthread library
   # Use static linking to avoid DLL dependency
-  export PTHREAD_LIBS="-Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
+  export PTHREAD_LIBS="-lwinpthread"
   export PTHREAD_CFLAGS=""
   # Also add to LIBS for general linking (at the end for correct link order)
-  LIBS="$LIBS -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
+  LIBS="$LIBS -lwinpthread"
 fi
 
 PATH=$depends_prefix/native/bin:$PATH
