@@ -1,4 +1,4 @@
-packages:=boost openssl libevent
+packages:=boost openssl libevent zlib
 # ZeroMQ is optional - only include if not disabled
 zmq_packages_:=zeromq
 zmq_packages_1:=

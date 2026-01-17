@@ -47,6 +47,10 @@ $(package)_config_opts_x86_64_darwin=AR=$(host_prefix)/native/bin/x86_64-apple-d
 $(package)_config_opts_x86_64_darwin+=RANLIB=$(host_prefix)/native/bin/x86_64-apple-darwin14-ranlib
 $(package)_config_opts_x86_64_darwin+=darwin64-x86_64-cc
 
+# ARM64 macOS (Apple Silicon) - native builds use system tools
+# Note: config.guess returns "arm-apple-darwin*" so host_arch is "arm"
+$(package)_config_opts_arm_darwin=darwin64-arm64-cc
+
 $(package)_config_opts_x86_64_mingw32=mingw64
 $(package)_config_opts_i686_mingw32=mingw32
 

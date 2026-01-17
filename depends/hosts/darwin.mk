@@ -4,13 +4,13 @@ XCODE_VERSION=11.3.1
 XCODE_BUILD_ID=11C505
 LD64_VERSION=530
 
+ifeq ($(strip $(FORCE_USE_SYSTEM_CLANG)),)
+# FORCE_USE_SYSTEM_CLANG is empty, so we use our depends-managed, pinned clang
+# from llvm.org with the extracted SDK
+
 OSX_SDK=$(SDK_PATH)/Xcode-$(XCODE_VERSION)-$(XCODE_BUILD_ID)-extracted-SDK-with-libcxx-headers
 
 darwin_native_binutils=native_cctools
-
-ifeq ($(strip $(FORCE_USE_SYSTEM_CLANG)),)
-# FORCE_USE_SYSTEM_CLANG is empty, so we use our depends-managed, pinned clang
-# from llvm.org
 
 # Clang is a dependency of native_cctools when FORCE_USE_SYSTEM_CLANG is empty
 darwin_native_toolchain=native_cctools
@@ -21,8 +21,12 @@ clangxx_prog=$(clang_prog)++
 clang_resource_dir=$(build_prefix)/lib/clang/$(native_clang_version)
 else
 # FORCE_USE_SYSTEM_CLANG is non-empty, so we use the clang from the user's
-# system
+# system with the native Xcode SDK
 
+# Use xcrun to find the SDK - this works on both Intel and Apple Silicon
+OSX_SDK:=$(shell xcrun --show-sdk-path 2>/dev/null)
+
+darwin_native_binutils=
 darwin_native_toolchain=
 
 # We can't just use $(shell command -v clang) because GNU Make handles builtins
@@ -43,10 +47,21 @@ cctools_TOOLS=AR RANLIB STRIP NM LIBTOOL OTOOL INSTALL_NAME_TOOL
 # Make-only lowercase function
 lc = $(subst A,a,$(subst B,b,$(subst C,c,$(subst D,d,$(subst E,e,$(subst F,f,$(subst G,g,$(subst H,h,$(subst I,i,$(subst J,j,$(subst K,k,$(subst L,l,$(subst M,m,$(subst N,n,$(subst O,o,$(subst P,p,$(subst Q,q,$(subst R,r,$(subst S,s,$(subst T,t,$(subst U,u,$(subst V,v,$(subst W,w,$(subst X,x,$(subst Y,y,$(subst Z,z,$1))))))))))))))))))))))))))
 
+ifeq ($(strip $(FORCE_USE_SYSTEM_CLANG)),)
 # For well-known tools provided by cctools, make sure that their well-known
 # variable is set to the full path of the tool, just like how AC_PATH_{TOO,PROG}
 # would.
 $(foreach TOOL,$(cctools_TOOLS),$(eval darwin_$(TOOL) = $$(build_prefix)/bin/$$(host)-$(call lc,$(TOOL))))
+else
+# Use system tools when building natively with system clang
+darwin_AR=$(shell $(SHELL) $(.SHELLFLAGS) "command -v ar")
+darwin_RANLIB=$(shell $(SHELL) $(.SHELLFLAGS) "command -v ranlib")
+darwin_STRIP=$(shell $(SHELL) $(.SHELLFLAGS) "command -v strip")
+darwin_NM=$(shell $(SHELL) $(.SHELLFLAGS) "command -v nm")
+darwin_LIBTOOL=$(shell $(SHELL) $(.SHELLFLAGS) "command -v libtool")
+darwin_OTOOL=$(shell $(SHELL) $(.SHELLFLAGS) "command -v otool")
+darwin_INSTALL_NAME_TOOL=$(shell $(SHELL) $(.SHELLFLAGS) "command -v install_name_tool")
+endif
 
 # Flag explanations:
 #
@@ -95,6 +110,8 @@ $(foreach TOOL,$(cctools_TOOLS),$(eval darwin_$(TOOL) = $$(build_prefix)/bin/$$(
 #         include search paths, as that would be wrong in general but would also
 #         break #include_next's.
 #
+ifeq ($(strip $(FORCE_USE_SYSTEM_CLANG)),)
+# Cross-compilation with depends-managed clang - need explicit include paths
 darwin_CC=env -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH \
               -u OBJC_INCLUDE_PATH -u OBJCPLUS_INCLUDE_PATH -u CPATH \
               -u LIBRARY_PATH \
@@ -116,6 +133,31 @@ darwin_CXX=env -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH \
 
 darwin_CFLAGS=-pipe
 darwin_CXXFLAGS=$(darwin_CFLAGS)
+darwin_CPPFLAGS=
+else
+# Native compilation with system clang
+# Compiler paths only - b2/boost expects just a path, not a command with flags
+darwin_CC=$(clang_prog)
+darwin_CXX=$(clangxx_prog)
+
+# Base flags for native builds
+darwin_CFLAGS=-pipe
+darwin_CXXFLAGS=$(darwin_CFLAGS)
+
+# SDK flags go in CPPFLAGS - this flows to <compileflags> in boost's user-config.jam
+# and affects all C/C++ compilations. This is the proper path for SDK include resolution.
+#
+# Boost 1.71 compatibility flags for modern clang/libc++ (Xcode 16+):
+# - _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION: std::unary_function removed in C++17
+# - Wno-enum-constexpr-conversion: Boost MPL uses -1 for enum values, clang 16+ errors on this
+# TODO: Remove these workarounds when upgrading Boost to 1.76+
+darwin_CPPFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION) \
+               -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION \
+               -Wno-enum-constexpr-conversion
+
+# Linker also needs sysroot to find system libraries (libSystem, etc.)
+darwin_LDFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION)
+endif
 
 darwin_release_CFLAGS=-O2
 darwin_release_CXXFLAGS=$(darwin_release_CFLAGS)

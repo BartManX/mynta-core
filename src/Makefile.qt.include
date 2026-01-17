@@ -558,7 +558,7 @@ CLEAN_QT = $(nodist_qt_libmyntaqt_a_SOURCES) $(QT_QM) $(QT_FORMS_H) qt/*.gcda qt
 CLEANFILES += $(CLEAN_QT)
 
 mynta_qt_clean: FORCE
-	rm -f $(CLEAN_QT) $(qt_libmyntaqt_a_OBJECTS) $(qt_mynta_qt_OBJECTS) qt/mynta-qt$(EXEEXT) $(LIBRAVENQT)
+	rm -f $(CLEAN_QT) $(qt_libmyntaqt_a_OBJECTS) $(qt_mynta_qt_OBJECTS) qt/mynta-qt$(EXEEXT) $(LIBMYNTAQT)
 
 mynta_qt : qt/mynta-qt$(EXEEXT)
 

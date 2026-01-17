@@ -30,7 +30,7 @@ LIBMYNTA_CONSENSUS=libmynta_consensus.a
 LIBMYNTA_CLI=libmynta_cli.a
 LIBMYNTA_UTIL=libmynta_util.a
 LIBMYNTA_CRYPTO=crypto/libmynta_crypto.a
-LIBRAVENQT=qt/libravenqt.a
+LIBMYNTAQT=qt/libmyntaqt.a
 LIBSECP256K1=secp256k1/libsecp256k1.la
 
 if ENABLE_ZMQ
@@ -46,13 +46,10 @@ endif
 $(LIBSECP256K1): $(wildcard secp256k1/src/*) $(wildcard secp256k1/include/*)
 	$(AM_V_at)$(MAKE) $(AM_MAKEFLAGS) -C $(@D) $(@F)
 
-# BLST BLS signature library - must be built before linking
-LIBBLST=$(top_srcdir)/src/bls/blst/libblst.a
-BUILT_SOURCES = $(LIBBLST)
-
-$(LIBBLST):
-	$(AM_V_at)echo "Building BLST library..."
-	$(AM_V_at)cd $(top_srcdir)/src/bls/blst && ./build.sh
+# BLST BLS12-381 signature library
+# Built as a convenience library via Makefile.blst.include
+# No longer requires manual build.sh invocation
+LIBBLST = libblst.a
 
 # Make is not made aware of per-object dependencies to avoid limiting building parallelization
 # But to build the less dependent modules first, we manually select their order here:
@@ -86,7 +83,7 @@ if BUILD_MYNTA_TX
 endif
 
 .PHONY: FORCE check-symbols check-security
-# raven core #
+# mynta core #
 MYNTA_CORE_H = \
   addrdb.h \
   addressindex.h \
@@ -263,8 +260,9 @@ obj/build.h: FORCE
 	  "$(abs_top_srcdir)"
 libmynta_util_a-clientversion.$(OBJEXT): obj/build.h
 
-# server: shared between ravend and mynta-qt
-BLST_CPPFLAGS = -I$(top_srcdir)/src/bls
+# server: shared between myntad and mynta-qt
+# BLST include paths - both the wrapper and the underlying BLST bindings
+BLST_CPPFLAGS = -I$(top_srcdir)/src/bls -I$(top_srcdir)/src/bls/blst/bindings
 libmynta_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES) $(BLST_CPPFLAGS) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
 libmynta_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libmynta_server_a_SOURCES = \
@@ -347,7 +345,7 @@ libmynta_zmq_a_SOURCES = \
 endif
 
 
-# wallet: shared between ravend and mynta-qt, but only linked
+# wallet: shared between myntad and mynta-qt, but only linked
 # when wallet enabled
 libmynta_wallet_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES)
 libmynta_wallet_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
@@ -455,7 +453,7 @@ libmynta_consensus_a_SOURCES = \
   LibBoolEE.h \
   $(MYNTA_CORE_H)
 
-# common: shared between ravend, and mynta-qt and non-server tools
+# common: shared between myntad, mynta-qt and non-server tools
 libmynta_common_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES)
 libmynta_common_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libmynta_common_a_SOURCES = \
@@ -505,7 +503,7 @@ libmynta_util_a_SOURCES += compat/glibc_compat.cpp
 AM_LDFLAGS += $(COMPAT_LDFLAGS)
 endif
 
-# cli: shared between raven-cli and mynta-qt
+# cli: shared between mynta-cli and mynta-qt
 libmynta_cli_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES)
 libmynta_cli_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 libmynta_cli_a_SOURCES = \
@@ -515,7 +513,7 @@ libmynta_cli_a_SOURCES = \
 nodist_libmynta_util_a_SOURCES = $(srcdir)/obj/build.h
 #
 
-# ravend binary #
+# myntad binary #
 myntad_SOURCES = myntad.cpp
 myntad_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES)
 myntad_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
@@ -542,7 +540,7 @@ myntad_LDADD = \
 myntad_LDADD += $(BOOST_LIBS) $(SQLITE_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
 myntad_LDADD += $(LIBBLST)
 
-# raven-cli binary #
+# mynta-cli binary #
 mynta_cli_SOURCES = mynta-cli.cpp
 mynta_cli_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES) $(EVENT_CFLAGS)
 mynta_cli_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
@@ -561,7 +559,7 @@ mynta_cli_LDADD = \
 mynta_cli_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
 #
 
-# raven-tx binary #
+# mynta-tx binary #
 mynta_tx_SOURCES = mynta-tx.cpp
 mynta_tx_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES)
 mynta_tx_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
@@ -596,6 +594,11 @@ libmyntaconsensus_la_LIBADD = $(LIBSECP256K1) $(BOOST_LIBS) $(PTHREAD_LIBS)
 libmyntaconsensus_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/secp256k1/include -DBUILD_MYNTA_INTERNAL
 libmyntaconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
+if TARGET_WINDOWS
+# MinGW-posix threading requires static winpthread linkage
+libmyntaconsensus_la_LDFLAGS += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
+endif
+
 endif
 #
 
@@ -624,12 +627,12 @@ CLEANFILES += obj/build.h
 EXTRA_DIST = $(CTAES_DIST)
 
 
-config/raven-config.h: config/stamp-h1
+config/mynta-config.h: config/stamp-h1
 	@$(MAKE) -C $(top_builddir) $(subdir)/$(@)
-config/stamp-h1: $(top_srcdir)/$(subdir)/config/raven-config.h.in $(top_builddir)/config.status
+config/stamp-h1: $(top_srcdir)/$(subdir)/config/mynta-config.h.in $(top_builddir)/config.status
 	$(AM_V_at)$(MAKE) -C $(top_builddir) $(subdir)/$(@)
-$(top_srcdir)/$(subdir)/config/raven-config.h.in:  $(am__configure_deps)
-	$(AM_V_at)$(MAKE) -C $(top_srcdir) $(subdir)/config/raven-config.h.in
+$(top_srcdir)/$(subdir)/config/mynta-config.h.in:  $(am__configure_deps)
+	$(AM_V_at)$(MAKE) -C $(top_srcdir) $(subdir)/config/mynta-config.h.in
 
 clean-local:
 	-$(MAKE) -C secp256k1 clean
@@ -658,6 +661,9 @@ endif
 %.pb.cc %.pb.h: %.proto
 	@test -f $(PROTOC)
 	$(AM_V_GEN) $(PROTOC) --cpp_out=$(@D) --proto_path=$(<D) $<
+
+# BLST BLS12-381 signature library (required for BLS signatures)
+include Makefile.blst.include
 
 if EMBEDDED_LEVELDB
 include Makefile.leveldb.include

@@ -1,3 +1,11 @@
+# Build Release Workflow
+#
+# Creates release binaries for Linux and Windows.
+# BLST library is built automatically via autotools integration.
+#
+# Trigger: Manual (workflow_dispatch) only
+# For CI on PRs/push, see ci.yml
+
 name: Build Release
 
 on:
@@ -65,12 +73,6 @@ jobs:
         run: |
           cd depends
           make HOST=x86_64-linux-gnu NO_QT=1 -j$(nproc)
-
-      - name: Build BLST
-        run: |
-          cd src/bls/blst
-          ./build.sh
-          cd ../../..
 
       - name: Configure
         run: |
@@ -216,26 +218,6 @@ jobs:
         run: |
           cd depends
           make HOST=x86_64-w64-mingw32 NO_QT=1 -j$(nproc)
-
-      - name: Build BLST for Windows
-        run: |
-          cd src/bls/blst
-          rm -f libblst.a *.o 2>/dev/null || true
-          
-          # Cross-compile BLST for Windows
-          x86_64-w64-mingw32-gcc -O2 -fno-builtin -fPIC -Wall -c ./src/server.c -o server.o
-          
-          # Try to compile assembly, fall back to C if needed
-          if [ -f "./build/win64/add_mod_256-x86_64.asm" ]; then
-            x86_64-w64-mingw32-gcc -O2 -c ./build/win64/*.asm 2>/dev/null || true
-          fi
-          if [ -f "./build/assembly.S" ]; then
-            x86_64-w64-mingw32-gcc -O2 -fPIC -c ./build/assembly.S -o assembly.o 2>/dev/null || true
-          fi
-          
-          x86_64-w64-mingw32-ar rc libblst.a *.o
-          x86_64-w64-mingw32-ranlib libblst.a
-          cd ../../..
 
       - name: Configure
         run: |

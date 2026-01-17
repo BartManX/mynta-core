@@ -6,23 +6,27 @@ $(package)_sha256_hash=38acd5f4602f7cf8bcdc1ec30b2d58db2e9912e5d9f5350dd99b06bfd
 
 define $(package)_set_vars
 $(package)_build_opts=CC="$($(package)_cc)"
-$(package)_build_opts_darwin=OS=Darwin LIBTOOL="$($(package)_libtool)"
-$(package)_build_opts_mingw32=-f Makefile.mingw
+# Use lowercase 'darwin' - Makefile uses $(findstring darwin, $(OS)) for feature detection
+# This enables _DARWIN_C_SOURCE for networking APIs (IP_MULTICAST_TTL, struct ifreq, etc.)
+# Also pass LDFLAGS for sysroot so linker can find system libraries
+$(package)_build_opts_darwin=OS=darwin LIBTOOL="$($(package)_libtool)" LDFLAGS="$($(package)_ldflags)"
+$(package)_build_opts_mingw32=-f Makefile.mingw WINDRES="$(host)-windres" DLLWRAP="$(host)-dllwrap"
 $(package)_build_env+=CFLAGS="$($(package)_cflags) $($(package)_cppflags)" AR="$($(package)_ar)"
 endef
 
 define $(package)_preprocess_cmds
-  mkdir dll && \
+  mkdir -p dll build && \
   sed -e 's|MINIUPNPC_VERSION_STRING \"version\"|MINIUPNPC_VERSION_STRING \"$($(package)_version)\"|' -e 's|OS/version|$(host)|' miniupnpcstrings.h.in > miniupnpcstrings.h && \
-  sed -i.old "s|miniupnpcstrings.h: miniupnpcstrings.h.in wingenminiupnpcstrings|miniupnpcstrings.h: miniupnpcstrings.h.in|" Makefile.mingw
+  sed -i.old "s|miniupnpcstrings.h: miniupnpcstrings.h.in wingenminiupnpcstrings|miniupnpcstrings.h: miniupnpcstrings.h.in|" Makefile.mingw && \
+  sed -i.old '/%.o:.*%.c/s/ [^ ]*%.d//' Makefile
 endef
 
 define $(package)_build_cmds
-	$(MAKE) libminiupnpc.a $($(package)_build_opts)
+	$(MAKE) -j1 $($(package)_build_opts)
 endef
 
 define $(package)_stage_cmds
 	mkdir -p $($(package)_staging_prefix_dir)/include/miniupnpc $($(package)_staging_prefix_dir)/lib &&\
-	install *.h $($(package)_staging_prefix_dir)/include/miniupnpc &&\
-	install libminiupnpc.a $($(package)_staging_prefix_dir)/lib
+	install include/*.h $($(package)_staging_prefix_dir)/include/miniupnpc &&\
+	install $$(if $$(findstring mingw32,$(host)),libminiupnpc.a,build/libminiupnpc.a) $($(package)_staging_prefix_dir)/lib
 endef

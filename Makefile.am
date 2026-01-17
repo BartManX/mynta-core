@@ -27,7 +27,7 @@ MYNTA_CLI_INSTALL=$(top_builddir)/contrib/install_cli.sh
 empty :=
 space := $(empty) $(empty)
 
-OSX_APP=Raven-Qt.app
+OSX_APP=Mynta-Qt.app
 OSX_VOLNAME = $(subst $(space),-,$(PACKAGE_NAME))
 OSX_DMG = $(OSX_VOLNAME).dmg
 OSX_BACKGROUND_SVG=background.svg
@@ -101,15 +101,15 @@ $(OSX_APP)/Contents/MacOS/install_cli.sh: $(MYNTA_CLI_INSTALL)
 	$(MKDIR_P) $(@D)
 	$(INSTALL_DATA) $< $@
 
-$(OSX_APP)/Contents/MacOS/Raven-Qt: $(MYNTA_QT_BIN)
+$(OSX_APP)/Contents/MacOS/Mynta-Qt: $(MYNTA_QT_BIN)
 	$(MKDIR_P) $(@D)
 	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM)  $< $@
 
-$(OSX_APP)/Contents/MacOS/ravend: $(MYNTAD_BIN)
+$(OSX_APP)/Contents/MacOS/myntad: $(MYNTAD_BIN)
 	$(MKDIR_P) $(@D)
 	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM)  $< $@
 
-$(OSX_APP)/Contents/MacOS/raven-cli: $(MYNTA_CLI_BIN)
+$(OSX_APP)/Contents/MacOS/mynta-cli: $(MYNTA_CLI_BIN)
 	$(MKDIR_P) $(@D)
 	STRIPPROG="$(STRIP)" $(INSTALL_STRIP_PROGRAM)  $< $@
 
@@ -119,8 +119,8 @@ $(OSX_APP)/Contents/Resources/Base.lproj/InfoPlist.strings:
 
 OSX_APP_BUILT=$(OSX_APP)/Contents/PkgInfo $(OSX_APP)/Contents/Resources/empty.lproj \
   $(OSX_APP)/Contents/Resources/mynta.icns $(OSX_APP)/Contents/Info.plist \
-  $(OSX_APP)/Contents/MacOS/Raven-Qt $(OSX_APP)/Contents/Resources/Base.lproj/InfoPlist.strings \
-  $(OSX_APP)/Contents/MacOS/ravend $(OSX_APP)/Contents/MacOS/raven-cli $(OSX_APP)/Contents/MacOS/install_cli.sh
+  $(OSX_APP)/Contents/MacOS/Mynta-Qt $(OSX_APP)/Contents/Resources/Base.lproj/InfoPlist.strings \
+  $(OSX_APP)/Contents/MacOS/myntad $(OSX_APP)/Contents/MacOS/mynta-cli $(OSX_APP)/Contents/MacOS/install_cli.sh
 
 osx_volname:
 	echo $(OSX_VOLNAME) >$@
@@ -145,7 +145,7 @@ $(APP_DIST_DIR)/Applications:
 	@rm -f $@
 	@cd $(@D); $(LN_S) /Applications $(@F)
 
-$(APP_DIST_EXTRAS): $(APP_DIST_DIR)/$(OSX_APP)/Contents/MacOS/Raven-Qt
+$(APP_DIST_EXTRAS): $(APP_DIST_DIR)/$(OSX_APP)/Contents/MacOS/Mynta-Qt
 
 $(OSX_DMG): $(APP_DIST_EXTRAS)
 	$(GENISOIMAGE) -no-cache-inodes -D -l -probe -V "$(OSX_VOLNAME)" -no-pad -r -dir-mode 0755 -apple -o $@ dist
@@ -160,7 +160,7 @@ $(APP_DIST_DIR)/.background/$(OSX_BACKGROUND_IMAGE): $(OSX_BACKGROUND_IMAGE_DPIF
 $(APP_DIST_DIR)/.DS_Store: $(OSX_DSSTORE_GEN)
 	$(PYTHON) $< "$@" "$(OSX_VOLNAME)"
 
-$(APP_DIST_DIR)/$(OSX_APP)/Contents/MacOS/Raven-Qt: $(OSX_APP_BUILT) $(OSX_PACKAGING)
+$(APP_DIST_DIR)/$(OSX_APP)/Contents/MacOS/Mynta-Qt: $(OSX_APP_BUILT) $(OSX_PACKAGING)
 	INSTALLNAMETOOL=$(INSTALLNAMETOOL)  OTOOL=$(OTOOL) STRIP=$(STRIP) $(PYTHON) $(OSX_DEPLOY_SCRIPT) $(OSX_APP) -translations-dir=$(QT_TRANSLATION_DIR) -add-qt-tr $(OSX_QT_TRANSLATIONS) -verbose 2
 
 deploydir: $(APP_DIST_EXTRAS)
@@ -234,7 +234,7 @@ dist_noinst_SCRIPTS = autogen.sh
 EXTRA_DIST = $(DIST_SHARE) test/functional/test_runner.py test/functional $(DIST_CONTRIB) $(DIST_DOCS) $(WINDOWS_PACKAGING) $(OSX_PACKAGING) $(BIN_CHECKS)
 
 EXTRA_DIST += \
-    test/util/raven-util-test.py \
+    test/util/mynta-util-test.py \
     test/util/data/raven-util-test.json \
     test/util/data/blanktxv1.hex \
     test/util/data/blanktxv1.json \

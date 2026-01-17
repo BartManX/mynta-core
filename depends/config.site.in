@@ -59,6 +59,12 @@ if test x@host_os@ = xmingw32; then
   if test -z $with_qt_libdir; then
     with_qt_libdir=$depends_prefix/lib
   fi
+  # MinGW-posix threading requires winpthread library
+  # Use static linking to avoid DLL dependency
+  export PTHREAD_LIBS="-lwinpthread"
+  export PTHREAD_CFLAGS=""
+  # Also add to LIBS for general linking (at the end for correct link order)
+  LIBS="$LIBS -lwinpthread"
 fi
 
 PATH=$depends_prefix/native/bin:$PATH
