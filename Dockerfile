@@ -1,7 +1,11 @@
 # Mynta Core Build Dockerfile
-# Builds myntad from source in a clean Debian environment
+# Builds myntad from source in a clean Ubuntu environment
+# Note: Using Ubuntu 22.04 to avoid GCC 12 internal compiler errors on Debian 12
 
-FROM debian:12-slim AS builder
+FROM ubuntu:22.04 AS builder
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
@@ -44,10 +48,10 @@ RUN make distclean 2>/dev/null || true && \
     make -j$(nproc)
 
 # Runtime stage
-FROM debian:12-slim
+FROM ubuntu:22.04
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl3 \
     libevent-2.1-7 \
     libevent-pthreads-2.1-7 \
