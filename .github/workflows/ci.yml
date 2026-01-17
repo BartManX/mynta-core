@@ -203,15 +203,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v5: cache bust for native_biplist python3 fix
-          key: macos-depends-v5-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v6: cache bust for FORCE_USE_SYSTEM_CLANG
+          key: macos-depends-v6-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
-            macos-depends-v5-
+            macos-depends-v6-
 
       - name: Build depends
         run: |
           cd depends
-          make NO_QT=1 -j$(sysctl -n hw.ncpu)
+          # Use system clang with proper Xcode SDK detection
+          make NO_QT=1 FORCE_USE_SYSTEM_CLANG=1 -j$(sysctl -n hw.ncpu)
 
       - name: Autogen
         run: ./autogen.sh

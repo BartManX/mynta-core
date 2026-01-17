@@ -59,12 +59,12 @@ if test x@host_os@ = xmingw32; then
   if test -z $with_qt_libdir; then
     with_qt_libdir=$depends_prefix/lib
   fi
-  # MinGW with posix threading needs pthread library
-  # Export these so AX_PTHREAD uses them instead of running detection
-  export PTHREAD_LIBS="-lpthread"
+  # MinGW-posix threading requires winpthread library
+  # Use static linking to avoid DLL dependency
+  export PTHREAD_LIBS="-Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
   export PTHREAD_CFLAGS=""
-  # Also add to LIBS for general linking
-  LIBS="-lpthread $LIBS"
+  # Also add to LIBS for general linking (at the end for correct link order)
+  LIBS="$LIBS -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic"
 fi
 
 PATH=$depends_prefix/native/bin:$PATH

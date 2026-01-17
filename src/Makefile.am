@@ -595,8 +595,8 @@ libmyntaconsensus_la_CPPFLAGS = $(AM_CPPFLAGS) -I$(builddir)/obj -I$(srcdir)/sec
 libmyntaconsensus_la_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 
 if TARGET_WINDOWS
-# MinGW with posix threading requires explicit pthread linkage
-libmyntaconsensus_la_LIBADD += -lpthread
+# MinGW-posix threading requires static winpthread linkage
+libmyntaconsensus_la_LIBADD += -Wl,-Bstatic -lwinpthread -Wl,-Bdynamic
 endif
 
 endif
