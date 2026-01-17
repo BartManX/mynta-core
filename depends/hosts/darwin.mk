@@ -147,11 +147,13 @@ darwin_CXXFLAGS=$(darwin_CFLAGS)
 # SDK flags go in CPPFLAGS - this flows to <compileflags> in boost's user-config.jam
 # and affects all C/C++ compilations. This is the proper path for SDK include resolution.
 #
-# _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION: Required for Boost 1.71 with
-# modern libc++ - std::unary_function was removed in C++17 but Boost 1.71 still uses it.
-# TODO: Remove when upgrading Boost to 1.76+ which has native C++17 support.
+# Boost 1.71 compatibility flags for modern clang/libc++ (Xcode 16+):
+# - _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION: std::unary_function removed in C++17
+# - Wno-enum-constexpr-conversion: Boost MPL uses -1 for enum values, clang 16+ errors on this
+# TODO: Remove these workarounds when upgrading Boost to 1.76+
 darwin_CPPFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION) \
-               -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION
+               -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION \
+               -Wno-enum-constexpr-conversion
 endif
 
 darwin_release_CFLAGS=-O2

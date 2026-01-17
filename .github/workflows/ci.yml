@@ -203,8 +203,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v10: cache bust for C++17 compat define
-          key: macos-depends-v10-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v11: cache bust for enum-constexpr warning fix
+          key: macos-depends-v11-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
