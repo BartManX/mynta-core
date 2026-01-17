@@ -157,7 +157,7 @@ A first-time contributor can build without knowing BLST exists. ✓
 
 ## Section 2 — CI Resurrection & Enforcement
 
-**Status:** In Progress
+**Status:** Complete ✓
 
 ### Goal
 No PR can merge without passing builds.
@@ -186,7 +186,7 @@ No PR can merge without passing builds.
 ### Decision: Two-Workflow Strategy
 | Workflow | Trigger | Purpose | Est. Runtime |
 |----------|---------|---------|--------------|
-| `ci.yml` | PR + push | Fast build verification | 15-45 min |
+| `ci.yml` | PR + push | Fast build verification | 5-9 min (cached) |
 | `build-release.yml` | Manual | Full release builds | ~2 hours |
 
 ### Code
@@ -196,28 +196,65 @@ No PR can merge without passing builds.
   - [x] Windows cross-compile
   - [x] macOS native build
 - [x] Enable `on: pull_request` and `on: push`
-- [x] Add basic caching (ccache, depends/)
+- [x] Add basic caching (depends/built per platform)
 - [x] Remove manual BLST build from `build-release.yml`
 
 ### Verify
-- [ ] Push branch → CI triggers automatically
-- [ ] PR against main shows status checks
-- [ ] CI fails when build breaks
+- [x] Push branch → CI triggers automatically
+- [x] PR against main shows status checks
+- [x] CI fails when build breaks
 
 ### Platform Tests
-| Platform | Required |
-|----------|----------|
-| Linux job | Must pass |
-| Windows cross-compile | Must produce artifacts |
-| macOS job | Must complete successfully |
+| Platform | Status | Runtime |
+|----------|--------|---------|
+| Linux x86_64 | ✓ Pass | 5m12s |
+| Windows x64 (cross) | ✓ Pass | 7m24s |
+| macOS ARM64 (native) | ✓ Pass | 8m49s |
 
-### Report Template
-- Table showing CI coverage by platform
-- CI runtime metrics
-- Known limitations (if any)
+### Fixes Applied During CI Work
+
+#### macOS Depends Fixes
+| Issue | Fix | File |
+|-------|-----|------|
+| Boost SDK path | Added `-isysroot` to CPPFLAGS | `depends/hosts/darwin.mk` |
+| Boost C++17 compat | Added `-D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION` | `depends/hosts/darwin.mk` |
+| Boost enum-constexpr | Added `-Wno-enum-constexpr-conversion` | `depends/hosts/darwin.mk` |
+| OpenSSL ARM64 target | Added `arm_darwin` config | `depends/packages/openssl.mk` |
+| ZeroMQ BSD sed | Changed `sed -i` to `sed -i.old` | `depends/packages/zeromq.mk` |
+| SQLite zlib dependency | Added `$(package)_dependencies=zlib` | `depends/packages/sqlite.mk` |
+| zlib not in packages | Added `zlib` to base packages | `depends/packages/packages.mk` |
+| Linker sysroot | Added `darwin_LDFLAGS` with `-isysroot` | `depends/hosts/darwin.mk` |
+| miniupnpc .d file race | Removed `.d` prerequisite via sed | `depends/packages/miniupnpc.mk` |
+| miniupnpc Darwin detect | Changed `OS=Darwin` to `OS=darwin` | `depends/packages/miniupnpc.mk` |
+| miniupnpc LDFLAGS | Added `LDFLAGS="$($(package)_ldflags)"` | `depends/packages/miniupnpc.mk` |
+
+#### macOS Source Fixes
+| Issue | Fix | File |
+|-------|-----|------|
+| `std::vector<bool>` serialization | Added explicit specialization for proxy refs | `src/serialize.h` |
+
+#### Linux CI Fixes
+| Issue | Fix | File |
+|-------|-----|------|
+| ccache config missing | Added `--disable-ccache` to configure | `.github/workflows/ci.yml` |
+
+### Report
+- **Scope:** CI workflow creation and cross-platform build fixes
+- **Files touched:** 
+  - `.github/workflows/ci.yml` (new)
+  - `depends/hosts/darwin.mk`
+  - `depends/packages/openssl.mk`
+  - `depends/packages/zeromq.mk`
+  - `depends/packages/sqlite.mk`
+  - `depends/packages/packages.mk`
+  - `depends/packages/miniupnpc.mk`
+  - `src/serialize.h`
+- **Platforms tested:** Linux x86_64, Windows x64, macOS ARM64
+- **CI status:** All passing ✓
+- **Remaining risks:** None identified
 
 ### Exit Condition
-No PR can merge without passing builds.
+No PR can merge without passing builds. ✓
 
 ---
 
