@@ -675,6 +675,36 @@ inline void Serialize(Stream& os, const std::vector<T, A>& v)
     Serialize_impl(os, v, T());
 }
 
+/**
+ * std::vector<bool> specialization
+ * 
+ * std::vector<bool> is a special container that uses proxy references,
+ * which don't work with the generic serialization. We need explicit
+ * specializations that convert to/from bool values.
+ */
+template<typename Stream>
+void Serialize(Stream& os, const std::vector<bool>& v)
+{
+    WriteCompactSize(os, v.size());
+    for (size_t i = 0; i < v.size(); i++) {
+        bool val = v[i];
+        ::Serialize(os, val);
+    }
+}
+
+template<typename Stream>
+void Unserialize(Stream& is, std::vector<bool>& v)
+{
+    v.clear();
+    size_t nSize = ReadCompactSize(is);
+    v.reserve(nSize);
+    for (size_t i = 0; i < nSize; i++) {
+        bool val;
+        ::Unserialize(is, val);
+        v.push_back(val);
+    }
+}
+
 
 template<typename Stream, typename T, typename A>
 void Unserialize_impl(Stream& is, std::vector<T, A>& v, const unsigned char&)
