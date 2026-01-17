@@ -15,7 +15,7 @@ define $(package)_preprocess_cmds
   mkdir -p dll build && \
   sed -e 's|MINIUPNPC_VERSION_STRING \"version\"|MINIUPNPC_VERSION_STRING \"$($(package)_version)\"|' -e 's|OS/version|$(host)|' miniupnpcstrings.h.in > miniupnpcstrings.h && \
   sed -i.old "s|miniupnpcstrings.h: miniupnpcstrings.h.in wingenminiupnpcstrings|miniupnpcstrings.h: miniupnpcstrings.h.in|" Makefile.mingw && \
-  for src in src/*.c; do touch build/$$(basename $${src%.c}.d); done
+  sed -i.old 's|$$(BUILD)/%\.o:	$$(SRCDIR)/%\.c $$(BUILD)/%\.d|$$(BUILD)/%.o:	$$(SRCDIR)/%.c|' Makefile
 endef
 
 define $(package)_build_cmds
