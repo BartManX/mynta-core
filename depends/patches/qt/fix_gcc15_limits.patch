@@ -1,0 +1,40 @@
+--- old/qtbase/src/corelib/global/qendian.h
++++ new/qtbase/src/corelib/global/qendian.h
+@@ -40,6 +40,7 @@
+ #ifndef QENDIAN_H
+ #define QENDIAN_H
+ 
++#include <limits>
+ #include <QtCore/qfloat16.h>
+ #include <QtCore/qglobal.h>
+ 
+--- old/qtbase/src/corelib/global/qfloat16.h
++++ new/qtbase/src/corelib/global/qfloat16.h
+@@ -40,6 +40,7 @@
+ #ifndef QFLOAT16_H
+ #define QFLOAT16_H
+ 
++#include <limits>
+ #include <QtCore/qglobal.h>
+ #include <QtCore/qmetatype.h>
+ #include <string.h>
+--- old/qtbase/src/corelib/tools/qbytearraymatcher.h
++++ new/qtbase/src/corelib/tools/qbytearraymatcher.h
+@@ -40,6 +40,7 @@
+ #ifndef QBYTEARRAYMATCHER_H
+ #define QBYTEARRAYMATCHER_H
+ 
++#include <limits>
+ #include <QtCore/qbytearray.h>
+ 
+ QT_BEGIN_NAMESPACE
+--- old/qtbase/src/tools/moc/generator.cpp
++++ new/qtbase/src/tools/moc/generator.cpp
+@@ -30,6 +30,7 @@
+ #include "generator.h"
+ #include "cbordevice.h"
+ #include "outputrevision.h"
++#include <limits>
+ #include "utils.h"
+ #include <QtCore/qmetatype.h>
+ #include <QtCore/qjsondocument.h>
