@@ -7,7 +7,7 @@ $(package)_sha256_hash=38acd5f4602f7cf8bcdc1ec30b2d58db2e9912e5d9f5350dd99b06bfd
 define $(package)_set_vars
 $(package)_build_opts=CC="$($(package)_cc)"
 $(package)_build_opts_darwin=OS=Darwin LIBTOOL="$($(package)_libtool)"
-$(package)_build_opts_mingw32=-f Makefile.mingw WINDRES="$(host)-windres"
+$(package)_build_opts_mingw32=-f Makefile.mingw WINDRES="$(host)-windres" DLLWRAP="$(host)-dllwrap"
 $(package)_build_env+=CFLAGS="$($(package)_cflags) $($(package)_cppflags)" AR="$($(package)_ar)"
 endef
 

@@ -76,6 +76,7 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --disable-man \
             --without-gui \
             --enable-reduce-exports
 
@@ -132,10 +133,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v7: cache bust for miniupnpc.mk WINDRES fix
-          key: windows-depends-v7-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
+          # v8: cache bust for miniupnpc.mk DLLWRAP fix
+          key: windows-depends-v8-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/mingw32.mk') }}
           restore-keys: |
-            windows-depends-v7-
+            windows-depends-v8-
 
       - name: Verify MinGW threading
         run: |
@@ -160,6 +161,7 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --disable-man \
             --without-gui \
             --enable-reduce-exports
 
@@ -186,11 +188,9 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          brew install automake libtool pkg-config python@3.11
-          # Use brew python and install setuptools
-          /opt/homebrew/opt/python@3.11/bin/pip3 install setuptools
-          # Link brew python as default
-          echo "/opt/homebrew/opt/python@3.11/libexec/bin" >> $GITHUB_PATH
+          brew install automake libtool pkg-config
+          # Install setuptools for system python
+          pip3 install --user setuptools || python3 -m pip install --user setuptools || true
 
       - name: Cache depends sources
         uses: actions/cache@v4
@@ -212,8 +212,6 @@ jobs:
       - name: Build depends
         run: |
           cd depends
-          # Ensure brew python with setuptools is used
-          export PATH="/opt/homebrew/opt/python@3.11/libexec/bin:$PATH"
           make NO_QT=1 -j$(sysctl -n hw.ncpu)
 
       - name: Autogen
@@ -226,6 +224,7 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --disable-man \
             --without-gui \
             --enable-reduce-exports
 
