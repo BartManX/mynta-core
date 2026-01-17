@@ -216,3 +216,4 @@ doc/GENESIS_AND_ADDRESS_SUMMARY.md
 # Generated test data headers
 src/bench/data/*.raw.h
 src/test/data/*.json.h
+BUILD_MODERNIZATION.md
