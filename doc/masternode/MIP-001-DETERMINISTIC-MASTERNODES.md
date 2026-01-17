@@ -214,13 +214,9 @@ New message types:
 
 ### 10. Activation
 
-- **Activation Height**: Block 1000 (mainnet)
+- **Activation Height**: Block 50000 (mainnet)
 - **Testnet Activation**: Block 1
 - **Regtest**: Always active
-
-## Backwards Compatibility
-
-This is a hard fork. All nodes must upgrade before activation height.
 
 ## Reference Implementation
 
