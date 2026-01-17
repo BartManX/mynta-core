@@ -146,7 +146,12 @@ darwin_CXXFLAGS=$(darwin_CFLAGS)
 
 # SDK flags go in CPPFLAGS - this flows to <compileflags> in boost's user-config.jam
 # and affects all C/C++ compilations. This is the proper path for SDK include resolution.
-darwin_CPPFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION)
+#
+# _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION: Required for Boost 1.71 with
+# modern libc++ - std::unary_function was removed in C++17 but Boost 1.71 still uses it.
+# TODO: Remove when upgrading Boost to 1.76+ which has native C++17 support.
+darwin_CPPFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION) \
+               -D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION
 endif
 
 darwin_release_CFLAGS=-O2
