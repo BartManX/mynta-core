@@ -6,11 +6,11 @@ $(package)_sha256_hash=38acd5f4602f7cf8bcdc1ec30b2d58db2e9912e5d9f5350dd99b06bfd
 
 define $(package)_set_vars
 $(package)_build_opts=CC="$($(package)_cc)"
-$(package)_build_opts_darwin=OS=Darwin LIBTOOL="$($(package)_libtool)"
+# Use lowercase 'darwin' - Makefile uses $(findstring darwin, $(OS)) for feature detection
+# This enables _DARWIN_C_SOURCE for networking APIs (IP_MULTICAST_TTL, struct ifreq, etc.)
+$(package)_build_opts_darwin=OS=darwin LIBTOOL="$($(package)_libtool)"
 $(package)_build_opts_mingw32=-f Makefile.mingw WINDRES="$(host)-windres" DLLWRAP="$(host)-dllwrap"
 $(package)_build_env+=CFLAGS="$($(package)_cflags) $($(package)_cppflags)" AR="$($(package)_ar)"
-# Darwin needs _DARWIN_C_SOURCE for networking extensions (IP_MULTICAST_TTL, struct ifreq, etc.)
-$(package)_build_env_darwin=CFLAGS="$($(package)_cflags) $($(package)_cppflags) -D_DARWIN_C_SOURCE" AR="$($(package)_ar)"
 endef
 
 define $(package)_preprocess_cmds
