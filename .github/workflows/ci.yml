@@ -204,8 +204,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v27: cache bust for miniupnpc OS=darwin lowercase
-          key: macos-depends-v27-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v28: cache bust for miniupnpc LDFLAGS sysroot
+          key: macos-depends-v28-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 

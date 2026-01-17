@@ -8,7 +8,8 @@ define $(package)_set_vars
 $(package)_build_opts=CC="$($(package)_cc)"
 # Use lowercase 'darwin' - Makefile uses $(findstring darwin, $(OS)) for feature detection
 # This enables _DARWIN_C_SOURCE for networking APIs (IP_MULTICAST_TTL, struct ifreq, etc.)
-$(package)_build_opts_darwin=OS=darwin LIBTOOL="$($(package)_libtool)"
+# Also pass LDFLAGS for sysroot so linker can find system libraries
+$(package)_build_opts_darwin=OS=darwin LIBTOOL="$($(package)_libtool)" LDFLAGS="$($(package)_ldflags)"
 $(package)_build_opts_mingw32=-f Makefile.mingw WINDRES="$(host)-windres" DLLWRAP="$(host)-dllwrap"
 $(package)_build_env+=CFLAGS="$($(package)_cflags) $($(package)_cppflags)" AR="$($(package)_ar)"
 endef
