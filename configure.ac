@@ -336,6 +336,116 @@ case $host in
      use_pkgconfig=no
 
      TARGET_OS=windows
+
+     dnl =========================================================================
+     dnl Windows Toolchain Hardening - Fail fast with actionable errors
+     dnl =========================================================================
+
+     dnl Check MinGW threading model (must be posix for C++11/17 std::thread)
+     AC_MSG_CHECKING([MinGW threading model])
+     MINGW_THREAD_MODEL=`$CXX -v 2>&1 | sed -n 's/.*Thread model: //p'`
+     if test "x$MINGW_THREAD_MODEL" = "x"; then
+       dnl Fallback: try to detect from compiler path/name
+       case "$CXX" in
+         *-posix*) MINGW_THREAD_MODEL="posix" ;;
+         *-win32*) MINGW_THREAD_MODEL="win32" ;;
+         *) MINGW_THREAD_MODEL="unknown" ;;
+       esac
+     fi
+     AC_MSG_RESULT([$MINGW_THREAD_MODEL])
+
+     if test "x$MINGW_THREAD_MODEL" = "xwin32"; then
+       AC_MSG_ERROR([
+==========================================================================
+ERROR: MinGW is using win32 threading model, but posix is required.
+
+The win32 threading model does not fully support C++11/17 std::thread.
+You must switch to the posix threading variant.
+
+On Ubuntu/Debian, run:
+  sudo update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
+  sudo update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32-gcc-posix
+
+For 32-bit builds, use i686-w64-mingw32-* instead.
+
+To check current setting:
+  update-alternatives --display x86_64-w64-mingw32-g++
+==========================================================================
+])
+     fi
+
+     if test "x$MINGW_THREAD_MODEL" = "xunknown"; then
+       AC_MSG_WARN([Could not determine MinGW threading model. Build may fail if win32 threads are in use.])
+     fi
+
+     dnl Verify std::thread actually compiles and links
+     AC_MSG_CHECKING([whether std::thread works with MinGW])
+     AC_LANG_PUSH([C++])
+     save_LIBS="$LIBS"
+     LIBS="$LIBS -lpthread"
+     AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+       #include <thread>
+       #include <mutex>
+       void f() {}
+     ]],[[
+       std::thread t(f);
+       t.join();
+       std::mutex m;
+     ]])],
+     [AC_MSG_RESULT([yes])],
+     [AC_MSG_RESULT([no])
+      LIBS="$save_LIBS"
+      dnl Try with -lwinpthread instead (posix model)
+      LIBS="$LIBS -lwinpthread"
+      AC_LINK_IFELSE([AC_LANG_PROGRAM([[
+        #include <thread>
+        void f() {}
+      ]],[[
+        std::thread t(f);
+        t.join();
+      ]])],
+      [AC_MSG_RESULT([yes (with -lwinpthread)])],
+      [AC_MSG_ERROR([
+==========================================================================
+ERROR: std::thread does not compile or link correctly.
+
+This usually means your MinGW installation is misconfigured.
+Common causes:
+  1. Using win32 threading model instead of posix
+  2. Missing winpthread library
+  3. Incorrect include paths
+
+Please verify your MinGW installation supports C++17 with posix threads.
+==========================================================================
+])])])
+     LIBS="$save_LIBS"
+     AC_LANG_POP([C++])
+
+     dnl Check for PATH issues that commonly break Windows cross-compilation
+     AC_MSG_CHECKING([for problematic PATH entries])
+     path_issues=""
+     dnl Check for paths with spaces (common Windows issue)
+     case "$PATH" in
+       *" "*) path_issues="$path_issues spaces" ;;
+     esac
+     dnl Check for Windows-style paths mixed in (e.g., C:\)
+     case "$PATH" in
+       *":\\"*|*":/"*) path_issues="$path_issues windows-paths" ;;
+     esac
+     if test "x$path_issues" != "x"; then
+       AC_MSG_RESULT([WARNING:$path_issues])
+       AC_MSG_WARN([
+PATH contains potentially problematic entries ($path_issues).
+This may cause build failures. Consider cleaning your PATH for cross-compilation.
+])
+     else
+       AC_MSG_RESULT([ok])
+     fi
+
+     dnl =========================================================================
+     dnl End Windows Toolchain Hardening
+     dnl =========================================================================
+
      AC_CHECK_LIB([mingwthrd],      [main],, AC_MSG_ERROR(lib missing))
      AC_CHECK_LIB([kernel32],      [main],, AC_MSG_ERROR(lib missing))
      AC_CHECK_LIB([user32],      [main],, AC_MSG_ERROR(lib missing))

@@ -138,12 +138,23 @@ jobs:
           restore-keys: |
             windows-depends-v10-
 
-      - name: Verify MinGW threading
+      - name: Verify MinGW threading model
         run: |
-          # Confirm we're using posix threading
+          echo "=== MinGW Toolchain Verification ==="
+          echo ""
+          echo "Compiler version:"
           x86_64-w64-mingw32-g++ --version | head -1
-          echo "Threading model:"
-          x86_64-w64-mingw32-g++ -v 2>&1 | grep -i thread || echo "Could not determine threading model"
+          echo ""
+          echo "Threading model (must be 'posix' for C++17 std::thread):"
+          THREAD_MODEL=$(x86_64-w64-mingw32-g++ -v 2>&1 | sed -n 's/.*Thread model: //p')
+          echo "  Thread model: $THREAD_MODEL"
+          echo ""
+          if [ "$THREAD_MODEL" != "posix" ]; then
+            echo "ERROR: MinGW threading model is '$THREAD_MODEL', expected 'posix'"
+            echo "The build will fail at configure time with an actionable error."
+            exit 1
+          fi
+          echo "Threading model verified: posix (OK)"
 
       - name: Build depends
         run: |
