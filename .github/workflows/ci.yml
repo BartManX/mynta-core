@@ -203,8 +203,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v11: cache bust for enum-constexpr warning fix
-          key: macos-depends-v11-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v12: cache bust for ARM64 macOS OpenSSL support
+          key: macos-depends-v12-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
