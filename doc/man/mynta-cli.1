@@ -1,0 +1,54 @@
+.TH MYNTA-CLI "1" "January 2026" "Mynta Core" "User Commands"
+.SH NAME
+mynta-cli \- Mynta Core RPC client
+.SH SYNOPSIS
+.B mynta-cli
+[\fIOPTIONS\fR] <\fIcommand\fR> [\fIparams\fR]
+.SH DESCRIPTION
+.B mynta-cli
+is a command-line client that connects to a running myntad instance and issues RPC commands.
+.PP
+Run \fBmynta-cli help\fR for a list of available commands.
+.SH OPTIONS
+.TP
+\fB\-?\fR
+Print help message and exit.
+.TP
+\fB\-version\fR
+Print version and exit.
+.TP
+\fB\-conf=\fR<file>
+Specify configuration file (default: mynta.conf).
+.TP
+\fB\-datadir=\fR<dir>
+Specify data directory.
+.TP
+\fB\-rpcconnect=\fR<ip>
+Send commands to node running on <ip> (default: 127.0.0.1).
+.TP
+\fB\-rpcport=\fR<port>
+Connect to JSON-RPC on <port>.
+.TP
+\fB\-rpcuser=\fR<user>
+Username for JSON-RPC connections.
+.TP
+\fB\-rpcpassword=\fR<pw>
+Password for JSON-RPC connections.
+.SH EXAMPLES
+.TP
+mynta-cli getblockchaininfo
+Get blockchain information.
+.TP
+mynta-cli getbalance
+Get wallet balance.
+.TP
+mynta-cli help
+List available commands.
+.SH "SEE ALSO"
+.BR myntad (1),
+.BR mynta-qt (1),
+.BR mynta-tx (1)
+.SH AUTHOR
+The Mynta Core developers.
+.SH "REPORTING BUGS"
+Report bugs at <https://github.com/MyntaProject/Mynta/issues>.

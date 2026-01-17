@@ -1,0 +1,35 @@
+.TH MYNTA-TX "1" "January 2026" "Mynta Core" "User Commands"
+.SH NAME
+mynta-tx \- Mynta Core transaction utility
+.SH SYNOPSIS
+.B mynta-tx
+[\fIOPTIONS\fR] <\fIhex-tx\fR> [\fIcommands\fR]
+.SH DESCRIPTION
+.B mynta-tx
+is a command-line utility for creating, parsing, and modifying transactions.
+.PP
+Run \fBmynta-tx --help\fR for detailed usage.
+.SH OPTIONS
+.TP
+\fB\-?\fR
+Print help message and exit.
+.TP
+\fB\-version\fR
+Print version and exit.
+.TP
+\fB\-create\fR
+Create new, empty TX.
+.TP
+\fB\-json\fR
+Select JSON output.
+.TP
+\fB\-txid\fR
+Output only the hex-encoded transaction ID.
+.SH "SEE ALSO"
+.BR myntad (1),
+.BR mynta-cli (1),
+.BR mynta-qt (1)
+.SH AUTHOR
+The Mynta Core developers.
+.SH "REPORTING BUGS"
+Report bugs at <https://github.com/MyntaProject/Mynta/issues>.

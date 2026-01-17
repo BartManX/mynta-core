@@ -1,0 +1,51 @@
+.TH MYNTAD "1" "January 2026" "Mynta Core" "User Commands"
+.SH NAME
+myntad \- Mynta Core daemon
+.SH SYNOPSIS
+.B myntad
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B myntad
+is the Mynta Core daemon. It provides a peer-to-peer network based digital currency.
+.PP
+Run \fBmyntad --help\fR for a full list of options.
+.SH OPTIONS
+.TP
+\fB\-?\fR
+Print help message and exit.
+.TP
+\fB\-version\fR
+Print version and exit.
+.TP
+\fB\-datadir=\fR<dir>
+Specify data directory.
+.TP
+\fB\-conf=\fR<file>
+Specify configuration file (default: mynta.conf).
+.TP
+\fB\-daemon\fR
+Run in the background as a daemon and accept commands.
+.TP
+\fB\-server\fR
+Accept command line and JSON-RPC commands.
+.TP
+\fB\-testnet\fR
+Use the test network.
+.TP
+\fB\-regtest\fR
+Enter regression test mode.
+.SH FILES
+.TP
+~/.mynta/mynta.conf
+Configuration file.
+.TP
+~/.mynta/
+Default data directory.
+.SH "SEE ALSO"
+.BR mynta-cli (1),
+.BR mynta-qt (1),
+.BR mynta-tx (1)
+.SH AUTHOR
+The Mynta Core developers.
+.SH "REPORTING BUGS"
+Report bugs at <https://github.com/MyntaProject/Mynta/issues>.
