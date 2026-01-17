@@ -203,8 +203,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v12: cache bust for ARM64 macOS OpenSSL support
-          key: macos-depends-v12-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v13: cache bust for OpenSSL arm_darwin fix (host_arch=arm not aarch64)
+          key: macos-depends-v13-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
