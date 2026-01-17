@@ -18,7 +18,7 @@ define $(package)_preprocess_cmds
 endef
 
 define $(package)_build_cmds
-	$(MAKE) $($(package)_build_opts)
+	$(MAKE) -j1 $($(package)_build_opts)
 endef
 
 define $(package)_stage_cmds

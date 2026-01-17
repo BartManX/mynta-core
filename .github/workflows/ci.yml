@@ -204,8 +204,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v18: cache bust for miniupnpc build dir fix
-          key: macos-depends-v18-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v19: cache bust for miniupnpc serial build
+          key: macos-depends-v19-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
