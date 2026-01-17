@@ -17,7 +17,7 @@ define $(package)_set_vars
 endef
 
 define $(package)_preprocess_cmds
-  sed -i 's/LIBS="-lstdc++ -liphlpapi/LIBS="-liphlpapi/g' configure && \
+  sed -i.old 's/LIBS="-lstdc++ -liphlpapi/LIBS="-liphlpapi/g' configure && \
   cp -f $(BASEDIR)/config.guess $(BASEDIR)/config.sub config
 endef
 

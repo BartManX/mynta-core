@@ -77,6 +77,7 @@ jobs:
             --disable-tests \
             --disable-gui-tests \
             --disable-man \
+            --disable-ccache \
             --without-gui \
             --enable-reduce-exports
 
@@ -203,8 +204,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v13: cache bust for OpenSSL arm_darwin fix (host_arch=arm not aarch64)
-          key: macos-depends-v13-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v14: cache bust for zeromq BSD sed fix
+          key: macos-depends-v14-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
