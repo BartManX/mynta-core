@@ -265,6 +265,11 @@ libmynta_util_a-clientversion.$(OBJEXT): obj/build.h
 BLST_CPPFLAGS = -I$(top_srcdir)/src/bls -I$(top_srcdir)/src/bls/blst/bindings
 libmynta_server_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES) $(BLST_CPPFLAGS) $(MINIUPNPC_CPPFLAGS) $(EVENT_CFLAGS) $(EVENT_PTHREADS_CFLAGS)
 libmynta_server_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+
+# Workaround for GCC 14/15 internal compiler error in rpc/messages.cpp
+# Reduce optimization level for this specific file to avoid ICE
+rpc/libmynta_server_a-messages.$(OBJEXT): CXXFLAGS += -O1
+
 libmynta_server_a_SOURCES = \
   addrdb.cpp \
   addrman.cpp \

@@ -14,6 +14,9 @@ namespace llmq {
 // Global instance
 std::unique_ptr<CQuorumMonitor> quorumMonitor;
 
+// Out-of-line definition for static const member (required for ODR-use in C++11/14)
+const size_t CQuorumMonitor::MAX_ALERTS;
+
 // ============================================================================
 // Metric Implementations
 // ============================================================================
