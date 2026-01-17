@@ -203,8 +203,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v8: cache bust for SDK flags in CFLAGS fix
-          key: macos-depends-v8-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v9: cache bust for SDK flags in CPPFLAGS fix
+          key: macos-depends-v9-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 

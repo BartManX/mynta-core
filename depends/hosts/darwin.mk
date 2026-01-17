@@ -133,15 +133,20 @@ darwin_CXX=env -u C_INCLUDE_PATH -u CPLUS_INCLUDE_PATH \
 
 darwin_CFLAGS=-pipe
 darwin_CXXFLAGS=$(darwin_CFLAGS)
+darwin_CPPFLAGS=
 else
 # Native compilation with system clang
-# Compiler paths only - flags go in CFLAGS/CXXFLAGS for b2/boost compatibility
+# Compiler paths only - b2/boost expects just a path, not a command with flags
 darwin_CC=$(clang_prog)
 darwin_CXX=$(clangxx_prog)
 
-# SDK and version flags as CFLAGS so they're passed to all build systems including b2
-darwin_CFLAGS=-pipe -isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION)
-darwin_CXXFLAGS=$(darwin_CFLAGS) -stdlib=libc++
+# Base flags for native builds
+darwin_CFLAGS=-pipe
+darwin_CXXFLAGS=$(darwin_CFLAGS)
+
+# SDK flags go in CPPFLAGS - this flows to <compileflags> in boost's user-config.jam
+# and affects all C/C++ compilations. This is the proper path for SDK include resolution.
+darwin_CPPFLAGS=-isysroot $(OSX_SDK) -mmacosx-version-min=$(OSX_MIN_VERSION)
 endif
 
 darwin_release_CFLAGS=-O2
