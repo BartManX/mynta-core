@@ -204,8 +204,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: depends/built
-          # v23: cache bust for miniupnpc line-based sed pattern
-          key: macos-depends-v23-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
+          # v24: cache bust for miniupnpc _DARWIN_C_SOURCE
+          key: macos-depends-v24-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
           restore-keys: |
             macos-depends-v6-
 
