@@ -103,12 +103,19 @@ No dependencies to install. See [Docker Build](#docker-build) section below.
 
 ### Build Qt GUI
 
-To build the graphical wallet:
+To build the graphical wallet, first ensure Qt5 dependencies are installed:
 
 ```bash
-./configure --with-gui=qt5 --with-incompatible-bdb
+# Install Qt5 dependencies (Ubuntu/Debian)
+sudo apt-get install -y libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev \
+    qttools5-dev-tools libprotobuf-dev protobuf-compiler
+
+# Build with GUI
+./configure --with-gui=qt5
 make -j$(nproc)
 ```
+
+**Note:** Mynta uses SQLite for wallet storage (not Berkeley DB). No additional wallet database dependencies are required.
 
 ## Binaries
 
