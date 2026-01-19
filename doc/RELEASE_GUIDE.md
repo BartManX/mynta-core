@@ -9,7 +9,6 @@
 | `mynta-qt` | Full GUI wallet with built-in daemon |
 | `myntad` | Headless daemon (servers only) |
 | `mynta-cli` | Command-line RPC client |
-| `mynta-tx` | Transaction utility |
 
 ---
 

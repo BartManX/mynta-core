@@ -120,7 +120,6 @@ jobs:
           mkdir -p stage/${DISTNAME}/bin
           cp src/myntad stage/${DISTNAME}/bin/
           cp src/mynta-cli stage/${DISTNAME}/bin/
-          cp src/mynta-tx stage/${DISTNAME}/bin/
           
           # Strip binaries
           strip stage/${DISTNAME}/bin/* 2>/dev/null || true
@@ -145,7 +144,6 @@ jobs:
           # Copy binaries
           cp src/myntad ${DEB_DIR}/usr/bin/
           cp src/mynta-cli ${DEB_DIR}/usr/bin/
-          cp src/mynta-tx ${DEB_DIR}/usr/bin/
           strip ${DEB_DIR}/usr/bin/* 2>/dev/null || true
           
           # Create control file
@@ -284,7 +282,6 @@ jobs:
           mkdir -p stage/${DISTNAME}
           cp src/myntad.exe stage/${DISTNAME}/
           cp src/mynta-cli.exe stage/${DISTNAME}/
-          cp src/mynta-tx.exe stage/${DISTNAME}/
           cp doc/RELEASE_GUIDE.md stage/${DISTNAME}/README.md 2>/dev/null || echo "No README found"
           
           x86_64-w64-mingw32-strip stage/${DISTNAME}/*.exe 2>/dev/null || true
@@ -362,7 +359,6 @@ jobs:
             |--------|---------|
             | `myntad` | Full node daemon |
             | `mynta-cli` | Command-line RPC interface |
-            | `mynta-tx` | Transaction utility |
             
             ---
             
