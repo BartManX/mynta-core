@@ -16,6 +16,9 @@
 /* Major version */
 #undef CLIENT_VERSION_MAJOR
 
+/* Version suffix (e.g., -beta, -rc1, or empty for release) */
+#undef CLIENT_VERSION_SUFFIX
+
 /* Minor version */
 #undef CLIENT_VERSION_MINOR
 
