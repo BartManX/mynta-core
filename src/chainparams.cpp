@@ -349,18 +349,18 @@ public:
         fMineBlocksOnDemand = false;
         fMiningRequiresPeers = true;
 
-        // Mynta mainnet - new chain, no checkpoints yet
+        // Mynta mainnet checkpoints
         checkpointData = (CCheckpointData) {
             {
-                // Checkpoints will be added as chain matures
+                { 9950, uint256S("0x0000000000015c4fbab1d9bb79b8d02dac054476391e5e9d0694d2b4a9ff3bb8")},
             }
         };
 
-        // Mynta mainnet - new chain, initial chainTxData
+        // Mynta mainnet chainTxData (updated at block 9950)
         chainTxData = ChainTxData{
-            nGenesisTime,  // timestamp
-            0,             // total transactions
-            0              // tx rate
+            1768968733,    // timestamp of block 9950
+            10128,         // total transactions at block 9950
+            0.019          // tx rate (txs per second)
         };
 
         /** RVN Start **/
