@@ -45,10 +45,10 @@ jobs:
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
           else
-            # Extract version from configure.ac (single source of truth)
-            VERSION_MAJOR=$(grep "define(_CLIENT_VERSION_MAJOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_MINOR=$(grep "define(_CLIENT_VERSION_MINOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_REVISION=$(grep "define(_CLIENT_VERSION_REVISION" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
+            # Use awk for portable version extraction (works on both Linux and macOS)
+            VERSION_MAJOR=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_MAJOR/{print $2}' configure.ac)
+            VERSION_MINOR=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_MINOR/{print $2}' configure.ac)
+            VERSION_REVISION=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_REVISION/{print $2}' configure.ac)
             VERSION="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -221,9 +221,10 @@ jobs:
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
           else
-            VERSION_MAJOR=$(grep "define(_CLIENT_VERSION_MAJOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_MINOR=$(grep "define(_CLIENT_VERSION_MINOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_REVISION=$(grep "define(_CLIENT_VERSION_REVISION" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
+            # Use awk for portable version extraction (works on both Linux and macOS)
+            VERSION_MAJOR=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_MAJOR/{print $2}' configure.ac)
+            VERSION_MINOR=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_MINOR/{print $2}' configure.ac)
+            VERSION_REVISION=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_REVISION/{print $2}' configure.ac)
             VERSION="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
@@ -345,9 +346,10 @@ jobs:
           if [ -n "${{ github.event.inputs.version }}" ]; then
             VERSION="${{ github.event.inputs.version }}"
           else
-            VERSION_MAJOR=$(grep "define(_CLIENT_VERSION_MAJOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_MINOR=$(grep "define(_CLIENT_VERSION_MINOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_REVISION=$(grep "define(_CLIENT_VERSION_REVISION" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
+            # Use awk for portable version extraction (works on both Linux and macOS)
+            VERSION_MAJOR=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_MAJOR/{print $2}' configure.ac)
+            VERSION_MINOR=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_MINOR/{print $2}' configure.ac)
+            VERSION_REVISION=$(awk -F'[, )]+' '/define\(_CLIENT_VERSION_REVISION/{print $2}' configure.ac)
             VERSION="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}"
           fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
