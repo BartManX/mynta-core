@@ -1,0 +1,17 @@
+Fix libpng build on modern macOS SDKs (Ventura, Sonoma)
+fp.h was removed from macOS SDK, use math.h instead
+
+--- a/qtbase/src/3rdparty/libpng/pngpriv.h
++++ b/qtbase/src/3rdparty/libpng/pngpriv.h
+@@ -534,7 +534,11 @@ typedef png_libpng_version_1_6_37 Your_png_h_is_not_version_1_6_37;
+  * <fp.h> if possible.
+  */
+ #  if !defined(__MATH_H__) && !defined(__MATH_H) && !defined(__cmath__)
++#    if defined(__has_include) && !__has_include(<fp.h>)
++#      include <math.h>
++#    else
+ #    include <fp.h>
++#    endif
+ #  endif
+ # endif
+ #else
