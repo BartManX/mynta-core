@@ -237,6 +237,7 @@ jobs:
             --disable-tests \
             --disable-gui-tests \
             --disable-man \
+            --disable-ccache \
             --without-gui \
             --enable-reduce-exports
 
