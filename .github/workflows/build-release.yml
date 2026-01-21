@@ -1,6 +1,7 @@
 # Build Release Workflow
 #
-# Creates release binaries for Linux, Windows, and macOS with Qt GUI.
+# Creates release binaries for Linux, Windows, and macOS (ARM64) with Qt GUI.
+# Intel Mac users can run ARM64 binaries via Rosetta 2.
 # BLST library is built automatically via autotools integration.
 #
 # Trigger: Manual (workflow_dispatch) only
@@ -102,6 +103,7 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --disable-bip70 \
             CFLAGS="-O2 -g" \
             CXXFLAGS="-O2 -g" \
             LDFLAGS="-static-libstdc++"
@@ -284,6 +286,7 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --disable-bip70 \
             --enable-shared=no \
             CFLAGS="-O2 -g" \
             CXXFLAGS="-O2 -g"
@@ -323,118 +326,8 @@ jobs:
           path: release/
 
   # =============================================================================
-  # macOS x64 (Intel) Build with Qt GUI
-  # =============================================================================
-  build-macos-x64:
-    name: macOS x64 (Intel)
-    runs-on: macos-13
-    timeout-minutes: 180
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Extract version from configure.ac
-        id: version
-        run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION_MAJOR=$(grep "define(_CLIENT_VERSION_MAJOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_MINOR=$(grep "define(_CLIENT_VERSION_MINOR" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION_REVISION=$(grep "define(_CLIENT_VERSION_REVISION" configure.ac | sed 's/.*,\s*\([0-9]*\)).*/\1/')
-            VERSION="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_REVISION}"
-          fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Detected version: ${VERSION}"
-
-      - name: Install Dependencies
-        run: |
-          brew install automake libtool pkg-config
-          python3 -m pip install --break-system-packages setuptools
-
-      - name: Cache depends sources
-        uses: actions/cache@v4
-        with:
-          path: depends/sources
-          key: depends-sources-${{ hashFiles('depends/packages/*.mk') }}
-          restore-keys: |
-            depends-sources-
-
-      - name: Cache depends built
-        uses: actions/cache@v4
-        with:
-          path: depends/built
-          key: macos-x64-release-depends-qt-v1-${{ hashFiles('depends/packages/*.mk') }}-${{ hashFiles('depends/hosts/darwin.mk') }}
-          restore-keys: |
-            macos-x64-release-depends-qt-v1-
-
-      - name: Build depends (with Qt)
-        run: |
-          cd depends
-          make FORCE_USE_SYSTEM_CLANG=1 -j$(sysctl -n hw.ncpu)
-
-      - name: Configure
-        run: |
-          ./autogen.sh
-          CONFIG_SITE=$PWD/depends/$(depends/config.guess)/share/config.site ./configure \
-            --prefix=/ \
-            --disable-ccache \
-            --disable-maintainer-mode \
-            --disable-dependency-tracking \
-            --enable-reduce-exports \
-            --disable-bench \
-            --disable-tests \
-            --disable-gui-tests \
-            CFLAGS="-O2 -g" \
-            CXXFLAGS="-O2 -g"
-
-      - name: Build
-        run: make -j$(sysctl -n hw.ncpu)
-
-      - name: Package tar.gz
-        env:
-          MYNTA_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          mkdir -p release
-          DISTNAME="mynta-${MYNTA_VERSION}"
-          
-          mkdir -p stage/${DISTNAME}/bin
-          cp src/myntad stage/${DISTNAME}/bin/
-          cp src/mynta-cli stage/${DISTNAME}/bin/
-          
-          # Copy Qt app bundle if it exists
-          if [ -d src/qt/Mynta-Qt.app ]; then
-            cp -R src/qt/Mynta-Qt.app stage/${DISTNAME}/
-          elif [ -f src/qt/mynta-qt ]; then
-            cp src/qt/mynta-qt stage/${DISTNAME}/bin/
-          fi
-          
-          # Strip binaries
-          strip stage/${DISTNAME}/bin/* 2>/dev/null || true
-          
-          # Add README
-          cp doc/RELEASE_GUIDE.md stage/${DISTNAME}/README.md 2>/dev/null || echo "No README found"
-          
-          cd stage
-          tar -czvf ../release/${DISTNAME}-osx64.tar.gz ${DISTNAME}/
-
-      - name: Generate checksums
-        run: |
-          cd release
-          for f in *.tar.gz; do
-            [ -f "$f" ] && shasum -a 256 "$f" > "${f}.sha256sum"
-          done
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos-x64
-          path: release/
-
-  # =============================================================================
   # macOS ARM64 (Apple Silicon) Build with Qt GUI
+  # Note: Intel Mac users can run ARM64 binaries via Rosetta 2
   # =============================================================================
   build-macos-arm64:
     name: macOS ARM64 (Apple Silicon)
@@ -498,6 +391,7 @@ jobs:
             --disable-bench \
             --disable-tests \
             --disable-gui-tests \
+            --disable-bip70 \
             CFLAGS="-O2 -g" \
             CXXFLAGS="-O2 -g"
 
@@ -549,7 +443,7 @@ jobs:
   # =============================================================================
   create-release:
     name: Create Release
-    needs: [build-linux, build-windows, build-macos-x64, build-macos-arm64]
+    needs: [build-linux, build-windows, build-macos-arm64]
     runs-on: ubuntu-latest
     if: ${{ github.event.inputs.create_release == 'true' }}
     permissions:
@@ -631,11 +525,10 @@ jobs:
             2. Run `mynta-qt.exe` for the GUI wallet
             3. Or run `myntad.exe` for the daemon only
             
-            #### 🍎 macOS
+            #### 🍎 macOS (Apple Silicon)
             | Format | File | Description |
             |--------|------|-------------|
-            | tar.gz | `mynta-${{ env.RELEASE_VERSION }}-osx64.tar.gz` | Intel Macs |
-            | tar.gz | `mynta-${{ env.RELEASE_VERSION }}-osx-arm64.tar.gz` | Apple Silicon (M1/M2/M3) |
+            | tar.gz | `mynta-${{ env.RELEASE_VERSION }}-osx-arm64.tar.gz` | macOS (M1/M2/M3/M4) |
             
             **Installation:**
             ```bash
@@ -646,11 +539,7 @@ jobs:
             ./mynta-${{ env.RELEASE_VERSION }}/bin/mynta-qt
             ```
             
-            **Choose the right version:**
-            - Intel Mac (2020 or earlier): `osx64`
-            - Apple Silicon (M1/M2/M3): `osx-arm64`
-            
-            Check: Apple Menu → About This Mac → Chip
+            > **Intel Mac users:** The ARM64 binary runs on Intel Macs via Rosetta 2 (automatically installed on first use).
             
             ---
             

@@ -1,13 +1,8 @@
 package=xcb_proto
-$(package)_version=1.16.0
+$(package)_version=1.15.2
 $(package)_download_path=https://xorg.freedesktop.org/archive/individual/proto
 $(package)_file_name=xcb-proto-$($(package)_version).tar.xz
-$(package)_sha256_hash=a75a1848ad2a89a82d841a51be56ce988ff3c63a8d6bf4383ae3219d8d915119
-
-define $(package)_set_vars
-  $(package)_config_opts=--disable-shared
-  $(package)_config_opts_linux=--with-pic
-endef
+$(package)_sha256_hash=7072beb1f680a2fe3f9e535b797c146d22528990c72f63ddb49d2f350a3653ed
 
 define $(package)_config_cmds
   $($(package)_autoconf)
@@ -22,6 +17,5 @@ define $(package)_stage_cmds
 endef
 
 define $(package)_postprocess_cmds
-  find -name "*.pyc" -delete && \
-  find -name "*.pyo" -delete
+  rm -rf lib/python*/site-packages/xcbgen/__pycache__
 endef
