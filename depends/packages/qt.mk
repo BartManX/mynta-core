@@ -237,6 +237,7 @@ define $(package)_preprocess_cmds
   patch -p1 -i $($(package)_patch_dir)/qtbase-moc-ignore-gcc-macro.patch && \
   patch -p1 -i $($(package)_patch_dir)/fix_gcc15_limits.patch && \
   sed -i.old 's|#      include <fp.h>|#      include <math.h>|' qtbase/src/3rdparty/libpng/pngpriv.h && \
+  sed -i.old 's|#include <private/qcore_mac_p.h>|#include <private/qcore_mac_p.h>\n#include <CoreGraphics/CoreGraphics.h>|' qtbase/src/plugins/platforms/cocoa/qiosurfacegraphicsbuffer.h && \
   sed -i.old "s|updateqm.commands = \$$$$\$$$$LRELEASE|updateqm.commands = $($(package)_extract_dir)/qttools/bin/lrelease|" qttranslations/translations/translations.pro && \
   mkdir -p qtbase/mkspecs/macx-clang-linux &&\
   cp -f qtbase/mkspecs/macx-clang/qplatformdefs.h qtbase/mkspecs/macx-clang-linux/ &&\
