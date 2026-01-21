@@ -352,14 +352,14 @@ public:
         // Mynta mainnet checkpoints
         checkpointData = (CCheckpointData) {
             {
-                { 9950, uint256S("0x0000000000015c4fbab1d9bb79b8d02dac054476391e5e9d0694d2b4a9ff3bb8")},
+                { 10000, uint256S("0x0000000000ee5ee58012b64378a715ca1aa1427505e8b63403f4bd6653be6b19")},
             }
         };
 
-        // Mynta mainnet chainTxData (updated at block 9950)
+        // Mynta mainnet chainTxData (updated at block 10000)
         chainTxData = ChainTxData{
-            1768968733,    // timestamp of block 9950
-            10128,         // total transactions at block 9950
+            1768971937,    // timestamp of block 10000
+            10178,         // total transactions at block 10000
             0.019          // tx rate (txs per second)
         };
 

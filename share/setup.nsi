@@ -5,7 +5,7 @@ SetCompressor /SOLID lzma
 
 # General Symbol Definitions
 !define REGKEY "SOFTWARE\$(^Name)"
-!define VERSION 1.0.0
+!define VERSION 1.0.3
 !define COMPANY "Mynta Core project"
 !define URL https://mynta.network/
 

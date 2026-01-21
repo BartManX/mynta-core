@@ -16,14 +16,14 @@
 /* Major version */
 #undef CLIENT_VERSION_MAJOR
 
-/* Version suffix (e.g., -beta, -rc1, or empty for release) */
-#undef CLIENT_VERSION_SUFFIX
-
 /* Minor version */
 #undef CLIENT_VERSION_MINOR
 
 /* Build revision */
 #undef CLIENT_VERSION_REVISION
+
+/* Version suffix (e.g., -beta, -rc1, or empty for release) */
+#undef CLIENT_VERSION_SUFFIX
 
 /* Copyright holder(s) before %s replacement */
 #undef COPYRIGHT_HOLDERS
