@@ -455,11 +455,13 @@ public:
         consensus.nSegwitEnabled = true;
         consensus.nCSVEnabled = true;
         
-        // MYNTA TESTNET: Same launch time as mainnet - January 14, 2026 4:00 PM PST
-        consensus.nChainStartTime = 1768435200;
+        // MYNTA TESTNET v8: Reset for CPU-minable difficulty
+        // January 26, 2026 00:00:00 UTC
+        consensus.nChainStartTime = 1769385600;
 
+        // TESTNET v8: CPU-minable difficulty limits
         consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.kawpowLimit = uint256S("000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.kawpowLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 2016 * 60; // 1.4 days
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -520,18 +522,18 @@ public:
         nDefaultPort = 18770;
         nPruneAfterHeight = 1000;
 
-        // Genesis timestamp: January 13, 2026 11:00:00 PM PST (January 14, 2026 07:00:00 UTC)
-        // This is a FIXED value. DO NOT use time(nullptr) or any runtime value.
-        uint32_t nGenesisTime = 1768374000;  // LOCKED: Jan 13, 2026 11:00 PM PST
+        // TESTNET v8 Genesis - CPU minable
+        // Genesis timestamp: January 26, 2026 00:00:00 UTC
+        uint32_t nGenesisTime = 1769385600;
         
-        // Same genesis as mainnet (same params, same timestamp, same nonce)
-        genesis = CreateGenesisBlock(nGenesisTime, 2151963, 0x1e00ffff, 4, 5000 * COIN);
+        // TESTNET v8: Genesis with nBits matching powLimit compact form (0x1e0fffff)
+        // CPU-minable difficulty for faucet/testnet sustainability
+        genesis = CreateGenesisBlock(nGenesisTime, 275594, 0x1e0fffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
-        // Genesis verification - provably fair launch
-        // Hash verified to meet target 0x000000ffff... (nBits 0x1e00ffff)
-        assert(consensus.hashGenesisBlock == uint256S("0x0000003435e201dbb29b89415444b9cc8adeefcec50ba2678c562ef8cc4928c5"));
+        // TESTNET v8: Genesis verification
+        assert(consensus.hashGenesisBlock == uint256S("0x00000755140ca6a8abe9961f2f1d0c4df79f76fda06b0abd8c1d53e8c6e781e3"));
         assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
         vFixedSeeds.clear();

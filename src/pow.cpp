@@ -28,20 +28,13 @@ unsigned int static DarkGravityWave(const CBlockIndex* pindexLast, const CBlockH
         return bnPowLimit.GetCompact();
     }
 
-    if (params.fPowAllowMinDifficultyBlocks && params.fPowNoRetargeting) {
-        // Special difficulty rule:
-        // If the new block's timestamp is more than 2 * 1 minutes
+    if (params.fPowAllowMinDifficultyBlocks) {
+        // Special difficulty rule for testnet:
+        // If the new block's timestamp is more than 2 * target spacing (2 minutes)
         // then allow mining of a min-difficulty block.
+        // This ensures testnet can recover if GPU miners spike difficulty then leave.
         if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + params.nPowTargetSpacing * 2)
             return nProofOfWorkLimit;
-        else {
-            // Return the last non-special-min-difficulty-rules-block
-            const CBlockIndex *pindex = pindexLast;
-            while (pindex->pprev && pindex->nHeight % params.DifficultyAdjustmentInterval() != 0 &&
-                   pindex->nBits == nProofOfWorkLimit)
-                pindex = pindex->pprev;
-            return pindex->nBits;
-        }
     }
 
     const CBlockIndex *pindex = pindexLast;

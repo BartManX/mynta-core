@@ -5,16 +5,16 @@ SetCompressor /SOLID lzma
 
 # General Symbol Definitions
 !define REGKEY "SOFTWARE\$(^Name)"
-!define VERSION 1.0.3
+!define VERSION 1.1.0
 !define COMPANY "Mynta Core project"
 !define URL https://mynta.network/
 
 # MUI Symbol Definitions
-!define MUI_ICON "/home/drock/Documents/mynta-workspace/mynta-core/share/pixmaps/mynta.ico"
-!define MUI_WELCOMEFINISHPAGE_BITMAP "/home/drock/Documents/mynta-workspace/mynta-core/share/pixmaps/nsis-wizard.bmp"
+!define MUI_ICON "/mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/share/pixmaps/mynta.ico"
+!define MUI_WELCOMEFINISHPAGE_BITMAP "/mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/share/pixmaps/nsis-wizard.bmp"
 !define MUI_HEADERIMAGE
 !define MUI_HEADERIMAGE_RIGHT
-!define MUI_HEADERIMAGE_BITMAP "/home/drock/Documents/mynta-workspace/mynta-core/share/pixmaps/nsis-header.bmp"
+!define MUI_HEADERIMAGE_BITMAP "/mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/share/pixmaps/nsis-header.bmp"
 !define MUI_FINISHPAGE_NOAUTOCLOSE
 !define MUI_STARTMENUPAGE_REGISTRY_ROOT HKLM
 !define MUI_STARTMENUPAGE_REGISTRY_KEY ${REGKEY}
@@ -22,7 +22,7 @@ SetCompressor /SOLID lzma
 !define MUI_STARTMENUPAGE_DEFAULTFOLDER "Mynta Core"
 !define MUI_FINISHPAGE_RUN $INSTDIR\@RAVEN_GUI_NAME@
 !define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
-!define MUI_UNWELCOMEFINISHPAGE_BITMAP "/home/drock/Documents/mynta-workspace/mynta-core/share/pixmaps/nsis-wizard.bmp"
+!define MUI_UNWELCOMEFINISHPAGE_BITMAP "/mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/share/pixmaps/nsis-wizard.bmp"
 !define MUI_UNFINISHPAGE_NOAUTOCLOSE
 
 # Included files
@@ -48,7 +48,7 @@ Var StartMenuGroup
 !insertmacro MUI_LANGUAGE English
 
 # Installer attributes
-OutFile /home/drock/Documents/mynta-workspace/mynta-core/mynta-${VERSION}-win-setup.exe
+OutFile /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/mynta-${VERSION}-win-setup.exe
 !if "" == "64"
 InstallDir $PROGRAMFILES64\Mynta
 !else
@@ -73,14 +73,14 @@ ShowUninstDetails show
 Section -Main SEC0000
     SetOutPath $INSTDIR
     SetOverwrite on
-    File /home/drock/Documents/mynta-workspace/mynta-core/release/@RAVEN_GUI_NAME@
-    File /oname=COPYING.txt /home/drock/Documents/mynta-workspace/mynta-core/COPYING
-    File /oname=readme.txt /home/drock/Documents/mynta-workspace/mynta-core/doc/README_windows.txt
+    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_GUI_NAME@
+    File /oname=COPYING.txt /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/COPYING
+    File /oname=readme.txt /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/doc/README_windows.txt
     SetOutPath $INSTDIR\daemon
-    File /home/drock/Documents/mynta-workspace/mynta-core/release/@RAVEN_DAEMON_NAME@
-    File /home/drock/Documents/mynta-workspace/mynta-core/release/@RAVEN_CLI_NAME@
+    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_DAEMON_NAME@
+    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_CLI_NAME@
     SetOutPath $INSTDIR\doc
-    File /r /home/drock/Documents/mynta-workspace/mynta-core/doc\*.*
+    File /r /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/doc\*.*
     SetOutPath $INSTDIR
     WriteRegStr HKCU "${REGKEY}\Components" Main 1
 SectionEnd
