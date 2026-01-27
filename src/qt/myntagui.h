@@ -148,6 +148,13 @@ private:
     QLabel *labelToolbar = nullptr;
     QToolBar *m_toolbar = nullptr;
 
+    /** Mining menu and status (testnet/regtest only) */
+    QMenu *miningMenu = nullptr;
+    QAction *toggleMiningAction = nullptr;
+    bool miningEnabled = false;
+    QLabel *labelMiningHashrate = nullptr;
+    QTimer *miningHashrateTimer = nullptr;
+
     /** MYNTA END */
 
     QSystemTrayIcon *trayIcon = nullptr;
@@ -313,6 +320,12 @@ private Q_SLOTS:
     void toggleNetworkActive();
 
     void showModalOverlay();
+
+    /** Toggle CPU mining (testnet/regtest only) */
+    void toggleMining();
+    
+    /** Update mining hashrate display in status bar */
+    void updateMiningHashrate();
 };
 
 class UnitDisplayStatusBarControl : public QLabel

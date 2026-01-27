@@ -207,4 +207,13 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);
 
 int GenerateMyntas(bool fGenerate, int nThreads, const CChainParams& chainparams);
+
+/** Mining statistics - accessible for GUI display */
+extern uint64_t nHashesPerSec;
+extern uint64_t nHashesDone;
+extern uint64_t nMiningTimeStart;
+
+/** Check if mining is currently active */
+bool IsMiningActive();
+
 #endif // MYNTA_MINER_H

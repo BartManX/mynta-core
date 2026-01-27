@@ -5,6 +5,9 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "miner.h"
+#include "rpc/mining.h"
+
+#include <atomic>
 
 #include "amount.h"
 #include "base58.h"
@@ -58,6 +61,14 @@ uint64_t nLastBlockWeight = 0;
 uint64_t nMiningTimeStart = 0;
 uint64_t nHashesPerSec = 0;
 uint64_t nHashesDone = 0;
+
+// Tracks whether mining threads are currently running (set by GenerateMyntas)
+std::atomic<bool> fMiningActive{false};
+
+bool IsMiningActive()
+{
+    return fMiningActive.load();
+}
 
 
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
@@ -773,9 +784,23 @@ void static MyntaMiner(const CChainParams& chainparams)
                     }
                     pblock->nNonce += 1;
                     nHashesDone += 1;
-                    if (nHashesDone % 500000 == 0) {   //Calculate hashing speed
-                        nHashesPerSec = nHashesDone / (((GetTimeMicros() - nMiningTimeStart) / 1000000) + 1);
-                    } 
+                    
+                    // Calculate hashrate: after first 1000 hashes, then every second
+                    // Uses thread-local to track last update time (minimal overhead)
+                    {
+                        static thread_local int64_t nLastHashrateUpdate = 0;
+                        int64_t nNow = GetTimeMicros();
+                        bool shouldUpdate = (nHashesDone == 1000) ||  // First calculation at 1000 hashes
+                                           (nNow - nLastHashrateUpdate >= 1000000);  // Then every second
+                        if (shouldUpdate) {
+                            int64_t nElapsedSec = (nNow - nMiningTimeStart) / 1000000;
+                            if (nElapsedSec > 0) {
+                                nHashesPerSec = nHashesDone / nElapsedSec;
+                            }
+                            nLastHashrateUpdate = nNow;
+                        }
+                    }
+                    
                     if ((pblock->nNonce & 0xFF) == 0)
                         break;
                 }
@@ -830,10 +855,13 @@ int GenerateMyntas(bool fGenerate, int nThreads, const CChainParams& chainparams
         minerThreads->interrupt_all();
         delete minerThreads;
         minerThreads = NULL;
+        fMiningActive.store(false);
     }
 
-    if (nThreads == 0 || !fGenerate)
+    if (nThreads == 0 || !fGenerate) {
+        fMiningActive.store(false);
         return numCores;
+    }
 
     minerThreads = new boost::thread_group();
     
@@ -845,6 +873,8 @@ int GenerateMyntas(bool fGenerate, int nThreads, const CChainParams& chainparams
     for (int i = 0; i < nThreads; i++){
         minerThreads->create_thread(boost::bind(&MyntaMiner, boost::cref(chainparams)));
     }
+    
+    fMiningActive.store(true);
 
     return(numCores);
 }

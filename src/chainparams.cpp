@@ -455,13 +455,14 @@ public:
         consensus.nSegwitEnabled = true;
         consensus.nCSVEnabled = true;
         
-        // MYNTA TESTNET v8: Reset for CPU-minable difficulty
-        // January 26, 2026 00:00:00 UTC
-        consensus.nChainStartTime = 1769385600;
+        // MYNTA TESTNET v9: Ultra-low difficulty for wallet mining
+        // January 27, 2026 00:00:00 UTC
+        consensus.nChainStartTime = 1769472000;
 
-        // TESTNET v8: CPU-minable difficulty limits
-        consensus.powLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
-        consensus.kawpowLimit = uint256S("00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        // TESTNET v9: Ultra-low difficulty for single-core wallet mining
+        // 256x easier than v8 - allows ~20 second blocks at 200 H/s
+        consensus.powLimit = uint256S("000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+        consensus.kawpowLimit = uint256S("000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 2016 * 60; // 1.4 days
         consensus.nPowTargetSpacing = 1 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -522,18 +523,19 @@ public:
         nDefaultPort = 18770;
         nPruneAfterHeight = 1000;
 
-        // TESTNET v8 Genesis - CPU minable
-        // Genesis timestamp: January 26, 2026 00:00:00 UTC
-        uint32_t nGenesisTime = 1769385600;
+        // TESTNET v9 Genesis - Ultra-low difficulty for wallet mining
+        // Genesis timestamp: January 27, 2026 00:00:00 UTC
+        uint32_t nGenesisTime = 1769472000;
         
-        // TESTNET v8: Genesis with nBits matching powLimit compact form (0x1e0fffff)
-        // CPU-minable difficulty for faucet/testnet sustainability
-        genesis = CreateGenesisBlock(nGenesisTime, 275594, 0x1e0fffff, 4, 5000 * COIN);
+        // TESTNET v9: Genesis with nBits = 0x1f0fffff (256x easier than v8)
+        // Single-core wallet mining: ~20 seconds per block at 200 H/s
+        // nNonce = 249 found via genesis mining
+        genesis = CreateGenesisBlock(nGenesisTime, 249, 0x1f0fffff, 4, 5000 * COIN);
 
         consensus.hashGenesisBlock = genesis.GetX16RHash();
 
-        // TESTNET v8: Genesis verification
-        assert(consensus.hashGenesisBlock == uint256S("0x00000755140ca6a8abe9961f2f1d0c4df79f76fda06b0abd8c1d53e8c6e781e3"));
+        // TESTNET v9: Genesis verification
+        assert(consensus.hashGenesisBlock == uint256S("0x00095c4826541cb43a2d4b668417f74f59f32ba6bfe30f2e68eb6008cbdb192a"));
         assert(genesis.hashMerkleRoot == uint256S("0x428d2450b9481e0be4b98c0df7883b0e5692ac7134c7b474ecb639461a495877"));
 
         vFixedSeeds.clear();

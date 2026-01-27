@@ -35,10 +35,13 @@
 
 #include "chainparams.h"
 #include "init.h"
+#include "miner.h"
 #include "ui_interface.h"
 #include "util.h"
 #include "core_io.h"
 #include "darkstyle.h"
+#include "rpc/server.h"
+#include "rpc/client.h"
 
 #include <iostream>
 
@@ -181,6 +184,10 @@ MyntaGUI::MyntaGUI(const PlatformStyle *_platformStyle, const NetworkStyle *netw
     labelVersionUpdate = new QLabel();
     networkVersionManager = new QNetworkAccessManager();
     versionRequest = new QNetworkRequest();
+    
+    // Mining hashrate update timer (updates every 500ms for smooth animation when mining)
+    miningHashrateTimer = new QTimer(this);
+    connect(miningHashrateTimer, SIGNAL(timeout()), this, SLOT(updateMiningHashrate()));
     /** MYNTA END */
 
     // Accept D&D of URIs
@@ -223,9 +230,17 @@ MyntaGUI::MyntaGUI(const PlatformStyle *_platformStyle, const NetworkStyle *netw
     labelWalletHDStatusIcon = new QLabel();
     connectionsControl = new GUIUtil::ClickableLabel();
     labelBlocksIcon = new GUIUtil::ClickableLabel();
+    
+    // Mining hashrate display (shown when mining is active)
+    labelMiningHashrate = new QLabel();
+    labelMiningHashrate->setVisible(false);
+    labelMiningHashrate->setStyleSheet(QString("QLabel { color: #f59e0b; font-weight: bold; padding-right: 15px; }"));
+    labelMiningHashrate->setToolTip(tr("Current mining hashrate"));
+    
     if(enableWallet)
     {
         frameBlocksLayout->addStretch();
+        frameBlocksLayout->addWidget(labelMiningHashrate);  // Mining hashrate first (leftmost)
         frameBlocksLayout->addWidget(unitDisplayControl);
         frameBlocksLayout->addStretch();
         frameBlocksLayout->addWidget(labelWalletEncryptionIcon);
@@ -498,12 +513,19 @@ void MyntaGUI::createActions()
     showHelpMessageAction->setMenuRole(QAction::NoRole);
     showHelpMessageAction->setStatusTip(tr("Show the %1 help message to get a list with possible Mynta command-line options").arg(tr(PACKAGE_NAME)));
 
+    // Mining action (testnet/regtest only)
+    toggleMiningAction = new QAction(platformStyle->TextColorIcon(":/icons/tx_mined"), tr("&Enable Mining"), this);
+    toggleMiningAction->setStatusTip(tr("Enable or disable CPU mining"));
+    toggleMiningAction->setCheckable(true);
+    toggleMiningAction->setChecked(false);
+
     connect(quitAction, SIGNAL(triggered()), qApp, SLOT(quit()));
     connect(aboutAction, SIGNAL(triggered()), this, SLOT(aboutClicked()));
     connect(aboutQtAction, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
     connect(optionsAction, SIGNAL(triggered()), this, SLOT(optionsClicked()));
     connect(toggleHideAction, SIGNAL(triggered()), this, SLOT(toggleHidden()));
     connect(showHelpMessageAction, SIGNAL(triggered()), this, SLOT(showHelpMessageClicked()));
+    connect(toggleMiningAction, SIGNAL(triggered()), this, SLOT(toggleMining()));
     connect(openRPCConsoleAction, SIGNAL(triggered()), this, SLOT(showDebugWindow()));
     connect(openWalletRepairAction, SIGNAL(triggered()), this, SLOT(showWalletRepair()));
     // Get restart command-line parameters and handle restart
@@ -564,6 +586,8 @@ void MyntaGUI::createMenuBar()
         settings->addSeparator();
     }
     settings->addAction(optionsAction);
+
+    // Mining menu will be added in setClientModel() after chain params are initialized
 
     QMenu *help = appMenuBar->addMenu(tr("&Help"));
     if(walletFrame)
@@ -934,6 +958,28 @@ void MyntaGUI::setClientModel(ClientModel *_clientModel)
         // Create system tray menu (or setup the dock menu) that late to prevent users from calling actions,
         // while the client has not yet fully loaded
         createTrayIconMenu();
+
+        // Add mining menu for testnet/regtest only (now that chain params are initialized)
+        std::string networkId = GetParams().NetworkIDString();
+        if ((networkId == "test" || networkId == "regtest") && miningMenu == nullptr)
+        {
+            // Insert mining menu before Help menu
+            QList<QAction*> actions = appMenuBar->actions();
+            QAction* helpAction = nullptr;
+            for (QAction* action : actions) {
+                if (action->text().contains("Help", Qt::CaseInsensitive)) {
+                    helpAction = action;
+                    break;
+                }
+            }
+            miningMenu = new QMenu(tr("&Mining"), appMenuBar);
+            miningMenu->addAction(toggleMiningAction);
+            if (helpAction) {
+                appMenuBar->insertMenu(helpAction, miningMenu);
+            } else {
+                appMenuBar->addMenu(miningMenu);
+            }
+        }
 
         // Keep up to date with client
         updateNetworkState();
@@ -1710,6 +1756,235 @@ void MyntaGUI::showModalOverlay()
 {
     if (modalOverlay && (progressBar->isVisible() || modalOverlay->isLayerVisible()))
         modalOverlay->toggleVisibility();
+}
+
+void MyntaGUI::toggleMining()
+{
+    /*
+     * CPU Mining Toggle for Qt Wallet
+     * ================================
+     * 
+     * ARCHITECTURE:
+     * - Qt signals intent to mine; daemon owns thread lifecycle
+     * - Uses setgenerate RPC for consistency with CLI behavior
+     * - Single-threaded mining to avoid race conditions (see doc/qt-mining.md)
+     * 
+     * AUDIT HISTORY:
+     * - 2026-01-27: Fixed crash with multi-thread mining. Root cause was race 
+     *   condition when 8 threads competed for wallet keypool during init.
+     *   Solution: Default to 1 thread for GUI mining stability.
+     * 
+     * THREAD SAFETY:
+     * - Called from Qt main thread (menu action)
+     * - RPC execution is synchronous but quick
+     * - Mining threads are managed by daemon, not Qt
+     * - UI updates occur after RPC completion (safe)
+     */
+
+    // Defensive: ensure action exists
+    if (!toggleMiningAction) {
+        LogPrintf("GUI: toggleMining - action is null, aborting\n");
+        return;
+    }
+
+    // Determine target state
+    bool targetState = !miningEnabled;
+    LogPrintf("GUI: toggleMining invoked (current=%s, target=%s)\n", 
+              miningEnabled ? "enabled" : "disabled",
+              targetState ? "enabled" : "disabled");
+
+    try {
+        // Construct setgenerate RPC request
+        // Signature: setgenerate(bool generate, int genproclimit)
+        // genproclimit: -1 = all cores, 0 = stop, >0 = specific count
+        JSONRPCRequest req;
+        req.strMethod = "setgenerate";
+        
+        UniValue params(UniValue::VARR);
+        
+        // Param 0: generate (boolean) - must use setBool for correct JSON type
+        UniValue generateParam;
+        generateParam.setBool(targetState);
+        params.push_back(generateParam);
+        
+        // Param 1: genproclimit (only when enabling)
+        // NOTE: Using 1 thread intentionally for stability. Multi-thread mining
+        // from GUI causes race conditions. See doc/qt-mining.md for details.
+        if (targetState) {
+            UniValue threadsParam((int64_t)1);
+            params.push_back(threadsParam);
+        }
+        
+        req.params = params;
+        
+        LogPrintf("GUI: Invoking setgenerate RPC (generate=%s, threads=%s)\n",
+                  targetState ? "true" : "false",
+                  targetState ? "1" : "n/a");
+        
+        // Execute RPC - spawns/stops miner threads, returns quickly
+        UniValue result = tableRPC.execute(req);
+        
+        LogPrintf("GUI: setgenerate succeeded, result: %s\n", result.write());
+        
+        // Update internal state only after confirmed success
+        miningEnabled = targetState;
+        
+        // Update menu item text and state
+        if (miningEnabled) {
+            toggleMiningAction->setText(tr("&Disable Mining"));
+            toggleMiningAction->setStatusTip(tr("CPU mining is active (1 thread). Click to disable."));
+        } else {
+            toggleMiningAction->setText(tr("&Enable Mining"));
+            toggleMiningAction->setStatusTip(tr("Start CPU mining on this node"));
+        }
+        toggleMiningAction->setChecked(miningEnabled);
+        
+        LogPrintf("GUI: Mining state updated to %s\n", miningEnabled ? "enabled" : "disabled");
+        
+        // Start or stop hashrate update timer
+        if (miningEnabled) {
+            // Start hashrate display timer (update every 500ms for smooth animation)
+            if (miningHashrateTimer) {
+                miningHashrateTimer->start(500);
+                updateMiningHashrate(); // Immediate first update
+            }
+        } else {
+            // Stop hashrate display and hide label
+            if (miningHashrateTimer) {
+                miningHashrateTimer->stop();
+            }
+            if (labelMiningHashrate) {
+                labelMiningHashrate->setVisible(false);
+            }
+        }
+        
+        // Non-blocking notification (tray icon balloon on Windows)
+        if (notificator) {
+            QString msg = miningEnabled 
+                ? tr("CPU mining started (1 thread)") 
+                : tr("CPU mining stopped");
+            notificator->notify(Notificator::Information, tr("Mining"), msg);
+        }
+        
+    } catch (const UniValue& objError) {
+        // RPC returned a JSON error
+        std::string errorMsg = "Mining operation failed";
+        try {
+            UniValue msgVal = find_value(objError, "message");
+            if (msgVal.isStr()) {
+                errorMsg = msgVal.get_str();
+            }
+        } catch (...) {}
+        
+        LogPrintf("GUI: setgenerate RPC error: %s\n", errorMsg);
+        
+        // Restore checkbox to actual state
+        if (toggleMiningAction) {
+            toggleMiningAction->setChecked(miningEnabled);
+        }
+        
+        QMessageBox::warning(this, tr("Mining Error"), QString::fromStdString(errorMsg));
+        
+    } catch (const std::exception& e) {
+        LogPrintf("GUI: setgenerate exception: %s\n", e.what());
+        
+        if (toggleMiningAction) {
+            toggleMiningAction->setChecked(miningEnabled);
+        }
+        
+        QMessageBox::warning(this, tr("Mining Error"), 
+                             tr("Failed to toggle mining: %1").arg(QString::fromStdString(e.what())));
+        
+    } catch (...) {
+        LogPrintf("GUI: setgenerate unknown exception\n");
+        
+        if (toggleMiningAction) {
+            toggleMiningAction->setChecked(miningEnabled);
+        }
+        
+        QMessageBox::warning(this, tr("Mining Error"), tr("An unexpected error occurred"));
+    }
+}
+
+void MyntaGUI::updateMiningHashrate()
+{
+    /*
+     * Updates the hashrate display in the status bar.
+     * Called by miningHashrateTimer every 500ms when mining is active.
+     * 
+     * Display logic:
+     * - While hashrate is being calculated: "⛏ Mining... (X hashes)"
+     * - Once hashrate available: "⛏ X.XX H/s" or kH/s or MH/s
+     */
+    
+    if (!labelMiningHashrate) return;
+    
+    // Animation frames for mining indicator
+    static int animFrame = 0;
+    static const char* animChars[] = {"⛏", "⛏️", "⚒", "⚒️"};
+    
+    // Check if mining is actually active
+    bool miningActive = IsMiningActive();
+    
+    if (miningActive && miningEnabled) {
+        // Get current stats from miner
+        uint64_t hashrate = nHashesPerSec;
+        uint64_t totalHashes = nHashesDone;
+        
+        QString displayStr;
+        QString tooltipStr;
+        
+        if (hashrate > 0) {
+            // Hashrate is available - show it
+            if (hashrate >= 1000000) {
+                displayStr = QString("%1 %2 MH/s").arg(animChars[animFrame % 4]).arg(QString::number(hashrate / 1000000.0, 'f', 2));
+            } else if (hashrate >= 1000) {
+                displayStr = QString("%1 %2 kH/s").arg(animChars[animFrame % 4]).arg(QString::number(hashrate / 1000.0, 'f', 2));
+            } else {
+                displayStr = QString("%1 %2 H/s").arg(animChars[animFrame % 4]).arg(QString::number(hashrate));
+            }
+            tooltipStr = tr("Mining active - %1 hashes per second\nTotal hashes: %2").arg(QString::number(hashrate)).arg(QString::number(totalHashes));
+        } else {
+            // Hashrate not yet calculated - show hash count with animation
+            QString hashCountStr;
+            if (totalHashes >= 1000000) {
+                hashCountStr = QString::number(totalHashes / 1000000.0, 'f', 2) + "M";
+            } else if (totalHashes >= 1000) {
+                hashCountStr = QString::number(totalHashes / 1000.0, 'f', 1) + "k";
+            } else {
+                hashCountStr = QString::number(totalHashes);
+            }
+            
+            // Animated "Mining..." with dot progression
+            static int dots = 0;
+            QString dotsStr = QString(".").repeated((dots % 3) + 1);
+            dots++;
+            
+            displayStr = QString("%1 Mining%2 (%3 hashes)").arg(animChars[animFrame % 4]).arg(dotsStr).arg(hashCountStr);
+            tooltipStr = tr("Mining active - calculating hashrate...\nTotal hashes computed: %1").arg(QString::number(totalHashes));
+        }
+        
+        animFrame++;
+        
+        labelMiningHashrate->setText(displayStr);
+        labelMiningHashrate->setVisible(true);
+        labelMiningHashrate->setToolTip(tooltipStr);
+        
+    } else {
+        // Mining stopped - hide the label
+        labelMiningHashrate->setVisible(false);
+        animFrame = 0;
+        
+        // Stop the timer if mining stopped externally
+        if (!miningActive && miningHashrateTimer && miningHashrateTimer->isActive()) {
+            miningHashrateTimer->stop();
+            miningEnabled = false;
+            if (toggleMiningAction) {
+                toggleMiningAction->setText(tr("&Enable Mining"));
+                toggleMiningAction->setChecked(false);
+            }
+        }
+    }
 }
 
 static bool ThreadSafeMessageBox(MyntaGUI *gui, const std::string& message, const std::string& caption, unsigned int style)
