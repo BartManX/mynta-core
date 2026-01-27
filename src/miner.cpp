@@ -782,7 +782,13 @@ void static MyntaMiner(const CChainParams& chainparams)
 
                         break;
                     }
-                    pblock->nNonce += 1;
+                    // Increment the appropriate nonce for the PoW algorithm
+                    // KawPow uses 64-bit nonce, X16R uses 32-bit nonce
+                    if (pblock->nTime >= nKAWPOWActivationTime && nKAWPOWActivationTime > 0) {
+                        pblock->nNonce64 += 1;
+                    } else {
+                        pblock->nNonce += 1;
+                    }
                     nHashesDone += 1;
                     
                     // Calculate hashrate: after first 1000 hashes, then every second
@@ -801,8 +807,16 @@ void static MyntaMiner(const CChainParams& chainparams)
                         }
                     }
                     
-                    if ((pblock->nNonce & 0xFF) == 0)
-                        break;
+                    // Break to check for interrupts - use appropriate nonce for algorithm
+                    if (pblock->nTime >= nKAWPOWActivationTime && nKAWPOWActivationTime > 0) {
+                        // KawPow: break every 256 hashes
+                        if ((pblock->nNonce64 & 0xFF) == 0)
+                            break;
+                    } else {
+                        // X16R: break every 256 hashes  
+                        if ((pblock->nNonce & 0xFF) == 0)
+                            break;
+                    }
                 }
 
                 // Check for stop or if block needs to be rebuilt
@@ -810,8 +824,16 @@ void static MyntaMiner(const CChainParams& chainparams)
                 // Regtest mode doesn't require peers
                 //if (vNodes.empty() && chainparams.MiningRequiresPeers())
                 //    break;
-                if (pblock->nNonce >= 0xffff0000)
-                    break;
+                // Check nonce overflow based on algorithm
+                if (pblock->nTime >= nKAWPOWActivationTime && nKAWPOWActivationTime > 0) {
+                    // KawPow: unlikely to overflow 64-bit, but check anyway
+                    if (pblock->nNonce64 >= 0xffffffffffff0000ULL)
+                        break;
+                } else {
+                    // X16R: check 32-bit nonce overflow
+                    if (pblock->nNonce >= 0xffff0000)
+                        break;
+                }
                 if (mempool.GetTransactionsUpdated() != nTransactionsUpdatedLast && GetTime() - nStart > 60)
                     break;
                 if (pindexPrev != chainActive.Tip())
