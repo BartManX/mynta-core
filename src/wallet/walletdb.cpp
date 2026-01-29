@@ -576,6 +576,34 @@ bool ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                 return false;
             }
         }
+        else if (strType == "desc")
+        {
+            // Load descriptor wallet data
+            uint256 id;
+            ssKey >> id;
+            
+            std::string descriptor;
+            int64_t creation_time;
+            int32_t range_start, range_end, next_index;
+            bool active, internal;
+            
+            ssValue >> descriptor;
+            ssValue >> creation_time;
+            ssValue >> range_start;
+            ssValue >> range_end;
+            ssValue >> next_index;
+            ssValue >> active;
+            ssValue >> internal;
+            
+            if (!pwallet->LoadDescriptor(id, descriptor, creation_time, 
+                                         range_start, range_end, next_index, 
+                                         active, internal))
+            {
+                strErr = strprintf("Error loading descriptor %s", id.ToString());
+                // Non-fatal - continue loading other wallet data
+                LogPrintf("Warning: %s\n", strErr);
+            }
+        }
     } catch (...)
     {
         return false;
@@ -968,6 +996,83 @@ bool CWalletDB::EraseDestData(const std::string &address, const std::string &key
 bool CWalletDB::WriteHDChain(const CHDChain& chain)
 {
     return WriteIC(std::string("hdchain"), chain);
+}
+
+// ============================================================================
+// Descriptor wallet methods (v2.0.0+)
+// ============================================================================
+
+bool CWalletDB::WriteWalletType(const std::string& type)
+{
+    return WriteIC(std::string("wallettype"), type);
+}
+
+bool CWalletDB::ReadWalletType(std::string& type)
+{
+    // Default to "legacy" for backwards compatibility
+    // Existing wallets without this key are legacy wallets
+    if (!batch.Read(std::string("wallettype"), type)) {
+        type = "legacy";
+        return true; // Not an error - absence means legacy
+    }
+    return true;
+}
+
+bool CWalletDB::WriteDescriptor(const uint256& id, const std::string& descriptor,
+                                int64_t creation_time, int32_t range_start, int32_t range_end,
+                                int32_t next_index, bool active, bool internal)
+{
+    // Store as a serialized structure
+    std::vector<unsigned char> data;
+    CDataStream ss(SER_DISK, CLIENT_VERSION);
+    ss << descriptor;
+    ss << creation_time;
+    ss << range_start;
+    ss << range_end;
+    ss << next_index;
+    ss << active;
+    ss << internal;
+    
+    return WriteIC(std::make_pair(std::string("desc"), id), ss);
+}
+
+bool CWalletDB::ReadDescriptor(const uint256& id, std::string& descriptor,
+                               int64_t& creation_time, int32_t& range_start, int32_t& range_end,
+                               int32_t& next_index, bool& active, bool& internal)
+{
+    std::vector<unsigned char> vchData;
+    if (!batch.Read(std::make_pair(std::string("desc"), id), vchData)) {
+        return false;
+    }
+    
+    CDataStream ss(vchData, SER_DISK, CLIENT_VERSION);
+    ss >> descriptor;
+    ss >> creation_time;
+    ss >> range_start;
+    ss >> range_end;
+    ss >> next_index;
+    ss >> active;
+    ss >> internal;
+    
+    return true;
+}
+
+bool CWalletDB::EraseDescriptor(const uint256& id)
+{
+    return EraseIC(std::make_pair(std::string("desc"), id));
+}
+
+bool CWalletDB::WriteDescriptorKey(const uint256& desc_id, int32_t index, const CPubKey& pubkey)
+{
+    return WriteIC(std::make_pair(std::string("desckey"), std::make_pair(desc_id, index)), pubkey);
+}
+
+bool CWalletDB::WriteDescriptorCryptedKey(const uint256& desc_id, int32_t index,
+                                          const CPubKey& pubkey,
+                                          const std::vector<unsigned char>& crypted_secret)
+{
+    return WriteIC(std::make_pair(std::string("cdesckey"), std::make_pair(desc_id, index)),
+                   std::make_pair(pubkey, crypted_secret));
 }
 
 bool CWalletDB::TxnBegin()

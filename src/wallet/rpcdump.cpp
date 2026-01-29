@@ -82,6 +82,9 @@ UniValue importprivkey(const JSONRPCRequest& request)
     if (request.fHelp || request.params.size() < 1 || request.params.size() > 3)
         throw std::runtime_error(
             "importprivkey \"privkey\" ( \"label\" ) ( rescan )\n"
+            "\n*** DEPRECATED ***\n"
+            "This RPC is deprecated and will be removed in a future version.\n"
+            "Use descriptor wallets with importdescriptors for key management.\n"
             "\nAdds a private key (as returned by dumpprivkey) to your wallet.\n"
             "\nArguments:\n"
             "1. \"privkey\"          (string, required) The private key (see dumpprivkey)\n"
@@ -103,6 +106,21 @@ UniValue importprivkey(const JSONRPCRequest& request)
 
 
     LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Block on descriptor wallets - private key import not supported
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "importprivkey is not supported for descriptor wallets. "
+            "Use importdescriptors to import keys via descriptors. "
+            "Example: importdescriptors '[{\"desc\":\"pkh(YOUR_PRIVKEY)\",\"timestamp\":\"now\"}]'");
+    }
+
+    // Deprecation warning for legacy wallets
+    if (!gArgs.GetBoolArg("-deprecatedrpc=importprivkey", false)) {
+        LogPrintf("WARNING: importprivkey is deprecated and will be removed in a future version. "
+                  "Use descriptor wallets for new deployments. "
+                  "Start with -deprecatedrpc=importprivkey to suppress this warning.\n");
+    }
 
     EnsureWalletIsUnlocked(pwallet);
 
@@ -558,10 +576,13 @@ UniValue dumpprivkey(const JSONRPCRequest& request)
     if (request.fHelp || request.params.size() != 1)
         throw std::runtime_error(
             "dumpprivkey \"address\"\n"
+            "\n*** DEPRECATED ***\n"
+            "This RPC is deprecated and will be removed in a future version.\n"
+            "Use descriptor wallets with listdescriptors for wallet backup.\n"
             "\nReveals the private key corresponding to 'address'.\n"
             "Then the importprivkey can be used with this output\n"
             "\nArguments:\n"
-            "1. \"address\"   (string, required) The raven address for the private key\n"
+            "1. \"address\"   (string, required) The mynta address for the private key\n"
             "\nResult:\n"
             "\"key\"                (string) The private key\n"
             "\nExamples:\n"
@@ -571,6 +592,22 @@ UniValue dumpprivkey(const JSONRPCRequest& request)
         );
 
     LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Block on descriptor wallets - private key export not supported
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "dumpprivkey is not supported for descriptor wallets. "
+            "Use listdescriptors to export wallet descriptor configuration. "
+            "Descriptor wallets use deterministic key derivation - backing up "
+            "the descriptor is sufficient to recover all keys.");
+    }
+
+    // Deprecation warning for legacy wallets
+    if (!gArgs.GetBoolArg("-deprecatedrpc=dumpprivkey", false)) {
+        LogPrintf("WARNING: dumpprivkey is deprecated and will be removed in a future version. "
+                  "Use descriptor wallets for new deployments. "
+                  "Start with -deprecatedrpc=dumpprivkey to suppress this warning.\n");
+    }
 
     EnsureWalletIsUnlocked(pwallet);
 

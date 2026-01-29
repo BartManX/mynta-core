@@ -164,6 +164,7 @@ MYNTA_CORE_H = \
   chainparamsseeds.h \
   checkpoints.h \
   checkqueue.h \
+  clientnotices.h \
   clientversion.h \
   coins.h \
   compat.h \
@@ -211,6 +212,7 @@ MYNTA_CORE_H = \
   rpc/server.h \
   rpc/register.h \
   scheduler.h \
+  script/descriptor.h \
   script/sigcache.h \
   script/sign.h \
   script/standard.h \
@@ -243,6 +245,7 @@ MYNTA_CORE_H = \
   wallet/fees.h \
   wallet/init.h \
   wallet/rpcwallet.h \
+  wallet/scriptpubkeyman.h \
   wallet/wallet.h \
   wallet/walletdb.h \
   wallet/bip39.h \
@@ -277,6 +280,7 @@ libmynta_server_a_SOURCES = \
   blockencodings.cpp \
   chain.cpp \
   checkpoints.cpp \
+  clientnotices.cpp \
   consensus/consensus.cpp \
   consensus/tx_verify.cpp \
   httprpc.cpp \
@@ -362,6 +366,7 @@ libmynta_wallet_a_SOURCES = \
   wallet/init.cpp \
   wallet/rpcdump.cpp \
   wallet/rpcwallet.cpp \
+  wallet/scriptpubkeyman.cpp \
   wallet/wallet.cpp \
   wallet/walletdb.cpp \
   wallet/bip39.cpp \
@@ -475,6 +480,7 @@ libmynta_common_a_SOURCES = \
   policy/feerate.cpp \
   protocol.cpp \
   scheduler.cpp \
+  script/descriptor.cpp \
   script/sign.cpp \
   script/standard.cpp \
   warnings.cpp \

@@ -19,6 +19,7 @@
 #include "wallet/crypter.h"
 #include "wallet/walletdb.h"
 #include "wallet/rpcwallet.h"
+#include "wallet/scriptpubkeyman.h"
 #include "assets/assettypes.h"
 
 #include <algorithm>
@@ -101,6 +102,10 @@ enum WalletFeature
     FEATURE_HD_SPLIT = 10000, // Wallet with HD chain split (change outputs will use m/0'/1'/k)
 
     FEATURE_NO_DEFAULT_KEY = 10000, // Wallet without a default key written
+
+    FEATURE_PRE_SPLIT_KEYPOOL = 10000, // Upgraded wallet with pre-split keypool
+
+    FEATURE_DESCRIPTORS = 20000, // Descriptor-based wallet (output descriptors replace individual keys)
 
     FEATURE_LATEST = FEATURE_COMPRPUBKEY // HD is optional, use FEATURE_COMPRPUBKEY as latest version
 };
@@ -835,6 +840,50 @@ public:
 
     //! check whether we are allowed to upgrade (or already support) to the named feature
     bool CanSupportFeature(enum WalletFeature wf) const { AssertLockHeld(cs_wallet); return nWalletMaxVersion >= wf; }
+
+    //! Wallet type detection (for backwards compatibility with legacy wallets)
+    //! Returns true if this is a legacy (non-descriptor) wallet.
+    //! Legacy wallets store individual keys and use traditional key management.
+    //! All existing wallets before v2.0.0 are legacy wallets.
+    bool IsLegacyWallet() const { return !IsDescriptorWallet(); }
+
+    //! Returns true if this is a descriptor wallet.
+    //! Descriptor wallets store output descriptors instead of individual keys.
+    //! New wallets created with -descriptors flag are descriptor wallets.
+    //! IMPORTANT: This method checks the wallet version, not runtime state.
+    //! Existing legacy wallets will always return false for backwards compatibility.
+    bool IsDescriptorWallet() const { return nWalletVersion >= FEATURE_DESCRIPTORS; }
+
+    // ========================================================================
+    // Descriptor wallet support (v2.0.0+)
+    // ========================================================================
+    
+private:
+    //! Collection of descriptor-based script managers (only used for descriptor wallets)
+    std::map<uint256, std::unique_ptr<DescriptorScriptPubKeyMan>> m_spk_managers;
+    
+public:
+    //! Add a descriptor to the wallet (creates and persists DescriptorScriptPubKeyMan)
+    //! Returns the descriptor ID on success, null hash on failure
+    uint256 AddDescriptor(const std::string& descriptor, int64_t creation_time,
+                          int32_t range_start, int32_t range_end, 
+                          bool active, bool internal, std::string& error);
+    
+    //! Get all descriptor managers
+    const std::map<uint256, std::unique_ptr<DescriptorScriptPubKeyMan>>& GetDescriptorManagers() const {
+        return m_spk_managers;
+    }
+    
+    //! Get a specific descriptor manager by ID
+    DescriptorScriptPubKeyMan* GetDescriptorManager(const uint256& id) {
+        auto it = m_spk_managers.find(id);
+        return (it != m_spk_managers.end()) ? it->second.get() : nullptr;
+    }
+    
+    //! Load a descriptor from database (called during LoadWallet)
+    bool LoadDescriptor(const uint256& id, const std::string& descriptor, 
+                        int64_t creation_time, int32_t range_start, int32_t range_end,
+                        int32_t next_index, bool active, bool internal);
 
     /**
      * populate vCoins with vector of available COutputs, and populates vAssetCoins in fWithAssets is set to true.

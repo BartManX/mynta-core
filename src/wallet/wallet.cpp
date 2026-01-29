@@ -51,7 +51,7 @@ bool bSpendZeroConfChange = DEFAULT_SPEND_ZEROCONF_CHANGE;
 bool fWalletRbf = DEFAULT_WALLET_RBF;
 
 const char * DEFAULT_WALLET_DAT = "wallet.dat";
-const uint32_t BIP32_HARDENED_KEY_LIMIT = 0x80000000;
+// Note: BIP32_HARDENED_KEY_LIMIT is defined in script/descriptor.h
 
 std::string my_words;
 std::string my_passphrase;
@@ -666,6 +666,13 @@ bool CWallet::EncryptWallet(const SecureString& strWalletPassphrase)
 {
     if (IsCrypted())
         return false;
+    
+    // SAFETY GUARD: Descriptor wallet encryption is not supported in v2.0.0
+    // This prevents accidental encryption via GUI or other code paths that bypass RPC
+    if (IsDescriptorWallet()) {
+        LogPrintf("ERROR: EncryptWallet called on descriptor wallet - this is not supported in v2.0.0\n");
+        return false;
+    }
 
     CKeyingMaterial _vMasterKey;
 
@@ -3892,6 +3899,116 @@ bool CWallet::AddAccountingEntry(const CAccountingEntry& acentry, CWalletDB *pwa
 bool CWallet::IsFirstRun()
 {
     return mapKeys.empty() && mapCryptedKeys.empty() && mapWatchKeys.empty() && setWatchOnly.empty() && mapScripts.empty();
+}
+
+// ============================================================================
+// Descriptor wallet support (v2.0.0+)
+// ============================================================================
+
+uint256 CWallet::AddDescriptor(const std::string& descriptor, int64_t creation_time,
+                               int32_t range_start, int32_t range_end,
+                               bool active, bool internal, std::string& error)
+{
+    LOCK(cs_wallet);
+    
+    if (!IsDescriptorWallet()) {
+        error = "Cannot add descriptors to a legacy wallet";
+        return uint256();
+    }
+    
+    // Create the ScriptPubKeyMan
+    auto spk_man = std::make_unique<DescriptorScriptPubKeyMan>(
+        this, descriptor, creation_time, range_start, range_end, internal);
+    
+    if (!spk_man->GetDescriptor()) {
+        error = "Failed to parse descriptor";
+        return uint256();
+    }
+    
+    // Set active state
+    spk_man->SetActive(active);
+    
+    // Setup (derives initial keys)
+    if (!spk_man->Setup()) {
+        error = "Failed to setup descriptor manager";
+        return uint256();
+    }
+    
+    uint256 id = spk_man->GetID();
+    
+    // Check for duplicate
+    if (m_spk_managers.count(id)) {
+        error = "Descriptor already exists in wallet";
+        return uint256();
+    }
+    
+    // Persist to database
+    CWalletDB walletdb(*dbw);
+    if (!walletdb.TxnBegin()) {
+        error = "Failed to begin database transaction";
+        return uint256();
+    }
+    
+    if (!spk_man->WriteDescriptor(walletdb)) {
+        walletdb.TxnAbort();
+        error = "Failed to persist descriptor to database";
+        return uint256();
+    }
+    
+    if (!spk_man->WriteCache(walletdb)) {
+        walletdb.TxnAbort();
+        error = "Failed to persist descriptor cache to database";
+        return uint256();
+    }
+    
+    if (!walletdb.TxnCommit()) {
+        error = "Failed to commit database transaction";
+        return uint256();
+    }
+    
+    // Add to memory
+    m_spk_managers[id] = std::move(spk_man);
+    
+    LogPrintf("CWallet::AddDescriptor: Added descriptor %s (active=%d, internal=%d)\n",
+              id.ToString(), active, internal);
+    
+    return id;
+}
+
+bool CWallet::LoadDescriptor(const uint256& id, const std::string& descriptor,
+                             int64_t creation_time, int32_t range_start, int32_t range_end,
+                             int32_t next_index, bool active, bool internal)
+{
+    LOCK(cs_wallet);
+    
+    // Create the ScriptPubKeyMan
+    auto spk_man = std::make_unique<DescriptorScriptPubKeyMan>(
+        this, descriptor, creation_time, range_start, range_end, internal);
+    
+    if (!spk_man->GetDescriptor()) {
+        LogPrintf("CWallet::LoadDescriptor: Failed to parse descriptor %s\n", id.ToString());
+        return false;
+    }
+    
+    // Verify the ID matches
+    if (spk_man->GetID() != id) {
+        LogPrintf("CWallet::LoadDescriptor: ID mismatch for descriptor %s\n", id.ToString());
+        return false;
+    }
+    
+    spk_man->SetActive(active);
+    
+    // Setup (derives keys up to next_index)
+    if (!spk_man->Setup()) {
+        LogPrintf("CWallet::LoadDescriptor: Failed to setup descriptor %s\n", id.ToString());
+        return false;
+    }
+    
+    // Add to memory
+    m_spk_managers[id] = std::move(spk_man);
+    
+    LogPrint(BCLog::DB, "CWallet::LoadDescriptor: Loaded descriptor %s\n", id.ToString());
+    return true;
 }
 
 DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
