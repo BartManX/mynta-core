@@ -256,7 +256,8 @@ bool ClientNoticeManager::HttpGet(const std::string& url, std::string& out_respo
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out_response);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds);
     curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 5);
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "MyntaCore/" + m_current_version.ToString());
+    std::string user_agent = "MyntaCore/" + m_current_version.ToString();
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, user_agent.c_str());
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 3L);
     
