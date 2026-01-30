@@ -400,7 +400,7 @@ jobs:
             --disable-gui-tests \
             --disable-bip70 \
             CFLAGS="-O2 -g" \
-            CXXFLAGS="-O2 -g"
+            CXXFLAGS="-O2 -g -Wno-deprecated-builtins -Wno-deprecated-declarations -Wno-deprecated-copy"
 
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
