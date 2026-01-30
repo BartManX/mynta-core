@@ -1056,6 +1056,65 @@ public:
     std::optional<txnouttype> GetOutputType() const override { return std::nullopt; }
 };
 
+/** 
+ * A descriptor for raw() - arbitrary script.
+ * Used for scripts that don't fit other patterns, including:
+ * - Mynta asset scripts (TX_NEW_ASSET, TX_TRANSFER_ASSET, TX_REISSUE_ASSET)
+ * - OP_RETURN data outputs
+ * - Other non-standard scripts
+ * 
+ * This ensures these scripts are tracked and not lost by descriptor logic.
+ */
+class RawDescriptor final : public Descriptor {
+    CScript m_script;
+
+public:
+    explicit RawDescriptor(const CScript& script) : m_script(script) {}
+
+    bool IsRange() const override { return false; }
+    bool IsSolvable() const override { return false; }
+    bool IsSingleType() const override { return true; }
+
+    bool ToPrivateString(const SigningProvider& provider, std::string& out) const override {
+        out = "raw(" + HexStr(m_script.begin(), m_script.end()) + ")";
+        return true;
+    }
+
+    std::string ToString(bool normalized = false) const override {
+        return "raw(" + HexStr(m_script.begin(), m_script.end()) + ")";
+    }
+
+    bool Expand(int pos, const SigningProvider& provider,
+               std::vector<CScript>& output_scripts,
+               FlatSigningProvider& out,
+               DescriptorCache* write_cache = nullptr) const override {
+        output_scripts.push_back(m_script);
+        return true;
+    }
+
+    bool ExpandFromCache(int pos, const DescriptorCache& read_cache,
+                        std::vector<CScript>& output_scripts,
+                        FlatSigningProvider& out) const override {
+        output_scripts.push_back(m_script);
+        return true;
+    }
+
+    void ExpandPrivate(int pos, const SigningProvider& provider,
+                      FlatSigningProvider& out) const override {
+        // Raw scripts don't have extractable private keys
+    }
+
+    std::optional<txnouttype> GetOutputType() const override {
+        // Determine the actual type of the underlying script
+        txnouttype type;
+        std::vector<std::vector<unsigned char>> solutions;
+        if (Solver(m_script, type, solutions)) {
+            return type;
+        }
+        return TX_NONSTANDARD;
+    }
+};
+
 } // namespace
 
 // ============================================================================
@@ -1494,6 +1553,35 @@ std::unique_ptr<Descriptor> InferDescriptor(const CScript& script,
             }
             return std::make_unique<MultisigDescriptor>(threshold, std::move(providers));
         }
+        
+        // =====================================================================
+        // Mynta-specific asset transaction types
+        // These are recognized but returned as raw descriptors since they
+        // contain embedded asset data alongside the address scripts.
+        // This ensures asset UTXOs are not lost or rejected by descriptor logic.
+        // =====================================================================
+        case TX_NEW_ASSET:
+        case TX_REISSUE_ASSET:
+        case TX_TRANSFER_ASSET: {
+            // Asset scripts embed the destination address - try to extract it
+            // The script typically contains P2PKH or P2SH embedded within the asset script
+            // For now, we return a raw descriptor to preserve the script
+            // Future: parse embedded address and create addr() descriptor
+            return std::make_unique<RawDescriptor>(script);
+        }
+        
+        case TX_RESTRICTED_ASSET_DATA: {
+            // Restricted asset data is metadata-only (unspendable)
+            // Return raw descriptor for completeness
+            return std::make_unique<RawDescriptor>(script);
+        }
+        
+        case TX_NULL_DATA: {
+            // OP_RETURN outputs - these are unspendable but may be tracked
+            // Return raw descriptor for completeness
+            return std::make_unique<RawDescriptor>(script);
+        }
+        
         default:
             break;
     }

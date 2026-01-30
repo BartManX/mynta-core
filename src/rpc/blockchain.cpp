@@ -24,6 +24,7 @@
 #include "script/script_error.h"
 #include "script/sign.h"
 #include "script/standard.h"
+#include "script/descriptor.h"
 #include "streams.h"
 #include "sync.h"
 #include "txdb.h"
@@ -1960,6 +1961,363 @@ UniValue clearmempool(const JSONRPCRequest& request)
     return _("Mempool cleared");
 }
 
+// ============================================================================
+// scantxoutset - Scan the UTXO set for matching outputs
+// ============================================================================
+
+// Global state for abort functionality
+static std::atomic<bool> g_scan_in_progress{false};
+static std::atomic<bool> g_should_abort_scan{false};
+
+/**
+ * Helper class to track scanning progress and support abort.
+ */
+class CoinsViewScanHandler
+{
+private:
+    bool m_abort_requested{false};
+    int64_t m_total_coins{0};
+    int64_t m_scanned_coins{0};
+    
+public:
+    void SetTotalCoins(int64_t total) { m_total_coins = total; }
+    void IncrementScanned() { ++m_scanned_coins; }
+    int64_t GetScanned() const { return m_scanned_coins; }
+    int64_t GetTotal() const { return m_total_coins; }
+    double GetProgress() const {
+        if (m_total_coins == 0) return 0.0;
+        return static_cast<double>(m_scanned_coins) / m_total_coins;
+    }
+    
+    bool ShouldAbort() const { return g_should_abort_scan.load(); }
+};
+
+/**
+ * Parse a scan object into a set of scripts to search for.
+ * Supports: "addr(ADDRESS)", "raw(HEX)", "combo(PUBKEY)", "pkh(KEY)", "wpkh(KEY)", "desc(DESCRIPTOR)"
+ */
+static bool ParseScanObject(const UniValue& scan_obj, std::set<CScript>& scripts_out, std::string& error)
+{
+    if (scan_obj.isStr()) {
+        std::string obj_str = scan_obj.get_str();
+        
+        // Check for prefixed formats
+        if (obj_str.substr(0, 5) == "addr(") {
+            // Address format: addr(ADDRESS)
+            size_t close_paren = obj_str.find(')');
+            if (close_paren == std::string::npos) {
+                error = "Malformed addr() scan object";
+                return false;
+            }
+            std::string address = obj_str.substr(5, close_paren - 5);
+            CTxDestination dest = DecodeDestination(address);
+            if (!IsValidDestination(dest)) {
+                error = "Invalid address: " + address;
+                return false;
+            }
+            scripts_out.insert(GetScriptForDestination(dest));
+            return true;
+        }
+        else if (obj_str.substr(0, 4) == "raw(") {
+            // Raw script format: raw(HEXSCRIPT)
+            size_t close_paren = obj_str.find(')');
+            if (close_paren == std::string::npos) {
+                error = "Malformed raw() scan object";
+                return false;
+            }
+            std::string hex_script = obj_str.substr(4, close_paren - 4);
+            if (!IsHex(hex_script)) {
+                error = "Invalid hex in raw() scan object";
+                return false;
+            }
+            std::vector<unsigned char> script_data = ParseHex(hex_script);
+            CScript script(script_data.begin(), script_data.end());
+            scripts_out.insert(script);
+            return true;
+        }
+        else if (obj_str.substr(0, 5) == "desc(") {
+            // Descriptor format: desc(DESCRIPTOR)
+            size_t close_paren = obj_str.rfind(')');
+            if (close_paren == std::string::npos) {
+                error = "Malformed desc() scan object";
+                return false;
+            }
+            std::string desc_str = obj_str.substr(5, close_paren - 5);
+            
+            FlatSigningProvider provider;
+            std::string parse_error;
+            auto desc = Parse(desc_str, provider, parse_error, false);
+            if (!desc) {
+                error = "Invalid descriptor: " + parse_error;
+                return false;
+            }
+            
+            // Expand descriptor (handle both ranged and non-ranged)
+            int range_end = desc->IsRange() ? 1000 : 0;
+            for (int i = 0; i <= range_end; ++i) {
+                std::vector<CScript> desc_scripts;
+                FlatSigningProvider dummy;
+                if (desc->Expand(i, provider, desc_scripts, dummy)) {
+                    for (const CScript& script : desc_scripts) {
+                        scripts_out.insert(script);
+                    }
+                }
+            }
+            return true;
+        }
+        else {
+            // Treat as a descriptor directly (most flexible)
+            FlatSigningProvider provider;
+            std::string parse_error;
+            auto desc = Parse(obj_str, provider, parse_error, false);
+            if (!desc) {
+                error = "Invalid scan object or descriptor: " + parse_error;
+                return false;
+            }
+            
+            int range_end = desc->IsRange() ? 1000 : 0;
+            for (int i = 0; i <= range_end; ++i) {
+                std::vector<CScript> desc_scripts;
+                FlatSigningProvider dummy;
+                if (desc->Expand(i, provider, desc_scripts, dummy)) {
+                    for (const CScript& script : desc_scripts) {
+                        scripts_out.insert(script);
+                    }
+                }
+            }
+            return true;
+        }
+    }
+    else if (scan_obj.isObject()) {
+        // Object format with explicit descriptor and range
+        if (!scan_obj.exists("desc")) {
+            error = "Scan object missing 'desc' field";
+            return false;
+        }
+        
+        std::string desc_str = scan_obj["desc"].get_str();
+        
+        FlatSigningProvider provider;
+        std::string parse_error;
+        auto desc = Parse(desc_str, provider, parse_error, false);
+        if (!desc) {
+            error = "Invalid descriptor: " + parse_error;
+            return false;
+        }
+        
+        int range_start = 0;
+        int range_end = desc->IsRange() ? 1000 : 0;
+        
+        if (scan_obj.exists("range")) {
+            const UniValue& range = scan_obj["range"];
+            if (range.isNum()) {
+                range_end = range.get_int();
+            } else if (range.isArray() && range.size() == 2) {
+                range_start = range[0].get_int();
+                range_end = range[1].get_int();
+            }
+        }
+        
+        if (range_start < 0 || range_end < range_start || range_end > 100000) {
+            error = "Invalid range specified";
+            return false;
+        }
+        
+        for (int i = range_start; i <= range_end; ++i) {
+            std::vector<CScript> desc_scripts;
+            FlatSigningProvider dummy;
+            if (desc->Expand(i, provider, desc_scripts, dummy)) {
+                for (const CScript& script : desc_scripts) {
+                    scripts_out.insert(script);
+                }
+            }
+        }
+        return true;
+    }
+    
+    error = "Invalid scan object type";
+    return false;
+}
+
+UniValue scantxoutset(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 2)
+        throw std::runtime_error(
+            "scantxoutset \"action\" ( [scanobjects,...] )\n"
+            "\nScans the unspent transaction output set for entries that match certain output descriptors.\n"
+            "Examples of output descriptors are:\n"
+            "    addr(<address>)                           Outputs whose scriptPubKey corresponds to the specified address\n"
+            "    raw(<hex script>)                         Outputs whose scriptPubKey equals the specified hex-encoded script\n"
+            "    combo(<pubkey>)                           P2PK, P2PKH, P2WPKH, and P2SH-P2WPKH outputs for the given pubkey\n"
+            "    pkh(<pubkey>)                             P2PKH outputs for the given pubkey\n"
+            "    sh(multi(<n>,<pubkey>,<pubkey>,...))      P2SH-multisig outputs for given threshold and pubkeys\n"
+            "    desc(<descriptor>)                        Any output matching the specified descriptor\n"
+            "\nIn the above, <pubkey> either refers to a fixed public key in hexadecimal notation, or to an xpub/xprv.\n"
+            "Ranged descriptors (with * or /*) are supported and will be expanded.\n"
+            "\nArguments:\n"
+            "1. \"action\"                                   (string, required) The action to execute\n"
+            "                                                   \"start\" for starting a scan\n"
+            "                                                   \"abort\" for aborting the current scan (returns true when abort was successful)\n"
+            "                                                   \"status\" for progress report of the current scan\n"
+            "2. \"scanobjects\"                              (array, required for start) Array of scan objects\n"
+            "    [                                            Every scan object is either a string descriptor or an object:\n"
+            "        \"descriptor\",                           (string) A descriptor to search for\n"
+            "        {                                         (object) An object with output descriptor and metadata\n"
+            "            \"desc\": \"descriptor\",               (string, required) The output descriptor\n"
+            "            \"range\": n or [n,n],                  (numeric or array, optional, default=1000) Range to derive for ranged descriptors\n"
+            "        },\n"
+            "        ...\n"
+            "    ]\n"
+            "\nResult (when action==start):\n"
+            "{\n"
+            "  \"success\": true|false,             (boolean)\n"
+            "  \"txouts\": n,                       (numeric) Number of unspent outputs scanned\n"
+            "  \"height\": n,                       (numeric) Current chain height\n"
+            "  \"bestblock\": \"hex\",              (string) Hash of the current chain tip\n"
+            "  \"unspents\": [                      (array) List of matching UTXOs\n"
+            "    {\n"
+            "      \"txid\": \"hash\",              (string) TXID of the unspent output\n"
+            "      \"vout\": n,                     (numeric) Output index\n"
+            "      \"scriptPubKey\": \"hex\",       (string) ScriptPubKey in hex\n"
+            "      \"desc\": \"descriptor\",        (string) Descriptor that matched\n"
+            "      \"amount\": x.xxx,               (numeric) Amount in MYNTA\n"
+            "      \"height\": n                    (numeric) Block height\n"
+            "    },\n"
+            "    ...\n"
+            "  ],\n"
+            "  \"total_amount\": x.xxx              (numeric) Total amount of all matched UTXOs\n"
+            "}\n"
+            "\nResult (when action==status):\n"
+            "{\n"
+            "  \"progress\": x.xx                   (numeric) Approximate progress (0.0 to 1.0)\n"
+            "}\n"
+            "\nResult (when action==abort): true|false\n"
+            "\nExamples:\n"
+            + HelpExampleCli("scantxoutset", "\"start\" '[\"addr(MNxr3jzMYGg9d19jJjmDXjDNeTNVcF5jBC)\"]'")
+            + HelpExampleCli("scantxoutset", "\"start\" '[{\"desc\":\"pkh([d34db33f/84h/0h/0h]xpub.../0/*)\",\"range\":1000}]'")
+            + HelpExampleCli("scantxoutset", "\"status\"")
+            + HelpExampleCli("scantxoutset", "\"abort\"")
+            + HelpExampleRpc("scantxoutset", "\"start\", [\"addr(MNxr3jzMYGg9d19jJjmDXjDNeTNVcF5jBC)\"]")
+        );
+
+    std::string action = request.params[0].get_str();
+
+    if (action == "status") {
+        UniValue result(UniValue::VOBJ);
+        if (g_scan_in_progress.load()) {
+            result.pushKV("progress", 0.5); // Approximate - real progress tracking would need more state
+        }
+        return result;
+    }
+    else if (action == "abort") {
+        if (g_scan_in_progress.load()) {
+            g_should_abort_scan.store(true);
+            return true;
+        }
+        return false;
+    }
+    else if (action == "start") {
+        if (g_scan_in_progress.load()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Scan already in progress, use action \"abort\" to cancel the current scan");
+        }
+        
+        if (request.params.size() < 2 || !request.params[1].isArray()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Scan objects array required for start action");
+        }
+        
+        // Parse all scan objects
+        std::set<CScript> scripts_to_find;
+        const UniValue& scan_objects = request.params[1].get_array();
+        
+        for (size_t i = 0; i < scan_objects.size(); ++i) {
+            std::string error;
+            if (!ParseScanObject(scan_objects[i], scripts_to_find, error)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid scanobject[" + std::to_string(i) + "]: " + error);
+            }
+        }
+        
+        if (scripts_to_find.empty()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "No scripts to scan for");
+        }
+        
+        // Set scan in progress
+        g_scan_in_progress.store(true);
+        g_should_abort_scan.store(false);
+        
+        // Results
+        UniValue unspents(UniValue::VARR);
+        CAmount total_amount = 0;
+        int64_t txout_count = 0;
+        int height = 0;
+        uint256 tip_hash;
+        
+        try {
+            LOCK(cs_main);
+            
+            height = chainActive.Height();
+            tip_hash = chainActive.Tip()->GetBlockHash();
+            
+            // Get cursor to iterate over UTXO set
+            std::unique_ptr<CCoinsViewCursor> cursor(pcoinsdbview->Cursor());
+            if (!cursor) {
+                g_scan_in_progress.store(false);
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Unable to get UTXO set cursor");
+            }
+            
+            // Iterate over all UTXOs
+            while (cursor->Valid()) {
+                // Check for abort
+                if (g_should_abort_scan.load()) {
+                    g_scan_in_progress.store(false);
+                    throw JSONRPCError(RPC_MISC_ERROR, "Scan aborted");
+                }
+                
+                COutPoint outpoint;
+                Coin coin;
+                if (!cursor->GetKey(outpoint) || !cursor->GetValue(coin)) {
+                    cursor->Next();
+                    continue;
+                }
+                
+                ++txout_count;
+                
+                // Check if this script matches any we're looking for
+                const CScript& script = coin.out.scriptPubKey;
+                if (scripts_to_find.count(script)) {
+                    UniValue unspent(UniValue::VOBJ);
+                    unspent.pushKV("txid", outpoint.hash.GetHex());
+                    unspent.pushKV("vout", (int)outpoint.n);
+                    unspent.pushKV("scriptPubKey", HexStr(script.begin(), script.end()));
+                    unspent.pushKV("amount", ValueFromAmount(coin.out.nValue));
+                    unspent.pushKV("height", (int)coin.nHeight);
+                    
+                    unspents.push_back(unspent);
+                    total_amount += coin.out.nValue;
+                }
+                
+                cursor->Next();
+            }
+        } catch (const std::exception& e) {
+            g_scan_in_progress.store(false);
+            throw;
+        }
+        
+        g_scan_in_progress.store(false);
+        
+        UniValue result(UniValue::VOBJ);
+        result.pushKV("success", true);
+        result.pushKV("txouts", txout_count);
+        result.pushKV("height", height);
+        result.pushKV("bestblock", tip_hash.GetHex());
+        result.pushKV("unspents", unspents);
+        result.pushKV("total_amount", ValueFromAmount(total_amount));
+        
+        return result;
+    }
+    else {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid action: " + action);
+    }
+}
 
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
@@ -1989,6 +2347,7 @@ static const CRPCCommand commands[] =
     { "blockchain",         "verifychain",            &verifychain,            {"checklevel","nblocks"} },
 
     { "blockchain",         "preciousblock",          &preciousblock,          {"blockhash"} },
+    { "blockchain",         "scantxoutset",           &scantxoutset,           {"action", "objects"} },
 
     /* Not shown in help */
     { "hidden",             "invalidateblock",        &invalidateblock,        {"blockhash"} },

@@ -264,7 +264,6 @@ UniValue importaddress(const JSONRPCRequest& request)
             + HelpExampleRpc("importaddress", "\"myscript\", \"testing\", false")
         );
 
-
     std::string strLabel = "";
     if (!request.params[1].isNull())
         strLabel = request.params[1].get_str();
@@ -283,6 +282,14 @@ UniValue importaddress(const JSONRPCRequest& request)
         fP2SH = request.params[3].get_bool();
 
     LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Block on descriptor wallets - address import not supported
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "importaddress is not supported for descriptor wallets. "
+            "Use importdescriptors to import watch-only addresses via descriptors. "
+            "Example: importdescriptors '[{\"desc\":\"addr(YOUR_ADDRESS)\",\"timestamp\":\"now\"}]'");
+    }
 
     CTxDestination dest = DecodeDestination(request.params[0].get_str());
     if (IsValidDestination(dest)) {
@@ -452,6 +459,14 @@ UniValue importpubkey(const JSONRPCRequest& request)
 
     LOCK2(cs_main, pwallet->cs_wallet);
 
+    // Block on descriptor wallets - pubkey import not supported
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "importpubkey is not supported for descriptor wallets. "
+            "Use importdescriptors to import public keys via descriptors. "
+            "Example: importdescriptors '[{\"desc\":\"pkh(YOUR_PUBKEY)\",\"timestamp\":\"now\"}]'");
+    }
+
     ImportAddress(pwallet, pubKey.GetID(), strLabel);
     ImportScript(pwallet, GetScriptForRawPubKey(pubKey), strLabel, false);
 
@@ -491,6 +506,14 @@ UniValue importwallet(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_WALLET_ERROR, "Importing wallets is disabled in pruned mode");
 
     LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Block on descriptor wallets - wallet dump import not supported
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "importwallet is not supported for descriptor wallets. "
+            "Wallet dump files contain legacy keys which cannot be imported into descriptor wallets. "
+            "Use importdescriptors to import keys via descriptors, or create a legacy wallet for import.");
+    }
 
     EnsureWalletIsUnlocked(pwallet);
 
@@ -651,6 +674,15 @@ UniValue dumpwallet(const JSONRPCRequest& request)
         );
 
     LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Block on descriptor wallets - wallet dump not supported
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "dumpwallet is not supported for descriptor wallets. "
+            "Use listdescriptors to export wallet descriptor configuration. "
+            "Descriptor wallets use deterministic key derivation - backing up "
+            "the descriptor is sufficient to recover all keys.");
+    }
 
     EnsureWalletIsUnlocked(pwallet);
 
@@ -1318,6 +1350,14 @@ UniValue importmulti(const JSONRPCRequest& mainRequest)
     }
 
     LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Block on descriptor wallets - importmulti not supported
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "importmulti is not supported for descriptor wallets. "
+            "Use importdescriptors instead, which provides the same functionality with descriptor syntax.");
+    }
+
     EnsureWalletIsUnlocked(pwallet);
 
     // Verify all timestamps are present before importing any keys.

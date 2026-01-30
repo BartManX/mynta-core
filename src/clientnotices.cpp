@@ -278,13 +278,13 @@ bool ClientNoticeManager::HttpGet(const std::string& url, std::string& out_respo
     curl_easy_cleanup(curl);
     
     if (res != CURLE_OK) {
-        LogPrint(BCLog::NET, "ClientNoticeManager: HTTP request failed: %s\n", 
+        LogPrintf("ClientNoticeManager: HTTP request failed for %s: %s\n", url,
                  curl_easy_strerror(res));
         return false;
     }
     
     if (http_code != 200) {
-        LogPrint(BCLog::NET, "ClientNoticeManager: HTTP %ld for %s\n", http_code, url);
+        LogPrintf("ClientNoticeManager: HTTP %ld for %s. Response: %s\n", http_code, url, out_response);
         return false;
     }
     
@@ -301,11 +301,14 @@ bool ClientNoticeManager::HttpGet(const std::string& url, std::string& out_respo
 bool ClientNoticeManager::ParseReleaseJson(const std::string& json, ReleaseInfo& out_release) {
     UniValue val;
     if (!val.read(json)) {
-        LogPrint(BCLog::NET, "ClientNoticeManager: Failed to parse release JSON\n");
+        LogPrintf("ClientNoticeManager: Failed to parse release JSON. Length: %d\n", json.length());
         return false;
     }
     
-    if (!val.isObject()) return false;
+    if (!val.isObject()) {
+        LogPrintf("ClientNoticeManager: Release JSON is not an object\n");
+        return false;
+    }
     
     try {
         if (val.exists("tag_name")) {
@@ -401,6 +404,7 @@ bool ClientNoticeManager::ParseNoticesJson(const std::string& json, std::vector<
 bool ClientNoticeManager::CheckForUpdates(ReleaseInfo& out_release, int timeout_seconds) {
     if (!m_enabled) return false;
     
+    LogPrintf("ClientNoticeManager: Checking for updates at %s\n", GetReleasesEndpoint());
     std::string response;
     if (!HttpGet(GetReleasesEndpoint(), response, timeout_seconds)) {
         return false;

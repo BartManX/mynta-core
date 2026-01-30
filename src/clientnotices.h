@@ -23,8 +23,8 @@
  * - No executable content processed
  * 
  * ENDPOINTS ACCESSED:
- * - https://api.github.com/repos/MyntaProject/Mynta/releases/latest
- * - https://raw.githubusercontent.com/MyntaProject/Mynta/main/SECURITY_NOTICES.json
+ * - https://api.github.com/repos/Slashx124/mynta-core/releases/latest
+ * - https://raw.githubusercontent.com/Slashx124/mynta-core/main/SECURITY_NOTICES.json
  */
 
 #include <string>
@@ -243,8 +243,8 @@ private:
     // Member variables
     mutable std::mutex m_mutex;
     ClientVersion m_current_version;
-    std::string m_org = "MyntaProject";
-    std::string m_repo = "Mynta";
+    std::string m_org = "Slashx124";
+    std::string m_repo = "mynta-core";
     bool m_enabled = true;
     bool m_initialized = false;
     

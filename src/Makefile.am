@@ -19,7 +19,7 @@ else
 LIBUNIVALUE = $(UNIVALUE_LIBS)
 endif
 
-MYNTA_INCLUDES=-I$(builddir) -I$(builddir)/obj $(SQLITE_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
+MYNTA_INCLUDES=-I$(builddir) -I$(builddir)/obj $(SQLITE_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS) $(CURL_CFLAGS)
 
 MYNTA_INCLUDES += -I$(srcdir)/secp256k1/include
 MYNTA_INCLUDES += $(UNIVALUE_CFLAGS)
@@ -373,7 +373,7 @@ libmynta_wallet_a_SOURCES = \
   $(MYNTA_CORE_H)
 
 # crypto primitives library
-crypto_libmynta_crypto_a_CPPFLAGS = $(AM_CPPFLAGS)
+crypto_libmynta_crypto_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES)
 crypto_libmynta_crypto_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 crypto_libmynta_crypto_a_SOURCES = \
   crypto/aes.cpp \
@@ -548,7 +548,7 @@ myntad_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-myntad_LDADD += $(BOOST_LIBS) $(SQLITE_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
+myntad_LDADD += $(BOOST_LIBS) $(SQLITE_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(CURL_LIBS)
 myntad_LDADD += $(LIBBLST)
 
 # mynta-cli binary #
@@ -567,7 +567,7 @@ mynta_cli_LDADD = \
   $(LIBMYNTA_UTIL) \
   $(LIBMYNTA_CRYPTO)
 
-mynta_cli_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
+mynta_cli_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS) $(CURL_LIBS)
 #
 
 # mynta-tx binary #

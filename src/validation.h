@@ -93,7 +93,7 @@ static const unsigned int BLOCKFILE_CHUNK_SIZE = 0x1000000; // 16 MiB
 static const unsigned int UNDOFILE_CHUNK_SIZE = 0x100000; // 1 MiB
 
 /** Maximum number of script-checking threads allowed */
-static const int MAX_SCRIPTCHECK_THREADS = 16;
+static const int MAX_SCRIPTCHECK_THREADS = 32;
 /** -par default (number of script-checking threads, 0 = auto) */
 static const int DEFAULT_SCRIPTCHECK_THREADS = 0;
 /** Number of blocks that can be requested at any given time from a single peer. */
@@ -118,7 +118,7 @@ static const unsigned int DATABASE_WRITE_INTERVAL = 60 * 60;
 /** Time to wait (in seconds) between flushing chainstate to disk. */
 static const unsigned int DATABASE_FLUSH_INTERVAL = 24 * 60 * 60;
 /** Time to wait (in seconds) between flushing to database if in speedy sync interval */
-static const unsigned int DATABASE_FLUSH_INTERVAL_SPEEDY = 60 * 10;
+static const unsigned int DATABASE_FLUSH_INTERVAL_SPEEDY = 60 * 60; // 1 Hour
 /** Maximum length of reject messages. */
 static const unsigned int MAX_REJECT_MESSAGE_LENGTH = 111;
 /** Average delay between local address broadcasts in seconds. */

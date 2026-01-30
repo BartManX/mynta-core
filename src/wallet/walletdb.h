@@ -107,7 +107,7 @@ public:
         bUse_bip44 = false;
     }
 
-    bool IsNull() { return seed_id.IsNull();}
+    bool IsNull() const { return seed_id.IsNull();}
 
 
     void UseBip44( bool b = true)   { bUse_bip44 = b;}

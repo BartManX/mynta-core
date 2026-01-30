@@ -27,6 +27,13 @@ void UpdateNotificationDialog::setupUi()
     setMinimumWidth(450);
     setWindowFlags(windowFlags() & ~Qt::WindowContextHelpButtonHint);
     
+    // Set overall dark theme for the dialog
+    setStyleSheet("UpdateNotificationDialog { background-color: #0c1a2d; color: white; } "
+                  "QLabel { color: white; } "
+                  "QPushButton { background-color: #1a2d44; color: white; border: 1px solid #2a3d54; padding: 5px; } "
+                  "QPushButton:hover { background-color: #2a3d54; } "
+                  "QPushButton:default { background-color: #2196F3; border: 1px solid #1976D2; }");
+
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
     mainLayout->setSpacing(15);
     mainLayout->setContentsMargins(20, 20, 20, 20);
@@ -47,7 +54,7 @@ void UpdateNotificationDialog::setupUi()
     // Version info
     m_versionLabel = new QLabel();
     m_versionLabel->setWordWrap(true);
-    m_versionLabel->setStyleSheet("QLabel { background-color: #f0f0f0; padding: 10px; border-radius: 5px; }");
+    m_versionLabel->setStyleSheet("QLabel { background-color: #1a2d44; padding: 10px; border-radius: 5px; }");
     mainLayout->addWidget(m_versionLabel);
     
     // Message

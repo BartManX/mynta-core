@@ -885,6 +885,34 @@ public:
                         int64_t creation_time, int32_t range_start, int32_t range_end,
                         int32_t next_index, bool active, bool internal);
 
+    //! Setup default descriptors for a new descriptor wallet
+    //! Creates pkh(xpub.../0/*) for external and pkh(xpub.../1/*) for internal (change)
+    bool SetupDescriptorWallet(const CExtKey& master_key, std::string& error);
+
+    //! Generate descriptors from an xprv key (for wallet creation)
+    //! @param[in] xprv The master extended private key
+    //! @param[in] derivation_path The BIP44-style path (e.g., "44h/175h/0h")
+    //! @param[out] external_desc The external (receiving) descriptor
+    //! @param[out] internal_desc The internal (change) descriptor
+    static bool GenerateDefaultDescriptors(const CExtKey& master_key, 
+                                           const std::string& derivation_path,
+                                           std::string& external_desc,
+                                           std::string& internal_desc,
+                                           std::string& error);
+
+    //! Create a new descriptor wallet (static factory method)
+    //! @param[in] wallet_file Path to the wallet file
+    //! @param[in] disable_private_keys If true, create watch-only wallet
+    //! @param[in] blank If true, don't generate default descriptors
+    //! @param[in] passphrase Encryption passphrase (empty = no encryption)
+    //! @param[out] error Error message on failure
+    //! @return The new wallet, or nullptr on failure
+    static CWallet* CreateDescriptorWallet(const std::string& wallet_file,
+                                           bool disable_private_keys,
+                                           bool blank,
+                                           const std::string& passphrase,
+                                           std::string& error);
+
     /**
      * populate vCoins with vector of available COutputs, and populates vAssetCoins in fWithAssets is set to true.
      */

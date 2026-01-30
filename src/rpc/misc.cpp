@@ -15,6 +15,7 @@
 #include "netbase.h"
 #include "rpc/blockchain.h"
 #include "rpc/server.h"
+#include "clientnotices.h"
 #include "script/descriptor.h"
 #include "timedata.h"
 #include "txmempool.h"
@@ -1469,6 +1470,98 @@ UniValue deriveaddresses(const JSONRPCRequest& request)
     return addresses;
 }
 
+UniValue getclientnotices(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() > 1)
+        throw std::runtime_error(
+            "getclientnotices ( force_check )\n"
+            "\nReturns information about latest releases and security notices.\n"
+            "\nArguments:\n"
+            "1. force_check          (boolean, optional, default=false) Force a fresh network check bypassing cache\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"current_version\": \"x.x.x\",      (string) The current version of this client\n"
+            "  \"latest_release\": {\n"
+            "    \"available\": true|false,        (boolean) Whether a newer version is available\n"
+            "    \"version\": \"x.x.x\",            (string) Latest version tag\n"
+            "    \"name\": \"xxx\",                 (string) Release name\n"
+            "    \"url\": \"xxx\",                  (string) GitHub release URL\n"
+            "    \"published\": \"xxx\",            (string) Publication timestamp\n"
+            "    \"is_prerelease\": true|false     (boolean) Is this a pre-release?\n"
+            "  },\n"
+            "  \"security_notices\": [             (array) List of notices affecting current version\n"
+            "    {\n"
+            "      \"id\": \"xxx\",                 (string) Notice identifier\n"
+            "      \"title\": \"xxx\",              (string) Notice title\n"
+            "      \"severity\": \"xxx\",           (string) Severity level\n"
+            "      \"summary\": \"xxx\",            (string) Brief description\n"
+            "      \"recommendation\": \"xxx\",     (string) User recommendation\n"
+            "      \"url\": \"xxx\"                 (string) More details URL\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getclientnotices", "")
+            + HelpExampleRpc("getclientnotices", "true")
+        );
+
+    bool force = false;
+    if (!request.params[0].isNull()) {
+        force = request.params[0].get_bool();
+    }
+
+    if (force) {
+        ClientNoticeManager::Instance().InvalidateCache();
+    }
+
+    // Try to get cached info first
+    ReleaseInfo latest;
+    bool has_latest = ClientNoticeManager::Instance().GetCachedRelease(latest);
+    
+    // If force or no cache, trigger a sync check
+    if (force || !has_latest) {
+        ClientNoticeManager::Instance().CheckForUpdates(latest);
+        has_latest = true;
+    }
+
+    // DEBUG: Force a fake newer version if we want to test UI
+    if (gArgs.GetBoolArg("-testclientnotices", false)) {
+        latest.version = ClientVersion(3, 0, 0);
+        latest.tag_name = "v3.0.0";
+        latest.name = "Test Release v3.0.0 (UI Debug)";
+        latest.html_url = "https://github.com/Slashx124/mynta-core/releases";
+    }
+
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("current_version", ClientNoticeManager::Instance().GetCurrentVersion().ToString()));
+
+    UniValue rel(UniValue::VOBJ);
+    rel.push_back(Pair("available", latest.IsNewerThan(ClientNoticeManager::Instance().GetCurrentVersion())));
+    rel.push_back(Pair("version", latest.version.ToString()));
+    rel.push_back(Pair("name", latest.name));
+    rel.push_back(Pair("url", latest.html_url));
+    rel.push_back(Pair("published", latest.published_at));
+    rel.push_back(Pair("is_prerelease", latest.prerelease));
+    obj.push_back(Pair("latest_release", rel));
+
+    // Security notices
+    std::vector<SecurityNotice> notices = ClientNoticeManager::Instance().FetchSecurityNotices();
+    UniValue noticeArr(UniValue::VARR);
+    for (const auto& notice : notices) {
+        UniValue n(UniValue::VOBJ);
+        n.push_back(Pair("id", notice.id));
+        n.push_back(Pair("title", notice.title));
+        n.push_back(Pair("severity", SeverityToString(notice.severity)));
+        n.push_back(Pair("summary", notice.summary));
+        n.push_back(Pair("recommendation", notice.recommendation));
+        n.push_back(Pair("url", notice.release_url));
+        noticeArr.push_back(n);
+    }
+    obj.push_back(Pair("security_notices", noticeArr));
+
+    return obj;
+}
+
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
   //  --------------------- ------------------------  -----------------------  ----------
@@ -1480,6 +1573,7 @@ static const CRPCCommand commands[] =
     { "util",               "signmessagewithprivkey", &signmessagewithprivkey, {"privkey","message"} },
     { "util",               "getdescriptorinfo",      &getdescriptorinfo,      {"descriptor"} },
     { "util",               "deriveaddresses",        &deriveaddresses,        {"descriptor","range"} },
+    { "util",               "getclientnotices",       &getclientnotices,       {"force_check"} },
 
     /* Address index */
     { "addressindex",       "getaddressmempool",      &getaddressmempool,      {"addresses","includeAssets"} },
