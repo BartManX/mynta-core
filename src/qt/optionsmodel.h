@@ -52,6 +52,7 @@ public:
         Listen,                 // bool
         CustomFeeFeatures,      // bool
         DarkModeEnabled,        // bool
+        DesktopNotifications,   // bool
         OptionIDRowCount,
     };
 
@@ -78,6 +79,7 @@ public:
     bool getCoinControlFeatures() const { return fCoinControlFeatures; }
     bool getCustomFeeFeatures() const { return fCustomFeeFeatures; }
     bool getDarkModeEnabled() const { return true; } // Always enabled
+    bool getDesktopNotifications() const { return fDesktopNotifications; }
     const QString& getOverriddenByCommandLine() { return strOverriddenByCommandLine; }
 
     /* Restart flag helper */
@@ -99,6 +101,7 @@ private:
     /** MYNTA START*/
     bool fCustomFeeFeatures;
     bool fDarkModeEnabled;
+    bool fDesktopNotifications;
     /** MYNTA END*/
     /* settings that were overridden by command-line */
     QString strOverriddenByCommandLine;

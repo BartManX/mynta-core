@@ -211,6 +211,7 @@ void OptionsDialog::setMapper()
     mapper->addMapping(ui->hideTrayIcon, OptionsModel::HideTrayIcon);
     mapper->addMapping(ui->minimizeToTray, OptionsModel::MinimizeToTray);
     mapper->addMapping(ui->minimizeOnClose, OptionsModel::MinimizeOnClose);
+    mapper->addMapping(ui->desktopNotifications, OptionsModel::DesktopNotifications);
 #endif
 
     /* Display */

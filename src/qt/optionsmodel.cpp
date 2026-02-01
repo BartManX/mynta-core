@@ -103,6 +103,11 @@ void OptionsModel::Init(bool resetSettings)
     fDarkModeEnabled = true;
     settings.setValue("fDarkModeEnabled", true);
 
+    // Desktop notifications - enabled by default
+    if (!settings.contains("fDesktopNotifications"))
+        settings.setValue("fDesktopNotifications", true);
+    fDesktopNotifications = settings.value("fDesktopNotifications", true).toBool();
+
     // These are shared with the core or have a command-line parameter
     // and we want command-line parameters to overwrite the GUI settings.
     //
@@ -301,6 +306,8 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
             return fCustomFeeFeatures;
         case DarkModeEnabled:
             return true; // Always enabled
+        case DesktopNotifications:
+            return fDesktopNotifications;
         default:
             return QVariant();
         }
@@ -472,6 +479,10 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
                 break;
         case DarkModeEnabled:
             // Dark mode is always enabled - no-op
+            break;
+        case DesktopNotifications:
+            fDesktopNotifications = value.toBool();
+            settings.setValue("fDesktopNotifications", fDesktopNotifications);
             break;
         default:
             break;

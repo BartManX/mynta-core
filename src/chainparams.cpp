@@ -438,6 +438,9 @@ public:
         consensus.nLLMQDuration = 24 * 60;                    // 24 hours
         consensus.nInstantSendLockTimeout = 15;               // 15 blocks for IS timeout
         consensus.nChainLockConfirmations = 8;                // 8 blocks for ChainLock
+        
+        // Transaction maturity - MAINNET
+        consensus.nCoinbaseMaturity = 100;                    // 100 blocks for coinbase maturity
     }
 };
 
@@ -636,7 +639,7 @@ public:
         // Lower values for easier testing
         // =======================================================================
         consensus.nMasternodeCollateral = 1000 * COIN;        // 1,000 MYNTA (lower for testing)
-        consensus.nMasternodeCollateralConfirmations = 6;     // 6 confirmations
+        consensus.nMasternodeCollateralConfirmations = 2;     // 2 confirmations (fast testing)
         consensus.nMasternodeActivationHeight = 100;          // MNs active after block 100
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs
         consensus.nPoSePenaltyIncrement = 66;                 // Penalty per missed session
@@ -648,7 +651,10 @@ public:
         consensus.nLLMQThreshold = 60;                        // 60% threshold for signing
         consensus.nLLMQDuration = 6 * 60;                     // 6 hours (faster for testing)
         consensus.nInstantSendLockTimeout = 15;               // 15 blocks for IS timeout
-        consensus.nChainLockConfirmations = 4;                // 4 blocks for ChainLock (faster)
+        consensus.nChainLockConfirmations = 2;                // 2 blocks for ChainLock (fast testing)
+        
+        // Transaction maturity - TESTNET (fast testing)
+        consensus.nCoinbaseMaturity = 2;                      // 2 blocks for coinbase maturity
     }
 };
 
@@ -851,6 +857,9 @@ public:
         consensus.nLLMQDuration = 60;                         // 1 hour
         consensus.nInstantSendLockTimeout = 5;                // 5 blocks (fast)
         consensus.nChainLockConfirmations = 2;                // 2 blocks (fast)
+        
+        // Transaction maturity - REGTEST (instant for testing)
+        consensus.nCoinbaseMaturity = 1;                      // 1 block for coinbase maturity
     }
 };
 

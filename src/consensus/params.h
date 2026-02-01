@@ -140,6 +140,13 @@ struct Params {
     
     /** Blocks to wait for ChainLock confirmation */
     int nChainLockConfirmations;
+    
+    // =======================================================================
+    // Transaction Maturity Parameters
+    // =======================================================================
+    
+    /** Coinbase maturity - blocks before mined coins can be spent */
+    int nCoinbaseMaturity;
 };
 } // namespace Consensus
 

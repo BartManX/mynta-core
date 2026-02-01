@@ -1486,8 +1486,16 @@ void MyntaGUI::message(const QString &title, const QString &message, unsigned in
         if (ret != nullptr)
             *ret = r == QMessageBox::Ok;
     }
-    else
-        notificator->notify((Notificator::Class)nNotifyIcon, strTitle, message);
+    else {
+        // Check if desktop notifications are enabled
+        bool showNotification = true;
+        if (clientModel && clientModel->getOptionsModel()) {
+            showNotification = clientModel->getOptionsModel()->getDesktopNotifications();
+        }
+        if (showNotification) {
+            notificator->notify((Notificator::Class)nNotifyIcon, strTitle, message);
+        }
+    }
 }
 
 void MyntaGUI::changeEvent(QEvent *e)
@@ -1859,7 +1867,12 @@ void MyntaGUI::toggleMining()
         }
         
         // Non-blocking notification (tray icon balloon on Windows)
-        if (notificator) {
+        // Check if desktop notifications are enabled
+        bool showNotification = true;
+        if (clientModel && clientModel->getOptionsModel()) {
+            showNotification = clientModel->getOptionsModel()->getDesktopNotifications();
+        }
+        if (notificator && showNotification) {
             QString msg = miningEnabled 
                 ? tr("CPU mining started (1 thread)") 
                 : tr("CPU mining stopped");

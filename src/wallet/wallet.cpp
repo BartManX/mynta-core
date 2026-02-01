@@ -7,6 +7,7 @@
 #include "wallet/wallet.h"
 
 #include "base58.h"
+#include "chainparams.h"
 #include "checkpoints.h"
 #include "chain.h"
 #include "wallet/coincontrol.h"
@@ -4987,7 +4988,7 @@ int CMerkleTx::GetBlocksToMaturity() const
 {
     if (!IsCoinBase())
         return 0;
-    return std::max(0, (COINBASE_MATURITY+1) - GetDepthInMainChain());
+    return std::max(0, (Params().GetConsensus().nCoinbaseMaturity+1) - GetDepthInMainChain());
 }
 
 

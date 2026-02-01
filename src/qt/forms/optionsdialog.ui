@@ -552,6 +552,19 @@
         </widget>
        </item>
        <item>
+        <widget class="QCheckBox" name="desktopNotifications">
+         <property name="toolTip">
+          <string>Show desktop notifications for incoming transactions and other events.</string>
+         </property>
+         <property name="text">
+          <string>Enable desktop &amp;notifications</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="verticalSpacer_Window">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
