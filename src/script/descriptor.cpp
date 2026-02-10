@@ -1418,7 +1418,9 @@ std::unique_ptr<Descriptor> ParseScript(uint32_t& key_index, Span& sp, FlatSigni
         if (!subdesc) return nullptr;
         
         auto subtype = subdesc->GetOutputType();
-        if (subtype && (*subtype == TX_SCRIPTHASH || *subtype == TX_WITNESS_V0_SCRIPTHASH)) {
+        // Reject sh(sh()) — P2SH cannot wrap P2SH.
+        // sh(wsh()) IS valid — that's P2SH-P2WSH, a standard address type.
+        if (subtype && *subtype == TX_SCRIPTHASH) {
             error = "Cannot have sh() inside sh()";
             return nullptr;
         }
@@ -1437,6 +1439,38 @@ std::unique_ptr<Descriptor> ParseScript(uint32_t& key_index, Span& sp, FlatSigni
         }
         
         return std::make_unique<WSHDescriptor>(std::move(subdesc));
+    }
+
+    if (func == "raw") {
+        // raw(HEX) — arbitrary script from hex
+        std::string hex_str = args.str();
+        if (hex_str.empty()) {
+            error = "raw() requires a hex-encoded script argument";
+            return nullptr;
+        }
+        if (!IsHex(hex_str)) {
+            error = "raw() argument must be hex-encoded";
+            return nullptr;
+        }
+        std::vector<unsigned char> data = ParseHex(hex_str);
+        CScript script(data.begin(), data.end());
+        return std::make_unique<RawDescriptor>(script);
+    }
+
+    if (func == "addr") {
+        // addr(ADDRESS) — track an address without keys
+        std::string addr_str = args.str();
+        if (addr_str.empty()) {
+            error = "addr() requires an address argument";
+            return nullptr;
+        }
+        CTxDestination dest = DecodeDestination(addr_str);
+        if (!IsValidDestination(dest)) {
+            error = "addr() contains an invalid address: " + addr_str;
+            return nullptr;
+        }
+        CScript script = GetScriptForDestination(dest);
+        return std::make_unique<RawDescriptor>(script);
     }
     
     error = "Unknown function: " + func;

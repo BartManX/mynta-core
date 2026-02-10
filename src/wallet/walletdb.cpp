@@ -579,21 +579,26 @@ bool ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
         else if (strType == "desc")
         {
             // Load descriptor wallet data
+            // Value is stored as vector<unsigned char> containing serialized fields
             uint256 id;
             ssKey >> id;
             
+            std::vector<unsigned char> vchData;
+            ssValue >> vchData;
+            
+            CDataStream ssDescData(vchData, SER_DISK, CLIENT_VERSION);
             std::string descriptor;
             int64_t creation_time;
             int32_t range_start, range_end, next_index;
             bool active, internal;
             
-            ssValue >> descriptor;
-            ssValue >> creation_time;
-            ssValue >> range_start;
-            ssValue >> range_end;
-            ssValue >> next_index;
-            ssValue >> active;
-            ssValue >> internal;
+            ssDescData >> descriptor;
+            ssDescData >> creation_time;
+            ssDescData >> range_start;
+            ssDescData >> range_end;
+            ssDescData >> next_index;
+            ssDescData >> active;
+            ssDescData >> internal;
             
             if (!pwallet->LoadDescriptor(id, descriptor, creation_time, 
                                          range_start, range_end, next_index, 
@@ -1022,8 +1027,11 @@ bool CWalletDB::WriteDescriptor(const uint256& id, const std::string& descriptor
                                 int64_t creation_time, int32_t range_start, int32_t range_end,
                                 int32_t next_index, bool active, bool internal)
 {
-    // Store as a serialized structure
-    std::vector<unsigned char> data;
+    // Serialize all descriptor fields into a byte stream, then store as
+    // vector<unsigned char> so Read/Write template serialization is symmetric.
+    // (CDataStream::Serialize writes raw bytes without a length prefix, which
+    // would cause ReadDescriptor to fail because vector<unsigned char> deserialization
+    // expects a compact-size prefix.)
     CDataStream ss(SER_DISK, CLIENT_VERSION);
     ss << descriptor;
     ss << creation_time;
@@ -1033,7 +1041,8 @@ bool CWalletDB::WriteDescriptor(const uint256& id, const std::string& descriptor
     ss << active;
     ss << internal;
     
-    return WriteIC(std::make_pair(std::string("desc"), id), ss);
+    std::vector<unsigned char> vchData(ss.begin(), ss.end());
+    return WriteIC(std::make_pair(std::string("desc"), id), vchData);
 }
 
 bool CWalletDB::ReadDescriptor(const uint256& id, std::string& descriptor,
@@ -1045,14 +1054,20 @@ bool CWalletDB::ReadDescriptor(const uint256& id, std::string& descriptor,
         return false;
     }
     
-    CDataStream ss(vchData, SER_DISK, CLIENT_VERSION);
-    ss >> descriptor;
-    ss >> creation_time;
-    ss >> range_start;
-    ss >> range_end;
-    ss >> next_index;
-    ss >> active;
-    ss >> internal;
+    try {
+        CDataStream ss(vchData, SER_DISK, CLIENT_VERSION);
+        ss >> descriptor;
+        ss >> creation_time;
+        ss >> range_start;
+        ss >> range_end;
+        ss >> next_index;
+        ss >> active;
+        ss >> internal;
+    } catch (const std::exception& e) {
+        LogPrintf("CWalletDB::ReadDescriptor: deserialization failed for %s: %s\n",
+                  id.ToString(), e.what());
+        return false;
+    }
     
     return true;
 }

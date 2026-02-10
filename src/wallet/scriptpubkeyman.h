@@ -10,6 +10,7 @@
 #include "keystore.h"
 #include "pubkey.h"
 #include "script/descriptor.h"
+#include "script/ismine.h"
 #include "script/script.h"
 #include "script/standard.h"
 #include "sync.h"
@@ -211,6 +212,78 @@ public:
     
     //! Update next index and persist
     bool UpdateNextIndex(CWalletDB& batch, int32_t new_index);
+};
+
+/**
+ * Legacy script/key management.
+ *
+ * Wraps CWallet's existing CCryptoKeyStore (via inheritance) to expose the
+ * ScriptPubKeyMan interface. This enables the unified SPKM routing in CWallet
+ * for legacy wallets — all key operations delegate to the wallet's own
+ * CCryptoKeyStore data (mapKeys, mapCryptedKeys, keypools, etc.).
+ *
+ * For descriptor wallets, DescriptorScriptPubKeyMan is used instead.
+ */
+class LegacyScriptPubKeyMan : public ScriptPubKeyMan {
+public:
+    explicit LegacyScriptPubKeyMan(CWallet* wallet) : ScriptPubKeyMan(wallet) {}
+    ~LegacyScriptPubKeyMan() override = default;
+
+    // --- ScriptPubKeyMan interface ---
+    bool CanProvidePrivateKeys() const override;
+    bool HaveKey(const CKeyID& keyid) const override;
+    bool HaveScript(const CScriptID& scriptid) const override;
+    bool GetKey(const CKeyID& keyid, CKey& key) const override;
+    bool GetPubKey(const CKeyID& keyid, CPubKey& pubkey) const override;
+    bool GetCScript(const CScriptID& scriptid, CScript& script) const override;
+    bool GetNewDestination(const OutputType type, CTxDestination& dest, std::string& error) override;
+    bool IsMine(const CScript& script) const override;
+    //! Return fine-grained isminetype (SPENDABLE, WATCH_SOLVABLE, WATCH_UNSOLVABLE)
+    //! for callers that need the distinction beyond the boolean IsMine().
+    isminetype IsMineFull(const CScript& script) const;
+    void MarkUsed(const CTxDestination& dest) override {}
+    int64_t GetCreationTime() const override;
+    std::string GetDescriptorString() const override { return ""; }
+    bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const override;
+    bool Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch) override;
+    bool Setup(bool force = false) override { return true; }
+    bool IsActive() const override { return true; }
+
+    //! Return the CWallet (which IS a CKeyStore) as a signing provider.
+    //! Used by the signing infrastructure for legacy wallets.
+    const CKeyStore& GetSigningProvider() const;
+};
+
+/**
+ * Adapter that presents any ScriptPubKeyMan as a CKeyStore for the
+ * existing signing infrastructure (TransactionSignatureCreator, ProduceSignature, etc.).
+ *
+ * The signing code only needs GetKey, HaveKey, GetCScript, HaveCScript.
+ * All mutating / watch-only methods return false (signing is read-only).
+ */
+class SPKMSigningProvider : public CKeyStore {
+    const ScriptPubKeyMan& m_spkm;
+
+public:
+    explicit SPKMSigningProvider(const ScriptPubKeyMan& spkm) : m_spkm(spkm) {}
+
+    // Key operations (read-only, for signing)
+    bool AddKeyPubKey(const CKey&, const CPubKey&) override { return false; }
+    bool HaveKey(const CKeyID& id) const override { return m_spkm.HaveKey(id); }
+    bool GetKey(const CKeyID& id, CKey& key) const override { return m_spkm.GetKey(id, key); }
+    std::set<CKeyID> GetKeys() const override;
+    bool GetPubKey(const CKeyID& id, CPubKey& pk) const override { return m_spkm.GetPubKey(id, pk); }
+
+    // Script operations (read-only, for signing)
+    bool AddCScript(const CScript&) override { return false; }
+    bool HaveCScript(const CScriptID& id) const override { return m_spkm.HaveScript(id); }
+    bool GetCScript(const CScriptID& id, CScript& script) const override { return m_spkm.GetCScript(id, script); }
+
+    // Watch-only operations (not needed for signing)
+    bool AddWatchOnly(const CScript&) override { return false; }
+    bool RemoveWatchOnly(const CScript&) override { return false; }
+    bool HaveWatchOnly(const CScript&) const override { return false; }
+    bool HaveWatchOnly() const override { return false; }
 };
 
 /**

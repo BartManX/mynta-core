@@ -76,7 +76,7 @@ static const std::regex QUALIFIER_INDICATOR("^[#][A-Z0-9._]{3,}$"); // Starts wi
 static const std::regex SUB_QUALIFIER_INDICATOR("^#[A-Z0-9._]+\\/#[A-Z0-9._]+$"); // Starts with #
 static const std::regex RESTRICTED_INDICATOR("^[\\$][A-Z0-9._]{3,}$"); // Starts with $
 
-static const std::regex RAVEN_NAMES("^RVN$|^RAVEN$|^RAVENCOIN$|^#RVN$|^#RAVEN$|^#RAVENCOIN$");
+static const std::regex RAVEN_NAMES("^RVN$|^RAVEN$|^RAVENCOIN$|^#RVN$|^#RAVEN$|^#RAVENCOIN$|^MYN$|^MYNTA$|^MYNTACOIN$|^#MYN$|^#MYNTA$|^#MYNTACOIN$");
 
 bool IsRootNameValid(const std::string& name)
 {
@@ -4217,7 +4217,7 @@ bool CreateTransferAssetTransaction(CWallet* pwallet, const CCoinControl& coinCo
     // Check for a balance before processing transfers
     CAmount curBalance = pwallet->GetBalance();
     if (curBalance == 0) {
-        error = std::make_pair(RPC_WALLET_INSUFFICIENT_FUNDS, std::string("This wallet doesn't contain any RVN, transfering an asset requires a network fee"));
+        error = std::make_pair(RPC_WALLET_INSUFFICIENT_FUNDS, std::string("This wallet doesn't contain any MYNTA, transfering an asset requires a network fee"));
         return false;
     }
 
@@ -5095,7 +5095,7 @@ bool ContextualCheckNullAssetTxOut(const CTxOut& txout, CAssetsCache* assetCache
 
 #ifdef ENABLE_WALLET
     if (myNullAssetData && vpwallets.size()) {
-        if (IsMine(*vpwallets[0], DecodeDestination(address)) & ISMINE_ALL) {
+        if (vpwallets[0]->IsMine(CTxOut(0, GetScriptForDestination(DecodeDestination(address)))) & ISMINE_ALL) {
             myNullAssetData->emplace_back(std::make_pair(address, data));
         }
     }

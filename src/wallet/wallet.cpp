@@ -1413,6 +1413,31 @@ CAmount CWallet::GetDebit(const CTxIn &txin, const isminefilter& filter, CAssetO
 
 isminetype CWallet::IsMine(const CTxOut& txout) const
 {
+    if (IsDescriptorWallet()) {
+        // Descriptor wallet: check all ScriptPubKeyMans
+        // Return fine-grained isminetype matching Bitcoin Core v24+ behavior:
+        //   - ISMINE_SPENDABLE: descriptor has private keys and is solvable
+        //   - ISMINE_WATCH_SOLVABLE: descriptor is solvable but has no private keys (xpub-only)
+        //   - ISMINE_WATCH_UNSOLVABLE: script is tracked but cannot construct valid sigScript
+        //   - ISMINE_NO: not ours at all
+        for (const auto& [id, spkm] : m_spk_managers) {
+            if (spkm->IsMine(txout.scriptPubKey)) {
+                if (spkm->CanProvidePrivateKeys()) {
+                    return ISMINE_SPENDABLE;
+                }
+                // Watch-only: check if the descriptor is solvable (can produce signatures
+                // given the right keys) or unsolvable (raw/addr descriptors, etc.)
+                const DescriptorScriptPubKeyMan* desc_spkm =
+                    dynamic_cast<const DescriptorScriptPubKeyMan*>(spkm.get());
+                if (desc_spkm && desc_spkm->GetDescriptor() && desc_spkm->GetDescriptor()->IsSolvable()) {
+                    return ISMINE_WATCH_SOLVABLE;
+                }
+                return ISMINE_WATCH_UNSOLVABLE;
+            }
+        }
+        return ISMINE_NO;
+    }
+    // Legacy wallet: use existing ::IsMine() path (CWallet IS a CKeyStore)
     return ::IsMine(*this, txout.scriptPubKey);
 }
 
@@ -1432,7 +1457,15 @@ bool CWallet::IsChange(const CTxOut& txout) const
     // a better way of identifying which outputs are 'the send' and which are
     // 'the change' will need to be implemented (maybe extend CWalletTx to remember
     // which output, if any, was change).
-    if (::IsMine(*this, txout.scriptPubKey))
+    //
+    // IMPORTANT: Use CWallet::IsMine(txout) instead of ::IsMine(*this, ...) to
+    // correctly route through ScriptPubKeyMans for descriptor wallets.
+    // The legacy ::IsMine(CKeyStore&, ...) only checks the CWallet keystore,
+    // which does NOT contain descriptor wallet keys (they live in the SPKM's
+    // FlatSigningProvider). Using the legacy path would cause IsChange to always
+    // return false for descriptor wallets, breaking change detection in balance
+    // calculations and transaction display.
+    if (IsMine(txout))
     {
         CTxDestination address;
         if (!ExtractDestination(txout.scriptPubKey, address))
@@ -3137,24 +3170,63 @@ bool CWallet::SignTransaction(CMutableTransaction &tx)
 {
     AssertLockHeld(cs_wallet); // mapWallet
 
-    // sign the new tx
+    // Sign the transaction. For descriptor wallets, each input is routed to its
+    // owning ScriptPubKeyMan. If an input cannot be signed (not ours, or belongs
+    // to a different party in a multi-party tx), we skip it rather than hard-fail.
+    // This enables partial signing for PSBT and offline signing workflows.
     CTransaction txNewConst(tx);
     int nIn = 0;
+    bool fSignedAtLeastOne = false;
     for (const auto& input : tx.vin) {
         std::map<uint256, CWalletTx>::const_iterator mi = mapWallet.find(input.prevout.hash);
         if(mi == mapWallet.end() || input.prevout.n >= mi->second.tx->vout.size()) {
-            return false;
+            // Previous output not in our wallet -- skip for partial signing,
+            // hard-fail for legacy wallets (preserves original behavior)
+            if (!IsDescriptorWallet()) {
+                return false;
+            }
+            nIn++;
+            continue;
         }
         const CScript& scriptPubKey = mi->second.tx->vout[input.prevout.n].scriptPubKey;
         const CAmount& amount = mi->second.tx->vout[input.prevout.n].nValue;
         SignatureData sigdata;
-        if (!ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, amount, SIGHASH_ALL), scriptPubKey, sigdata)) {
-            return false;
+
+        // Determine the correct signing provider
+        const CKeyStore* provider = this; // Default: CWallet's own keystore (legacy)
+        std::unique_ptr<SPKMSigningProvider> spkm_provider;
+
+        if (IsDescriptorWallet()) {
+            // Find the ScriptPubKeyMan that owns this input
+            ScriptPubKeyMan* spk_man = GetScriptPubKeyMan(scriptPubKey);
+            if (spk_man) {
+                spkm_provider = std::make_unique<SPKMSigningProvider>(*spk_man);
+                provider = spkm_provider.get();
+            } else {
+                // No SPKM claims this input — skip (partial signing)
+                nIn++;
+                continue;
+            }
+        }
+
+        if (!ProduceSignature(TransactionSignatureCreator(provider, &txNewConst, nIn, amount, SIGHASH_ALL), scriptPubKey, sigdata)) {
+            // For legacy wallets, hard-fail on any signing failure (original behavior)
+            if (!IsDescriptorWallet()) {
+                return false;
+            }
+            // For descriptor wallets, continue to try remaining inputs (partial signing)
+            nIn++;
+            continue;
         }
         UpdateTransaction(tx, nIn, sigdata);
+        fSignedAtLeastOne = true;
         nIn++;
     }
-    return true;
+
+    // For legacy wallets we already returned false on any failure above,
+    // so reaching here means all inputs signed. For descriptor wallets,
+    // return true if we signed at least one input (partial signing success).
+    return IsDescriptorWallet() ? fSignedAtLeastOne : true;
 }
 
 bool CWallet::FundTransaction(CMutableTransaction& tx, CAmount& nFeeRet, int& nChangePosInOut, std::string& strFailReason, bool lockUnspents, const std::set<int>& setSubtractFeeFromOutputs, CCoinControl coinControl)
@@ -3767,7 +3839,21 @@ bool CWallet::CreateTransactionAll(const std::vector<CRecipient>& vecSend, CWall
                 const CScript& scriptPubKey = coin.txout.scriptPubKey;
                 SignatureData sigdata;
 
-                if (!ProduceSignature(TransactionSignatureCreator(this, &txNewConst, nIn, coin.txout.nValue, SIGHASH_ALL), scriptPubKey, sigdata))
+                // Determine the correct signing provider.
+                // For descriptor wallets, keys live in the DescriptorScriptPubKeyMan,
+                // NOT in CWallet's CKeyStore. Route through the owning SPKM.
+                const CKeyStore* signing_provider = this; // Default: legacy CKeyStore
+                std::unique_ptr<SPKMSigningProvider> spkm_provider;
+
+                if (IsDescriptorWallet()) {
+                    ScriptPubKeyMan* spk_man = GetScriptPubKeyMan(scriptPubKey);
+                    if (spk_man) {
+                        spkm_provider = std::make_unique<SPKMSigningProvider>(*spk_man);
+                        signing_provider = spkm_provider.get();
+                    }
+                }
+
+                if (!ProduceSignature(TransactionSignatureCreator(signing_provider, &txNewConst, nIn, coin.txout.nValue, SIGHASH_ALL), scriptPubKey, sigdata))
                 {
                     strFailReason = _("Signing transaction failed");
                     return false;
@@ -3783,8 +3869,20 @@ bool CWallet::CreateTransactionAll(const std::vector<CRecipient>& vecSend, CWall
                     const CScript &scriptPubKey = asset.txout.scriptPubKey;
                     SignatureData sigdata;
 
+                    // Use SPKM provider for descriptor wallets (same as above)
+                    const CKeyStore* signing_provider = this;
+                    std::unique_ptr<SPKMSigningProvider> spkm_provider;
+
+                    if (IsDescriptorWallet()) {
+                        ScriptPubKeyMan* spk_man = GetScriptPubKeyMan(scriptPubKey);
+                        if (spk_man) {
+                            spkm_provider = std::make_unique<SPKMSigningProvider>(*spk_man);
+                            signing_provider = spkm_provider.get();
+                        }
+                    }
+
                     if (!ProduceSignature(
-                            TransactionSignatureCreator(this, &txNewConst, nIn, asset.txout.nValue, SIGHASH_ALL),
+                            TransactionSignatureCreator(signing_provider, &txNewConst, nIn, asset.txout.nValue, SIGHASH_ALL),
                             scriptPubKey, sigdata)) {
                         strFailReason = _("Signing asset transaction failed");
                         return false;
@@ -3904,7 +4002,94 @@ bool CWallet::AddAccountingEntry(const CAccountingEntry& acentry, CWalletDB *pwa
 
 bool CWallet::IsFirstRun()
 {
+    if (IsDescriptorWallet()) {
+        // Descriptor wallet: first run if no descriptors have been loaded
+        return m_spk_managers.empty();
+    }
+    // Legacy wallet: original behavior (check CCryptoKeyStore maps)
     return mapKeys.empty() && mapCryptedKeys.empty() && mapWatchKeys.empty() && setWatchOnly.empty() && mapScripts.empty();
+}
+
+// ============================================================================
+// ScriptPubKeyMan routing (Bitcoin Core v24+ parity)
+// ============================================================================
+
+void CWallet::SetupScriptPubKeyMans()
+{
+    LOCK(cs_wallet);
+
+    if (IsDescriptorWallet()) {
+        // Descriptor wallet: populate active SPKM maps from loaded descriptors
+        for (auto& [id, spkm] : m_spk_managers) {
+            if (spkm->IsActive()) {
+                OutputType type = OutputType::LEGACY; // Default to P2PKH
+                if (spkm->IsInternal()) {
+                    m_internal_spk_managers[type] = spkm.get();
+                } else {
+                    m_external_spk_managers[type] = spkm.get();
+                }
+            }
+        }
+        LogPrintf("CWallet::SetupScriptPubKeyMans: Descriptor wallet — %zu external, %zu internal SPKMs\n",
+                  m_external_spk_managers.size(), m_internal_spk_managers.size());
+    } else {
+        // Legacy wallet: create LegacySPKM wrapper over this wallet's CCryptoKeyStore
+        m_legacy_spk_man = std::make_unique<LegacyScriptPubKeyMan>(this);
+        m_external_spk_managers[OutputType::LEGACY] = m_legacy_spk_man.get();
+        m_internal_spk_managers[OutputType::LEGACY] = m_legacy_spk_man.get();
+        LogPrintf("CWallet::SetupScriptPubKeyMans: Legacy wallet — LegacySPKM initialized\n");
+    }
+}
+
+ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(OutputType type, bool internal) const
+{
+    LOCK(cs_wallet);
+    const auto& map = internal ? m_internal_spk_managers : m_external_spk_managers;
+    auto it = map.find(type);
+    if (it != map.end()) {
+        return it->second;
+    }
+    // Fallback: try LEGACY type
+    if (type != OutputType::LEGACY) {
+        it = map.find(OutputType::LEGACY);
+        if (it != map.end()) {
+            return it->second;
+        }
+    }
+    return nullptr;
+}
+
+ScriptPubKeyMan* CWallet::GetScriptPubKeyMan(const CScript& script) const
+{
+    LOCK(cs_wallet);
+
+    if (IsDescriptorWallet()) {
+        // Check all descriptor SPKMs
+        for (const auto& [id, spkm] : m_spk_managers) {
+            if (spkm->IsMine(script)) {
+                return spkm.get();
+            }
+        }
+        return nullptr;
+    }
+
+    // Legacy wallet: the legacy SPKM handles everything
+    if (m_legacy_spk_man && m_legacy_spk_man->IsMine(script)) {
+        return m_legacy_spk_man.get();
+    }
+    return nullptr;
+}
+
+bool CWallet::GetNewDestination(OutputType type, CTxDestination& dest, std::string& error)
+{
+    LOCK(cs_wallet);
+
+    ScriptPubKeyMan* spk_man = GetScriptPubKeyMan(type, /*internal=*/false);
+    if (!spk_man) {
+        error = "No active ScriptPubKeyMan for requested output type";
+        return false;
+    }
+    return spk_man->GetNewDestination(type, dest, error);
 }
 
 // ============================================================================
@@ -4169,22 +4354,13 @@ CWallet* CWallet::CreateDescriptorWallet(const std::string& wallet_file,
     
     // Handle encryption if passphrase provided
     if (!passphrase.empty()) {
-        SecureString secure_passphrase;
-        secure_passphrase.reserve(passphrase.size());
-        secure_passphrase.assign(passphrase.begin(), passphrase.end());
-        
-        if (!wallet->EncryptWallet(secure_passphrase)) {
-            error = "Failed to encrypt wallet";
-            delete wallet;
-            return nullptr;
-        }
-        
-        // Unlock for setup
-        if (!wallet->Unlock(secure_passphrase)) {
-            error = "Failed to unlock wallet after encryption";
-            delete wallet;
-            return nullptr;
-        }
+        // SECURITY: Descriptor wallet encryption is not yet implemented.
+        // Rather than silently creating an unencrypted wallet, reject the request.
+        error = "Descriptor wallet encryption is not yet supported. "
+                "Create the wallet without a passphrase. "
+                "Encryption support will be added in a future release.";
+        delete wallet;
+        return nullptr;
     }
     
     // Generate default descriptors unless blank wallet requested
@@ -4203,16 +4379,31 @@ CWallet* CWallet::CreateDescriptorWallet(const std::string& wallet_file,
             return nullptr;
         }
         
-        // Store the master key in wallet (for backup purposes)
-        // Note: In a full implementation, this would be stored encrypted
-        CWalletDB walletdb(wallet->GetDBHandle());
-        CKeyMetadata metadata(GetTime());
-        metadata.hdKeypath = "m";
-        
-        CPubKey master_pubkey = master_secret.GetPubKey();
-        if (!wallet->AddKeyPubKeyWithDB(walletdb, master_secret, master_pubkey)) {
-            LogPrintf("Warning: Failed to store master key backup\n");
-            // Non-fatal - descriptors are already stored
+        // Store the master key securely within the descriptor framework.
+        // We write the master xprv into the descriptor DB as a special record
+        // keyed by "master_key". This keeps it within the descriptor storage
+        // layer rather than leaking into the legacy CCryptoKeyStore maps.
+        // 
+        // SECURITY NOTE: Until descriptor wallet encryption is implemented,
+        // this key is stored in plaintext in the SQLite database. Users are
+        // warned at wallet creation time that encryption is not yet available.
+        {
+            CWalletDB walletdb(wallet->GetDBHandle());
+
+            // Serialize the master xprv for recovery
+            CDataStream ss(SER_DISK, CLIENT_VERSION);
+            ss << master_key;
+            std::string master_key_hex = HexStr(ss.begin(), ss.end());
+
+            // Store as a special descriptor record with a well-known ID
+            uint256 master_id = Hash(std::string("master_key").begin(), std::string("master_key").end());
+            std::string master_desc = "pkh(" + master_key_hex + "/44h/175h/0h)";
+            if (!walletdb.WriteDescriptor(master_id, master_desc,
+                                          GetTime(), 0, 0, 0,
+                                          false /* not active */, false /* not internal */)) {
+                LogPrintf("Warning: Failed to store master key backup in descriptor DB\n");
+                // Non-fatal - individual descriptors are already stored and functional
+            }
         }
     } else if (!blank && disable_private_keys) {
         // Watch-only wallet - no default descriptors
@@ -4226,6 +4417,9 @@ CWallet* CWallet::CreateDescriptorWallet(const std::string& wallet_file,
         wallet->SetBestChain(chainActive.GetLocator());
     }
     
+    // Initialize ScriptPubKeyMan routing for the new descriptor wallet
+    wallet->SetupScriptPubKeyMans();
+
     LogPrintf("Descriptor wallet created successfully: %s\n", wallet_file);
     
     return wallet;
@@ -4255,6 +4449,18 @@ DBErrors CWallet::LoadWallet(bool& fFirstRunRet)
 
     if (nLoadWalletRet != DB_LOAD_OK)
         return nLoadWalletRet;
+
+    // DOWNGRADE PROTECTION: If this is a descriptor wallet (version >= 20000),
+    // verify that the running software can handle it. This prevents older versions
+    // from silently corrupting descriptor wallet data.
+    if (IsDescriptorWallet()) {
+        LogPrintf("LoadWallet: Detected descriptor wallet (version %d)\n", nWalletVersion);
+        // Descriptor wallets require the SPKM infrastructure. If we got here,
+        // the running binary supports descriptors. Write a flag so older binaries
+        // that lack descriptor support will refuse to load this wallet.
+        CWalletDB walletdb(*dbw);
+        walletdb.WriteWalletType("descriptor");
+    }
 
     uiInterface.LoadWallet(this);
 
@@ -4734,8 +4940,125 @@ std::set<CTxDestination> CWallet::GetAccountAddresses(const std::string& strAcco
     return result;
 }
 
-bool CReserveKey::GetReservedKey(CPubKey& pubkey, bool internal)
+// ============================================================================
+// ReserveDestination implementation (replaces CReserveKey)
+// ============================================================================
+
+bool ReserveDestination::GetReservedDestination(CTxDestination& dest, bool internal, std::string& error)
 {
+    if (!pwallet) {
+        error = "Wallet pointer is null";
+        return false;
+    }
+
+    if (pwallet->IsDescriptorWallet()) {
+        // Descriptor wallet: get destination from active ScriptPubKeyMan.
+        // Try each output type in order of preference: the wallet may have
+        // descriptors registered for BECH32, P2SH_SEGWIT, or LEGACY.
+        static const OutputType type_priority[] = {
+            OutputType::LEGACY,
+            OutputType::P2SH_SEGWIT,
+            OutputType::BECH32,
+        };
+
+        ScriptPubKeyMan* spk_man = nullptr;
+        OutputType resolved_type = OutputType::LEGACY;
+        for (auto type : type_priority) {
+            spk_man = pwallet->GetScriptPubKeyMan(type, internal);
+            if (spk_man) {
+                resolved_type = type;
+                break;
+            }
+        }
+
+        if (!spk_man) {
+            error = "No active ScriptPubKeyMan for any output type";
+            return false;
+        }
+        m_spk_man = spk_man;
+        if (!m_spk_man->GetNewDestination(resolved_type, dest, error)) {
+            return false;
+        }
+        address = dest;
+        fInternal = internal;
+        fValid = true;
+        return true;
+    }
+
+    // Legacy wallet: reserve from keypool (existing behavior)
+    CPubKey pubkey;
+    if (!GetReservedKey(pubkey, internal)) {
+        error = "Keypool ran out, please call keypoolrefill first";
+        return false;
+    }
+    dest = pubkey.GetID();
+    address = dest;
+    fValid = true;
+    return true;
+}
+
+void ReserveDestination::KeepDestination()
+{
+    if (pwallet && pwallet->IsDescriptorWallet()) {
+        // Descriptor wallets: index is already advanced by GetNewDestination
+        // Nothing to do — the derivation is already persisted
+        m_spk_man = nullptr;
+        fValid = false;
+        return;
+    }
+
+    // Legacy wallet: keep the key (remove from pool)
+    if (nIndex != -1)
+        pwallet->KeepKey(nIndex);
+    nIndex = -1;
+    vchPubKey = CPubKey();
+    fValid = false;
+}
+
+void ReserveDestination::ReturnDestination()
+{
+    if (pwallet && pwallet->IsDescriptorWallet()) {
+        // Descriptor wallets: can't "return" a derived address
+        // The index has already been advanced and persisted
+        m_spk_man = nullptr;
+        fValid = false;
+        return;
+    }
+
+    // Legacy wallet: return key to pool
+    if (nIndex != -1) {
+        pwallet->ReturnKey(nIndex, fInternal, vchPubKey);
+    }
+    nIndex = -1;
+    vchPubKey = CPubKey();
+    fValid = false;
+}
+
+bool ReserveDestination::GetReservedKey(CPubKey& pubkey, bool internal)
+{
+    if (!pwallet) return false;
+
+    if (pwallet->IsDescriptorWallet()) {
+        // Descriptor wallet: get a new destination and extract the pubkey
+        std::string error;
+        CTxDestination dest;
+        if (!GetReservedDestination(dest, internal, error)) {
+            return false;
+        }
+        // Extract CKeyID from the destination
+        const CKeyID* keyid = boost::get<CKeyID>(&dest);
+        if (!keyid) {
+            return false;
+        }
+        // Look up the pubkey from the SPKM
+        if (m_spk_man && m_spk_man->GetPubKey(*keyid, pubkey)) {
+            vchPubKey = pubkey;
+            return true;
+        }
+        return false;
+    }
+
+    // Legacy wallet: reserve from keypool (original CReserveKey behavior)
     if (nIndex == -1)
     {
         CKeyPool keypool;
@@ -4750,23 +5073,6 @@ bool CReserveKey::GetReservedKey(CPubKey& pubkey, bool internal)
     assert(vchPubKey.IsValid());
     pubkey = vchPubKey;
     return true;
-}
-
-void CReserveKey::KeepKey()
-{
-    if (nIndex != -1)
-        pwallet->KeepKey(nIndex);
-    nIndex = -1;
-    vchPubKey = CPubKey();
-}
-
-void CReserveKey::ReturnKey()
-{
-    if (nIndex != -1) {
-        pwallet->ReturnKey(nIndex, fInternal, vchPubKey);
-    }
-    nIndex = -1;
-    vchPubKey = CPubKey();
 }
 
 void CWallet::MarkReserveKeysAsUsed(int64_t keypool_id)
@@ -4794,14 +5100,14 @@ void CWallet::MarkReserveKeysAsUsed(int64_t keypool_id)
 
 void CWallet::GetScriptForMining(std::shared_ptr<CReserveScript> &script)
 {
-    std::shared_ptr<CReserveKey> rKey = std::make_shared<CReserveKey>(this);
+    std::shared_ptr<ReserveDestination> rDest = std::make_shared<ReserveDestination>(this);
     CPubKey pubkey;
-    if (!rKey->GetReservedKey(pubkey))
+    if (!rDest->GetReservedKey(pubkey))
     {
         return;
     }
 
-    script = rKey;
+    script = rDest;
     script->reserveScript = CScript() << ToByteVector(pubkey) << OP_CHECKSIG;
 }
 
@@ -5137,6 +5443,11 @@ CWallet* CWallet:: CreateWalletFromFile(const std::string walletFile)
 
     // Try to top up keypool. No-op if the wallet is locked.
     walletInstance->TopUpKeyPool();
+
+    // Initialize ScriptPubKeyMan routing (Bitcoin Core v24+ parity).
+    // For legacy wallets: creates LegacySPKM wrapper over existing keystore.
+    // For descriptor wallets: populates active SPKM maps from loaded descriptors.
+    walletInstance->SetupScriptPubKeyMans();
 
     if (walletInstance->hdChain.IsBip44() && fFirstRun) {
         CWalletDB walletdb(walletInstance->GetDBHandle());

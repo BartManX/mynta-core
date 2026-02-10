@@ -768,7 +768,7 @@ UniValue getaddressmempool(const JSONRPCRequest& request)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
         }
     } else {
-        if (!mempool.getAddressIndex(addresses, RVN, indexes)) {
+        if (!mempool.getAddressIndex(addresses, MYNTA, indexes)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
         }
     }
@@ -838,7 +838,7 @@ UniValue getaddressutxos(const JSONRPCRequest& request)
             );
 
     bool includeChainInfo = false;
-    std::string assetName = RVN;
+    std::string assetName = MYNTA;
     if (request.params[0].isObject()) {
         UniValue chainInfo = find_value(request.params[0].get_obj(), "chainInfo");
         if (chainInfo.isBool()) {
@@ -883,8 +883,8 @@ UniValue getaddressutxos(const JSONRPCRequest& request)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown address type");
         }
 
-        std::string assetNameOut = "RVN";
-        if (assetName != "RVN") {
+        std::string assetNameOut = "MYNTA";
+        if (assetName != "MYNTA") {
             CAmount _amount;
             if (!GetAssetInfoFromScript(it->second.script, assetNameOut, _amount)) {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't decode asset script");
@@ -960,7 +960,7 @@ UniValue getaddressdeltas(const JSONRPCRequest& request)
         includeChainInfo = chainInfo.get_bool();
     }
 
-    std::string assetName = RVN;
+    std::string assetName = MYNTA;
     UniValue assetNameParam = find_value(request.params[0].get_obj(), "assetName");
     if (assetNameParam.isStr()) {
         if (!AreAssetsDeployed())
@@ -1143,7 +1143,7 @@ UniValue getaddressbalance(const JSONRPCRequest& request)
         std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
 
         for (std::vector<std::pair<uint160, int> >::iterator it = addresses.begin(); it != addresses.end(); it++) {
-            if (!GetAddressIndex((*it).first, (*it).second, RVN, addressIndex)) {
+            if (!GetAddressIndex((*it).first, (*it).second, MYNTA, addressIndex)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
             }
         }
@@ -1238,11 +1238,11 @@ UniValue getaddresstxids(const JSONRPCRequest& request)
             }
         } else {
             if (start > 0 && end > 0) {
-                if (!GetAddressIndex((*it).first, (*it).second, RVN, addressIndex, start, end)) {
+                if (!GetAddressIndex((*it).first, (*it).second, MYNTA, addressIndex, start, end)) {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
                 }
             } else {
-                if (!GetAddressIndex((*it).first, (*it).second, RVN, addressIndex)) {
+                if (!GetAddressIndex((*it).first, (*it).second, MYNTA, addressIndex)) {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
                 }
             }

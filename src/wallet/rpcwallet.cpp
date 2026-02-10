@@ -194,7 +194,7 @@ UniValue getnewaddress(const JSONRPCRequest& request)
             "\nArguments:\n"
             "1. \"account\"        (string, optional) DEPRECATED. The account name for the address to be linked to. If not provided, the default account \"\" is used. It can also be set to the empty string \"\" to represent the default account. The account does not need to exist, it will be created if there is no account by the given name.\n"
             "\nResult:\n"
-            "\"address\"    (string) The new raven address\n"
+            "\"address\"    (string) The new mynta address\n"
             "\nExamples:\n"
             + HelpExampleCli("getnewaddress", "")
             + HelpExampleRpc("getnewaddress", "")
@@ -207,6 +207,18 @@ UniValue getnewaddress(const JSONRPCRequest& request)
     if (!request.params[0].isNull())
         strAccount = AccountFromValue(request.params[0]);
 
+    if (pwallet->IsDescriptorWallet()) {
+        // Descriptor wallet: route through ScriptPubKeyMan
+        CTxDestination dest;
+        std::string error;
+        if (!pwallet->GetNewDestination(OutputType::LEGACY, dest, error)) {
+            throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: " + error);
+        }
+        pwallet->SetAddressBook(dest, strAccount, "receive");
+        return EncodeDestination(dest);
+    }
+
+    // Legacy wallet: original behavior
     if (!pwallet->IsLocked()) {
         pwallet->TopUpKeyPool();
     }
@@ -289,11 +301,23 @@ UniValue getrawchangeaddress(const JSONRPCRequest& request)
 
     LOCK2(cs_main, pwallet->cs_wallet);
 
+    if (pwallet->IsDescriptorWallet()) {
+        // Descriptor wallet: get change address from internal SPKM
+        CTxDestination dest;
+        std::string error;
+        ScriptPubKeyMan* spk_man = pwallet->GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/true);
+        if (!spk_man || !spk_man->GetNewDestination(OutputType::LEGACY, dest, error)) {
+            throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: " + (error.empty() ? "No active change descriptor" : error));
+        }
+        return EncodeDestination(dest);
+    }
+
+    // Legacy wallet: original behavior
     if (!pwallet->IsLocked()) {
         pwallet->TopUpKeyPool();
     }
 
-    CReserveKey reservekey(pwallet);
+    ReserveDestination reservekey(pwallet);
     CPubKey vchPubKey;
     if (!reservekey.GetReservedKey(vchPubKey, true))
         throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
@@ -3258,7 +3282,7 @@ UniValue fundrawtransaction(const JSONRPCRequest& request)
 
 UniValue bumpfee(const JSONRPCRequest& request)
 {
-    throw std::runtime_error("bumpfee has been deprecated on the RVN Wallet.");
+    throw std::runtime_error("bumpfee has been deprecated on the MYNTA Wallet.");
 
 //    CWallet * const pwallet = GetWalletForJSONRPCRequest(request);
 //
@@ -3546,9 +3570,12 @@ UniValue createwallet(const JSONRPCRequest& request)
             "2. disable_private_keys    (boolean, optional, default=false) Disable private keys for this wallet.\n"
             "3. blank                   (boolean, optional, default=false) Create a blank wallet with no keys.\n"
             "4. \"passphrase\"          (string, optional) Encrypt wallet with this passphrase.\n"
-            "5. descriptors             (boolean, optional, default=false) Create a descriptor wallet.\n"
-            "                           Descriptor wallets are the recommended wallet type for pool deployments.\n"
+            "                           Note: Descriptor wallet encryption is not yet supported.\n"
+            "5. descriptors             (boolean, optional, default=true) Create a descriptor wallet.\n"
+            "                           Descriptor wallets are the default and recommended wallet type.\n"
             "                           They use output descriptors for key management instead of individual keys.\n"
+            "                           Legacy wallets (descriptors=false) are deprecated and only allowed\n"
+            "                           for backward compatibility. Use 'migratewallet' to upgrade.\n"
             "\nResult:\n"
             "{\n"
             "  \"name\" :       \"walletname\",   (string) The wallet name\n"
@@ -3556,8 +3583,8 @@ UniValue createwallet(const JSONRPCRequest& request)
             "}\n"
             "\nExamples:\n"
             + HelpExampleCli("createwallet", "\"mywallet\"")
-            + HelpExampleCli("createwallet", "\"mywallet\" false false \"\" true")
-            + HelpExampleRpc("createwallet", "\"mywallet\", false, false, \"\", true")
+            + HelpExampleCli("createwallet", "\"mywallet\" false false \"\" false")
+            + HelpExampleRpc("createwallet", "\"mywallet\", false, false, \"\", false")
         );
 
     std::string wallet_name = request.params[0].get_str();
@@ -3593,7 +3620,7 @@ UniValue createwallet(const JSONRPCRequest& request)
     bool disable_private_keys = false;
     bool blank = false;
     std::string passphrase;
-    bool descriptors = false;
+    bool descriptors = true;  // Default: descriptor wallets (Bitcoin Core v24+ parity)
     
     if (!request.params[1].isNull()) {
         disable_private_keys = request.params[1].get_bool();
@@ -3627,6 +3654,13 @@ UniValue createwallet(const JSONRPCRequest& request)
                       "For watch-only pool wallets, create with blank=true and import xpub descriptors.";
         }
     } else {
+        // DEPRECATED: Legacy wallet creation.
+        // Legacy wallets are retained ONLY for backward compatibility and migration.
+        // New deployments MUST use descriptor wallets.
+        LogPrintf("WARNING: Creating legacy wallet '%s' — legacy wallets are deprecated. "
+                  "Use descriptors=true or migrate existing wallets with 'migratewallet'.\n",
+                  wallet_name);
+
         // Create legacy wallet using existing infrastructure
         // The CWalletDBWrapper constructor automatically opens/creates the database
         std::unique_ptr<CWalletDBWrapper> dbw(new CWalletDBWrapper(&bitdb, wallet_file));
@@ -3662,9 +3696,16 @@ UniValue createwallet(const JSONRPCRequest& request)
         // Generate seed and keys unless blank
         if (!blank && !disable_private_keys) {
             CPubKey seed = wallet->GenerateNewSeed();
-            if (!wallet->SetHDSeed(seed)) {
-                delete wallet;
-                throw JSONRPCError(RPC_WALLET_ERROR, "Failed to set HD seed");
+            // For BIP44 wallets, GenerateNewSeed() already configures the HD chain
+            // (mnemonic, seed, chain counters) via SetHDChain(). Calling SetHDSeed()
+            // would OVERWRITE this with a non-BIP44 chain, losing the mnemonic-based
+            // seed reference and causing "DeriveNewChildKey: seed not found" errors.
+            // Only call SetHDSeed for non-BIP44 (standard HD) wallets.
+            if (!wallet->GetHDChain().IsBip44()) {
+                if (!wallet->SetHDSeed(seed)) {
+                    delete wallet;
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Failed to set HD seed");
+                }
             }
             
             if (!wallet->TopUpKeyPool()) {
@@ -3685,9 +3726,21 @@ UniValue createwallet(const JSONRPCRequest& request)
             wallet->SetBestChain(chainActive.GetLocator());
         }
         
-        warning = "Legacy wallet created. Consider using descriptors=true for new pool deployments.";
+        warning = "WARNING: Legacy wallets are deprecated and will be removed in a future release. "
+                  "Use 'migratewallet' to upgrade to a descriptor wallet. "
+                  "New wallets should use descriptors=true (the default).";
     }
     
+    // Initialize ScriptPubKeyMan routing
+    wallet->SetupScriptPubKeyMans();
+
+    // Enable transaction broadcasting (default is false in CWallet constructor).
+    // Without this, CommitTransaction skips AcceptToMemoryPool and the
+    // transaction is stored in the wallet but never enters the mempool or
+    // gets relayed to peers — causing send operations to appear to succeed
+    // but the funds never actually move.
+    wallet->SetBroadcastTransactions(gArgs.GetBoolArg("-walletbroadcast", DEFAULT_WALLETBROADCAST));
+
     // Register the wallet
     RegisterValidationInterface(wallet);
     vpwallets.push_back(wallet);
@@ -3816,7 +3869,6 @@ UniValue importdescriptors(const JSONRPCRequest& request)
             "        \"desc\": \"<descriptor>\",       (string, required) Descriptor to import\n"
             "        \"active\": bool,                  (boolean, optional, default=false) Set this descriptor active\n"
             "        \"range\": n or [n,n],            (numeric or array) Range to import (for ranged descriptors)\n"
-            "        \"next_index\": n,                 (numeric, optional) Next index for ranged descriptor\n"
             "        \"timestamp\": timestamp | \"now\", (integer or string, required) UNIX epoch time of creation\n"
             "        \"internal\": bool,                (boolean, optional, default=false) Internal (change) descriptor\n"
             "        \"label\": \"label\",             (string, optional, default='') Label for imported addresses\n"
@@ -3904,6 +3956,26 @@ UniValue importdescriptors(const JSONRPCRequest& request)
             
             if (range_end - range_start > 10000) {
                 throw JSONRPCError(RPC_INVALID_PARAMETER, "Range too large (max 10000)");
+            }
+
+            // Overlap validation: if this descriptor is being set as active,
+            // check if another active descriptor of the same internal/external type
+            // already exists. Overlapping active descriptors cause nondeterministic
+            // signing provider selection (first-match-wins on map iteration order).
+            if (active) {
+                OutputType otype = OutputType::LEGACY; // default
+                for (const auto& [existing_id, existing_spkm] : pwallet->GetDescriptorManagers()) {
+                    if (existing_spkm->IsActive() && existing_spkm->IsInternal() == internal) {
+                        warnings.push_back(
+                            "Another active " + std::string(internal ? "internal" : "external") +
+                            " descriptor already exists (id=" + existing_id.ToString().substr(0, 8) +
+                            "...). The existing descriptor will be deactivated. "
+                            "Multiple active descriptors for the same chain can cause "
+                            "nondeterministic address generation.");
+                        // Deactivate the existing one to prevent overlap
+                        existing_spkm->SetActive(false);
+                    }
+                }
             }
 
             // Import the descriptor into the wallet
