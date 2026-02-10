@@ -107,7 +107,7 @@ public:
         bUse_bip44 = false;
     }
 
-    bool IsNull() { return seed_id.IsNull();}
+    bool IsNull() const { return seed_id.IsNull();}
 
 
     void UseBip44( bool b = true)   { bUse_bip44 = b;}
@@ -260,6 +260,49 @@ public:
 
     //! write the hdchain model (external chain child index counter)
     bool WriteHDChain(const CHDChain& chain);
+
+    // ========================================================================
+    // Descriptor wallet methods (v2.0.0+)
+    // These methods support the new descriptor wallet functionality.
+    // Legacy wallets do not use these methods.
+    // ========================================================================
+
+    //! Write wallet type identifier ("legacy" or "descriptor")
+    //! BACKWARDS COMPATIBILITY: Absence of this key means legacy wallet
+    bool WriteWalletType(const std::string& type);
+    
+    //! Read wallet type identifier
+    //! Returns "legacy" if key doesn't exist (backwards compatible)
+    bool ReadWalletType(std::string& type);
+
+    //! Write a descriptor record
+    //! @param id Unique identifier for this descriptor (e.g., hash of descriptor string)
+    //! @param descriptor The descriptor string
+    //! @param creation_time Timestamp when descriptor was added
+    //! @param range_start Start of derivation range
+    //! @param range_end End of derivation range  
+    //! @param next_index Next unused index
+    //! @param active Whether this descriptor is active for address generation
+    //! @param internal Whether this is an internal (change) descriptor
+    bool WriteDescriptor(const uint256& id, const std::string& descriptor,
+                        int64_t creation_time, int32_t range_start, int32_t range_end,
+                        int32_t next_index, bool active, bool internal);
+    
+    //! Read a descriptor record
+    bool ReadDescriptor(const uint256& id, std::string& descriptor,
+                       int64_t& creation_time, int32_t& range_start, int32_t& range_end,
+                       int32_t& next_index, bool& active, bool& internal);
+    
+    //! Erase a descriptor record
+    bool EraseDescriptor(const uint256& id);
+
+    //! Write a derived key cache entry
+    bool WriteDescriptorKey(const uint256& desc_id, int32_t index, const CPubKey& pubkey);
+    
+    //! Write an encrypted derived key
+    bool WriteDescriptorCryptedKey(const uint256& desc_id, int32_t index,
+                                   const CPubKey& pubkey,
+                                   const std::vector<unsigned char>& crypted_secret);
 
     //! Begin a new transaction
     bool TxnBegin();

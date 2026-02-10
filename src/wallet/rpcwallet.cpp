@@ -24,6 +24,7 @@
 #include "util.h"
 #include "utiltime.h"
 #include "utilmoneystr.h"
+#include "script/descriptor.h"
 #include "wallet/coincontrol.h"
 #include "wallet/feebumper.h"
 #include "wallet/wallet.h"
@@ -193,7 +194,7 @@ UniValue getnewaddress(const JSONRPCRequest& request)
             "\nArguments:\n"
             "1. \"account\"        (string, optional) DEPRECATED. The account name for the address to be linked to. If not provided, the default account \"\" is used. It can also be set to the empty string \"\" to represent the default account. The account does not need to exist, it will be created if there is no account by the given name.\n"
             "\nResult:\n"
-            "\"address\"    (string) The new raven address\n"
+            "\"address\"    (string) The new mynta address\n"
             "\nExamples:\n"
             + HelpExampleCli("getnewaddress", "")
             + HelpExampleRpc("getnewaddress", "")
@@ -206,6 +207,18 @@ UniValue getnewaddress(const JSONRPCRequest& request)
     if (!request.params[0].isNull())
         strAccount = AccountFromValue(request.params[0]);
 
+    if (pwallet->IsDescriptorWallet()) {
+        // Descriptor wallet: route through ScriptPubKeyMan
+        CTxDestination dest;
+        std::string error;
+        if (!pwallet->GetNewDestination(OutputType::LEGACY, dest, error)) {
+            throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: " + error);
+        }
+        pwallet->SetAddressBook(dest, strAccount, "receive");
+        return EncodeDestination(dest);
+    }
+
+    // Legacy wallet: original behavior
     if (!pwallet->IsLocked()) {
         pwallet->TopUpKeyPool();
     }
@@ -288,11 +301,23 @@ UniValue getrawchangeaddress(const JSONRPCRequest& request)
 
     LOCK2(cs_main, pwallet->cs_wallet);
 
+    if (pwallet->IsDescriptorWallet()) {
+        // Descriptor wallet: get change address from internal SPKM
+        CTxDestination dest;
+        std::string error;
+        ScriptPubKeyMan* spk_man = pwallet->GetScriptPubKeyMan(OutputType::LEGACY, /*internal=*/true);
+        if (!spk_man || !spk_man->GetNewDestination(OutputType::LEGACY, dest, error)) {
+            throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: " + (error.empty() ? "No active change descriptor" : error));
+        }
+        return EncodeDestination(dest);
+    }
+
+    // Legacy wallet: original behavior
     if (!pwallet->IsLocked()) {
         pwallet->TopUpKeyPool();
     }
 
-    CReserveKey reservekey(pwallet);
+    ReserveDestination reservekey(pwallet);
     CPubKey vchPubKey;
     if (!reservekey.GetReservedKey(vchPubKey, true))
         throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Error: Keypool ran out, please call keypoolrefill first");
@@ -2550,6 +2575,15 @@ UniValue encryptwallet(const JSONRPCRequest& request)
         return NullUniValue;
     }
 
+    // SAFETY: Descriptor wallet encryption is not implemented in v2.0.0
+    // This MUST fail loudly to prevent false sense of security
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "Descriptor wallet encryption is not supported in v2.0.0. "
+            "This feature will be enabled in v2.1.0. "
+            "Do not store long-term funds in descriptor wallets until encryption is available.");
+    }
+
     if (!pwallet->IsCrypted() && (request.fHelp || request.params.size() != 1)) {
         throw std::runtime_error(
             "encryptwallet \"passphrase\"\n"
@@ -3248,7 +3282,7 @@ UniValue fundrawtransaction(const JSONRPCRequest& request)
 
 UniValue bumpfee(const JSONRPCRequest& request)
 {
-    throw std::runtime_error("bumpfee has been deprecated on the RVN Wallet.");
+    throw std::runtime_error("bumpfee has been deprecated on the MYNTA Wallet.");
 
 //    CWallet * const pwallet = GetWalletForJSONRPCRequest(request);
 //
@@ -3521,6 +3555,847 @@ extern UniValue removeprunedfunds(const JSONRPCRequest& request);
 extern UniValue importmulti(const JSONRPCRequest& request);
 extern UniValue rescanblockchain(const JSONRPCRequest& request);
 
+// ============================================================================
+// Descriptor wallet RPCs (v2.0.0+)
+// ============================================================================
+
+UniValue createwallet(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 5)
+        throw std::runtime_error(
+            "createwallet \"wallet_name\" ( disable_private_keys blank \"passphrase\" descriptors )\n"
+            "\nCreates and loads a new wallet.\n"
+            "\nArguments:\n"
+            "1. \"wallet_name\"         (string, required) The name for the new wallet.\n"
+            "2. disable_private_keys    (boolean, optional, default=false) Disable private keys for this wallet.\n"
+            "3. blank                   (boolean, optional, default=false) Create a blank wallet with no keys.\n"
+            "4. \"passphrase\"          (string, optional) Encrypt wallet with this passphrase.\n"
+            "                           Note: Descriptor wallet encryption is not yet supported.\n"
+            "5. descriptors             (boolean, optional, default=true) Create a descriptor wallet.\n"
+            "                           Descriptor wallets are the default and recommended wallet type.\n"
+            "                           They use output descriptors for key management instead of individual keys.\n"
+            "                           Legacy wallets (descriptors=false) are deprecated and only allowed\n"
+            "                           for backward compatibility. Use 'migratewallet' to upgrade.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"name\" :       \"walletname\",   (string) The wallet name\n"
+            "  \"warning\" :    \"warning\",       (string) Warning messages, if any\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("createwallet", "\"mywallet\"")
+            + HelpExampleCli("createwallet", "\"mywallet\" false false \"\" false")
+            + HelpExampleRpc("createwallet", "\"mywallet\", false, false, \"\", false")
+        );
+
+    std::string wallet_name = request.params[0].get_str();
+    
+    // Validate wallet name
+    if (wallet_name.empty()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Wallet name cannot be empty");
+    }
+    
+    // Ensure wallet name doesn't contain path separators
+    if (wallet_name.find('/') != std::string::npos || 
+        wallet_name.find('\\') != std::string::npos) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Wallet name cannot contain path separators");
+    }
+    
+    // Check for existing wallet (in memory)
+    for (CWalletRef pwallet : ::vpwallets) {
+        if (pwallet->GetName() == wallet_name) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Wallet \"" + wallet_name + "\" already loaded.");
+        }
+    }
+    
+    // Check if wallet file already exists on disk
+    std::string wallet_file = wallet_name;
+    if (wallet_file.find(".dat") == std::string::npos) {
+        wallet_file += ".dat";
+    }
+    fs::path wallet_path = GetDataDir() / wallet_file;
+    if (fs::exists(wallet_path)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Wallet file \"" + wallet_file + "\" already exists.");
+    }
+    
+    bool disable_private_keys = false;
+    bool blank = false;
+    std::string passphrase;
+    bool descriptors = true;  // Default: descriptor wallets (Bitcoin Core v24+ parity)
+    
+    if (!request.params[1].isNull()) {
+        disable_private_keys = request.params[1].get_bool();
+    }
+    if (!request.params[2].isNull()) {
+        blank = request.params[2].get_bool();
+    }
+    if (!request.params[3].isNull()) {
+        passphrase = request.params[3].get_str();
+    }
+    if (!request.params[4].isNull()) {
+        descriptors = request.params[4].get_bool();
+    }
+    
+    std::string warning;
+    CWallet* wallet = nullptr;
+    
+    if (descriptors) {
+        // Create descriptor wallet
+        std::string error;
+        wallet = CWallet::CreateDescriptorWallet(wallet_file, disable_private_keys, blank, passphrase, error);
+        
+        if (!wallet) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to create descriptor wallet: " + error);
+        }
+        
+        // Add informational warning for pool operators
+        if (!blank && !disable_private_keys) {
+            warning = "Descriptor wallet created with default pkh descriptors. "
+                      "Use 'listdescriptors' to view and backup your descriptors. "
+                      "For watch-only pool wallets, create with blank=true and import xpub descriptors.";
+        }
+    } else {
+        // DEPRECATED: Legacy wallet creation.
+        // Legacy wallets are retained ONLY for backward compatibility and migration.
+        // New deployments MUST use descriptor wallets.
+        LogPrintf("WARNING: Creating legacy wallet '%s' — legacy wallets are deprecated. "
+                  "Use descriptors=true or migrate existing wallets with 'migratewallet'.\n",
+                  wallet_name);
+
+        // Create legacy wallet using existing infrastructure
+        // The CWalletDBWrapper constructor automatically opens/creates the database
+        std::unique_ptr<CWalletDBWrapper> dbw(new CWalletDBWrapper(&bitdb, wallet_file));
+        
+        // Verify database opened successfully
+        if (!dbw->IsOpen()) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to create wallet database");
+        }
+        
+        wallet = new CWallet(std::move(dbw));
+        
+        // Set up HD wallet
+        wallet->SetMinVersion(FEATURE_NO_DEFAULT_KEY);
+        wallet->UseBip44(true);
+        
+        // Encrypt if passphrase provided
+        if (!passphrase.empty()) {
+            SecureString secure_passphrase;
+            secure_passphrase.reserve(passphrase.size());
+            secure_passphrase.assign(passphrase.begin(), passphrase.end());
+            
+            if (!wallet->EncryptWallet(secure_passphrase)) {
+                delete wallet;
+                throw JSONRPCError(RPC_WALLET_ERROR, "Failed to encrypt wallet");
+            }
+            
+            if (!wallet->Unlock(secure_passphrase)) {
+                delete wallet;
+                throw JSONRPCError(RPC_WALLET_ERROR, "Failed to unlock wallet after encryption");
+            }
+        }
+        
+        // Generate seed and keys unless blank
+        if (!blank && !disable_private_keys) {
+            CPubKey seed = wallet->GenerateNewSeed();
+            // For BIP44 wallets, GenerateNewSeed() already configures the HD chain
+            // (mnemonic, seed, chain counters) via SetHDChain(). Calling SetHDSeed()
+            // would OVERWRITE this with a non-BIP44 chain, losing the mnemonic-based
+            // seed reference and causing "DeriveNewChildKey: seed not found" errors.
+            // Only call SetHDSeed for non-BIP44 (standard HD) wallets.
+            if (!wallet->GetHDChain().IsBip44()) {
+                if (!wallet->SetHDSeed(seed)) {
+                    delete wallet;
+                    throw JSONRPCError(RPC_WALLET_ERROR, "Failed to set HD seed");
+                }
+            }
+            
+            if (!wallet->TopUpKeyPool()) {
+                delete wallet;
+                throw JSONRPCError(RPC_WALLET_ERROR, "Failed to generate initial keys");
+            }
+        }
+        
+        // Write wallet type
+        {
+            CWalletDB walletdb(wallet->GetDBHandle());
+            walletdb.WriteWalletType("legacy");
+        }
+        
+        // Set best chain
+        {
+            LOCK(cs_main);
+            wallet->SetBestChain(chainActive.GetLocator());
+        }
+        
+        warning = "WARNING: Legacy wallets are deprecated and will be removed in a future release. "
+                  "Use 'migratewallet' to upgrade to a descriptor wallet. "
+                  "New wallets should use descriptors=true (the default).";
+    }
+    
+    // Initialize ScriptPubKeyMan routing
+    wallet->SetupScriptPubKeyMans();
+
+    // Enable transaction broadcasting (default is false in CWallet constructor).
+    // Without this, CommitTransaction skips AcceptToMemoryPool and the
+    // transaction is stored in the wallet but never enters the mempool or
+    // gets relayed to peers — causing send operations to appear to succeed
+    // but the funds never actually move.
+    wallet->SetBroadcastTransactions(gArgs.GetBoolArg("-walletbroadcast", DEFAULT_WALLETBROADCAST));
+
+    // Register the wallet
+    RegisterValidationInterface(wallet);
+    vpwallets.push_back(wallet);
+    
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("name", wallet_name);
+    if (!warning.empty()) {
+        result.pushKV("warning", warning);
+    }
+    
+    return result;
+}
+
+UniValue listdescriptors(const JSONRPCRequest& request)
+{
+    CWallet* const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+
+    if (request.fHelp || request.params.size() > 1)
+        throw std::runtime_error(
+            "listdescriptors ( private )\n"
+            "\nList all descriptors imported into a descriptor wallet.\n"
+            "\nArguments:\n"
+            "1. private    (boolean, optional, default=false) Include private keys in descriptor output.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"wallet_name\" : \"name\",     (string) Name of wallet this operation was performed on\n"
+            "  \"descriptors\" : [             (array) List of descriptors\n"
+            "    {\n"
+            "      \"desc\" : \"desc\",          (string) Descriptor string representation\n"
+            "      \"timestamp\" : t,            (number) UNIX timestamp of when descriptor was imported\n"
+            "      \"active\" : true|false,      (boolean) Whether this descriptor is active\n"
+            "      \"internal\" : true|false,    (boolean) Whether this is an internal (change) descriptor\n"
+            "      \"range\" : [n,n],            (array) Range of derived addresses\n"
+            "      \"next\" : n,                 (number) Next unused derivation index\n"
+            "    },\n"
+            "    ...\n"
+            "  ]\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("listdescriptors", "")
+            + HelpExampleRpc("listdescriptors", "")
+        );
+
+    LOCK(pwallet->cs_wallet);
+
+    // Check if this is a descriptor wallet
+    if (!pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "listdescriptors is only supported on descriptor wallets. "
+            "This is a legacy wallet that uses individual keys. "
+            "Use dumpwallet to export keys from legacy wallets.");
+    }
+
+    bool show_private = false;
+    if (!request.params[0].isNull()) {
+        show_private = request.params[0].get_bool();
+        if (show_private) {
+            EnsureWalletIsUnlocked(pwallet);
+        }
+    }
+
+    UniValue response(UniValue::VOBJ);
+    response.pushKV("wallet_name", pwallet->GetName());
+    
+    UniValue descriptors(UniValue::VARR);
+    
+    // Iterate over all descriptor managers
+    for (const auto& [id, spk_man] : pwallet->GetDescriptorManagers()) {
+        UniValue desc_obj(UniValue::VOBJ);
+        
+        // Get descriptor string (with or without private keys)
+        std::string desc_str;
+        if (show_private) {
+            // Try to get private string, fall back to public
+            FlatSigningProvider dummy;
+            if (!spk_man->GetDescriptor()->ToPrivateString(dummy, desc_str)) {
+                desc_str = spk_man->GetDescriptorString();
+            }
+        } else {
+            desc_str = spk_man->GetDescriptorString();
+        }
+        
+        // Add checksum
+        std::string checksum = GetDescriptorChecksum(desc_str);
+        desc_obj.pushKV("desc", desc_str + "#" + checksum);
+        
+        desc_obj.pushKV("timestamp", spk_man->GetCreationTime());
+        desc_obj.pushKV("active", spk_man->IsActive());
+        desc_obj.pushKV("internal", spk_man->IsInternal());
+        
+        // Add range info
+        auto [range_start, range_end] = spk_man->GetRange();
+        UniValue range_arr(UniValue::VARR);
+        range_arr.push_back(range_start);
+        range_arr.push_back(range_end);
+        desc_obj.pushKV("range", range_arr);
+        
+        desc_obj.pushKV("next", spk_man->GetNextIndex());
+        
+        descriptors.push_back(desc_obj);
+    }
+    
+    response.pushKV("descriptors", descriptors);
+    return response;
+}
+
+UniValue importdescriptors(const JSONRPCRequest& request)
+{
+    CWallet* const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 1)
+        throw std::runtime_error(
+            "importdescriptors \"requests\"\n"
+            "\nImport descriptors into a descriptor wallet.\n"
+            "This command cannot be used for legacy wallets.\n"
+            "\nArguments:\n"
+            "1. requests    (array, required) Array of descriptor import objects\n"
+            "    [\n"
+            "      {\n"
+            "        \"desc\": \"<descriptor>\",       (string, required) Descriptor to import\n"
+            "        \"active\": bool,                  (boolean, optional, default=false) Set this descriptor active\n"
+            "        \"range\": n or [n,n],            (numeric or array) Range to import (for ranged descriptors)\n"
+            "        \"timestamp\": timestamp | \"now\", (integer or string, required) UNIX epoch time of creation\n"
+            "        \"internal\": bool,                (boolean, optional, default=false) Internal (change) descriptor\n"
+            "        \"label\": \"label\",             (string, optional, default='') Label for imported addresses\n"
+            "      },\n"
+            "      ...\n"
+            "    ]\n"
+            "\nResult:\n"
+            "[                        (array) Array of result objects for each import\n"
+            "  {\n"
+            "    \"success\": true|false,   (boolean)\n"
+            "    \"warnings\": [ \"...\", ], (array of strings, optional)\n"
+            "    \"error\": { ... },         (object, optional)\n"
+            "  },\n"
+            "  ...\n"
+            "]\n"
+            "\nExamples:\n"
+            + HelpExampleCli("importdescriptors", "'[{\"desc\": \"pkh([fingerprint/44h/0h/0h]xpub.../0/*)#checksum\", \"timestamp\": \"now\", \"range\": [0, 100]}]'")
+            + HelpExampleRpc("importdescriptors", "[{\"desc\": \"pkh([fingerprint/44h/0h/0h]xpub.../0/*)#checksum\", \"timestamp\": \"now\", \"range\": [0, 100]}]")
+        );
+
+    LOCK(pwallet->cs_wallet);
+
+    // Check if this is a descriptor wallet
+    if (!pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR,
+            "importdescriptors is only supported on descriptor wallets. "
+            "For legacy wallets, use importmulti instead.");
+    }
+
+    EnsureWalletIsUnlocked(pwallet);
+
+    const UniValue& requests = request.params[0].get_array();
+    UniValue response(UniValue::VARR);
+
+    for (size_t i = 0; i < requests.size(); ++i) {
+        const UniValue& req = requests[i];
+        UniValue result(UniValue::VOBJ);
+        UniValue warnings(UniValue::VARR);
+
+        try {
+            // Get required descriptor
+            if (!req.exists("desc")) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Missing required field 'desc'");
+            }
+            std::string desc_str = req["desc"].get_str();
+
+            // Get timestamp
+            if (!req.exists("timestamp")) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Missing required field 'timestamp'");
+            }
+            int64_t timestamp;
+            if (req["timestamp"].isStr() && req["timestamp"].get_str() == "now") {
+                timestamp = GetTime();
+            } else {
+                timestamp = req["timestamp"].get_int64();
+            }
+
+            // Parse and validate descriptor
+            FlatSigningProvider provider;
+            std::string error;
+            auto desc = Parse(desc_str, provider, error, false);
+            if (!desc) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid descriptor: " + error);
+            }
+
+            // Get optional parameters
+            bool active = req.exists("active") ? req["active"].get_bool() : false;
+            bool internal = req.exists("internal") ? req["internal"].get_bool() : false;
+            int32_t range_start = 0;
+            int32_t range_end = 1000;
+            
+            if (req.exists("range")) {
+                if (req["range"].isNum()) {
+                    range_end = req["range"].get_int();
+                } else if (req["range"].isArray() && req["range"].size() == 2) {
+                    range_start = req["range"][0].get_int();
+                    range_end = req["range"][1].get_int();
+                }
+            }
+
+            // Validate range
+            if (range_start < 0 || range_end < range_start) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid range specified");
+            }
+            
+            if (range_end - range_start > 10000) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Range too large (max 10000)");
+            }
+
+            // Overlap validation: if this descriptor is being set as active,
+            // check if another active descriptor of the same internal/external type
+            // already exists. Overlapping active descriptors cause nondeterministic
+            // signing provider selection (first-match-wins on map iteration order).
+            if (active) {
+                OutputType otype = OutputType::LEGACY; // default
+                for (const auto& [existing_id, existing_spkm] : pwallet->GetDescriptorManagers()) {
+                    if (existing_spkm->IsActive() && existing_spkm->IsInternal() == internal) {
+                        warnings.push_back(
+                            "Another active " + std::string(internal ? "internal" : "external") +
+                            " descriptor already exists (id=" + existing_id.ToString().substr(0, 8) +
+                            "...). The existing descriptor will be deactivated. "
+                            "Multiple active descriptors for the same chain can cause "
+                            "nondeterministic address generation.");
+                        // Deactivate the existing one to prevent overlap
+                        existing_spkm->SetActive(false);
+                    }
+                }
+            }
+
+            // Import the descriptor into the wallet
+            std::string import_error;
+            uint256 desc_id = pwallet->AddDescriptor(desc_str, timestamp, range_start, range_end,
+                                                     active, internal, import_error);
+            
+            if (desc_id.IsNull()) {
+                throw JSONRPCError(RPC_WALLET_ERROR, import_error);
+            }
+            
+            result.pushKV("success", true);
+            
+            // Add informational warnings
+            if (!desc->IsRange() && (range_start != 0 || range_end != 1000)) {
+                warnings.push_back("Range parameters ignored for non-ranged descriptor");
+            }
+            
+            if (warnings.size() > 0) {
+                result.pushKV("warnings", warnings);
+            }
+        } catch (const UniValue& e) {
+            result.pushKV("success", false);
+            result.pushKV("error", e);
+        } catch (const std::exception& e) {
+            UniValue err(UniValue::VOBJ);
+            err.pushKV("message", std::string(e.what()));
+            result.pushKV("success", false);
+            result.pushKV("error", err);
+        }
+
+        response.push_back(result);
+    }
+
+    return response;
+}
+
+// ============================================================================
+// migratewallet - Safe migration from legacy to descriptor wallet
+// ============================================================================
+
+UniValue migratewallet(const JSONRPCRequest& request)
+{
+    CWallet* const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+
+    if (request.fHelp || request.params.size() > 1)
+        throw std::runtime_error(
+            "migratewallet ( options )\n"
+            "\nMigrate a legacy wallet to a descriptor wallet.\n"
+            "This creates a new descriptor wallet from an existing legacy wallet.\n"
+            "The original wallet is preserved as a backup.\n"
+            "\nCAUTION: This operation is one-way. Back up your wallet before proceeding.\n"
+            "\nArguments:\n"
+            "1. options                              (object, optional)\n"
+            "   {\n"
+            "     \"wallet_name\": \"str\",            (string, optional) Name for the new descriptor wallet (default: <wallet>_descriptor)\n"
+            "     \"passphrase\": \"str\",             (string, optional) Wallet passphrase if encrypted\n"
+            "     \"dry_run\": bool                   (boolean, optional, default=false) Simulate migration without making changes\n"
+            "   }\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"wallet_name\": \"name\",             (string) Name of the migrated wallet\n"
+            "  \"backup_path\": \"path\",             (string) Path to backup of original wallet\n"
+            "  \"descriptor_count\": n,              (numeric) Number of descriptors created\n"
+            "  \"address_count\": n,                 (numeric) Number of addresses migrated\n"
+            "  \"watchonly_count\": n,               (numeric) Number of watch-only scripts migrated\n"
+            "  \"warnings\": [\"str\",...],           (array) Warning messages, if any\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("migratewallet", "")
+            + HelpExampleCli("migratewallet", "'{\"dry_run\": true}'")
+            + HelpExampleRpc("migratewallet", "{\"wallet_name\": \"my_new_wallet\"}")
+        );
+
+    LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Check if already a descriptor wallet
+    if (pwallet->IsDescriptorWallet()) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "This is already a descriptor wallet - migration not needed.");
+    }
+
+    // Parse options
+    std::string new_wallet_name;
+    std::string passphrase;
+    bool dry_run = false;
+
+    if (!request.params[0].isNull()) {
+        const UniValue& options = request.params[0].get_obj();
+        
+        if (options.exists("wallet_name")) {
+            new_wallet_name = options["wallet_name"].get_str();
+        }
+        if (options.exists("passphrase")) {
+            passphrase = options["passphrase"].get_str();
+        }
+        if (options.exists("dry_run")) {
+            dry_run = options["dry_run"].get_bool();
+        }
+    }
+
+    // Default new wallet name
+    if (new_wallet_name.empty()) {
+        new_wallet_name = pwallet->GetName();
+        // Remove .dat if present
+        size_t pos = new_wallet_name.rfind(".dat");
+        if (pos != std::string::npos) {
+            new_wallet_name = new_wallet_name.substr(0, pos);
+        }
+        new_wallet_name += "_descriptor.dat";
+    }
+
+    // Check if wallet is encrypted and we need passphrase
+    if (pwallet->IsCrypted() && passphrase.empty()) {
+        throw JSONRPCError(RPC_WALLET_UNLOCK_NEEDED, 
+            "Wallet is encrypted. Please provide passphrase in options.");
+    }
+
+    // Unlock if needed
+    if (pwallet->IsCrypted()) {
+        SecureString ss_passphrase;
+        ss_passphrase.assign(passphrase.begin(), passphrase.end());
+        if (!pwallet->Unlock(ss_passphrase)) {
+            throw JSONRPCError(RPC_WALLET_PASSPHRASE_INCORRECT, "Incorrect passphrase");
+        }
+    }
+
+    UniValue warnings(UniValue::VARR);
+    int descriptor_count = 0;
+    int address_count = 0;
+    int watchonly_count = 0;
+
+    // Collect all keys from the legacy wallet
+    std::vector<std::pair<CKey, CKeyMetadata>> keys_to_migrate;
+    
+    // Get all keys with metadata
+    for (const auto& key_pair : pwallet->mapKeyMetadata) {
+        // CTxDestination is boost::variant, use boost::get
+        const CKeyID* pkeyid = boost::get<CKeyID>(&key_pair.first);
+        if (!pkeyid) {
+            continue;
+        }
+        
+        CKey key;
+        if (pwallet->GetKey(*pkeyid, key)) {
+            keys_to_migrate.push_back({key, key_pair.second});
+            ++address_count;
+        }
+    }
+
+    // Check for watch-only scripts (we can't directly iterate them but can check if they exist)
+    if (pwallet->HaveWatchOnly()) {
+        // Watch-only scripts exist but we cannot migrate them automatically
+        // because setWatchOnly is protected. User should re-import using importdescriptors.
+        warnings.push_back("Watch-only scripts detected but cannot be migrated automatically. "
+                          "Re-import them using importdescriptors after migration.");
+        watchonly_count = 1; // Indicate presence, actual count unknown
+    }
+
+    // Calculate descriptor count (external + internal)
+    // For a standard HD wallet, we'll create 2 descriptors (external and internal chains)
+    descriptor_count = 2; // external + internal
+
+    // If dry run, return what would happen
+    if (dry_run) {
+        UniValue result(UniValue::VOBJ);
+        result.pushKV("wallet_name", new_wallet_name);
+        result.pushKV("backup_path", "(dry run - no backup created)");
+        result.pushKV("descriptor_count", descriptor_count);
+        result.pushKV("address_count", address_count);
+        result.pushKV("watchonly_count", watchonly_count);
+        result.pushKV("dry_run", true);
+        
+        warnings.push_back("Dry run - no changes made");
+        if (keys_to_migrate.empty()) {
+            warnings.push_back("No private keys found to migrate");
+        }
+        
+        result.pushKV("warnings", warnings);
+        return result;
+    }
+
+    // === ACTUAL MIGRATION ===
+
+    // 1. Create backup of original wallet
+    std::string backup_path = pwallet->GetName() + ".backup." + std::to_string(GetTime());
+    if (!pwallet->BackupWallet(backup_path)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Failed to create wallet backup - migration aborted for safety");
+    }
+    
+    LogPrintf("migratewallet: Created backup at %s\n", backup_path);
+
+    // 2. Create new descriptor wallet
+    std::string error;
+    CWallet* new_wallet = CWallet::CreateDescriptorWallet(
+        new_wallet_name,
+        false,  // disable_private_keys
+        true,   // blank (we'll add our own descriptors)
+        passphrase,
+        error
+    );
+
+    if (!new_wallet) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Failed to create descriptor wallet: " + error);
+    }
+
+    // 3. Generate descriptors from the legacy HD seed if available
+    if (pwallet->IsHDEnabled()) {
+        // Get the HD chain info
+        const CHDChain& hdChain = pwallet->GetHDChain();
+        
+        if (!hdChain.IsNull()) {
+            // We have HD seed - create proper ranged descriptors
+            CKey seed_key;
+            if (pwallet->GetKey(hdChain.seed_id, seed_key)) {
+                CExtKey master;
+                master.SetSeed(seed_key.begin(), seed_key.size());
+                
+                // Setup with the same master key
+                std::string setup_error;
+                if (!new_wallet->SetupDescriptorWallet(master, setup_error)) {
+                    warnings.push_back("Could not create HD descriptors: " + setup_error);
+                } else {
+                    descriptor_count = 2; // external + internal
+                }
+            } else {
+                warnings.push_back("Could not retrieve HD seed key");
+            }
+        }
+    }
+
+    // 4. Import any additional standalone keys as individual descriptors
+    for (const auto& [key, meta] : keys_to_migrate) {
+        // Skip if this was part of HD chain (already covered)
+        if (!meta.hdKeypath.empty()) {
+            continue;
+        }
+        
+        // Create a single-key descriptor for standalone keys
+        CMyntaSecret secret(key);
+        std::string key_desc = "pkh(" + secret.ToString() + ")";
+        
+        // Add checksum
+        std::string checksum = GetDescriptorChecksum(key_desc);
+        if (!checksum.empty()) {
+            key_desc += "#" + checksum;
+        }
+        
+        std::string add_error;
+        uint256 id = new_wallet->AddDescriptor(key_desc, meta.nCreateTime, 0, 0, true, false, add_error);
+        if (id.IsNull()) {
+            warnings.push_back("Failed to migrate key: " + add_error);
+        } else {
+            ++descriptor_count;
+        }
+    }
+
+    // 5. Note: Watch-only scripts cannot be migrated automatically
+    // (setWatchOnly is protected). Users should re-import using importdescriptors.
+
+    // 6. Copy address book entries
+    for (const auto& [dest, data] : pwallet->mapAddressBook) {
+        new_wallet->SetAddressBook(dest, data.name, data.purpose);
+    }
+
+    // Register the new wallet
+    RegisterValidationInterface(new_wallet);
+    vpwallets.push_back(new_wallet);
+
+    // Build result
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("wallet_name", new_wallet_name);
+    result.pushKV("backup_path", backup_path);
+    result.pushKV("descriptor_count", descriptor_count);
+    result.pushKV("address_count", address_count);
+    result.pushKV("watchonly_count", watchonly_count);
+    
+    if (warnings.size() > 0) {
+        result.pushKV("warnings", warnings);
+    }
+    
+    LogPrintf("migratewallet: Successfully migrated %s to descriptor wallet %s\n",
+              pwallet->GetName(), new_wallet_name);
+    
+    return result;
+}
+
+// ============================================================================
+// getbalances - Structured balance information for pools
+// ============================================================================
+
+UniValue getbalances(const JSONRPCRequest& request)
+{
+    CWallet* const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+
+    if (request.fHelp || request.params.size() > 0)
+        throw std::runtime_error(
+            "getbalances\n"
+            "\nReturns an object with all balances in MYNTA.\n"
+            "This command provides detailed balance information suitable for pool operators.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"mine\": {                          (object) Balances from wallet outputs (owned keys/scripts)\n"
+            "    \"trusted\": x.xxx,                  (numeric) Trusted balance (confirmed, or our own unconfirmed)\n"
+            "    \"untrusted_pending\": x.xxx,        (numeric) Untrusted pending balance (unconfirmed, not ours)\n"
+            "    \"immature\": x.xxx,                 (numeric) Immature coinbase balance\n"
+            "    \"used\": x.xxx                      (numeric, only if avoid_reuse set) Balance from used addresses\n"
+            "  },\n"
+            "  \"watchonly\": {                     (object, only present if watch-only addresses are present)\n"
+            "    \"trusted\": x.xxx,                  (numeric) Watch-only trusted balance\n"
+            "    \"untrusted_pending\": x.xxx,        (numeric) Watch-only untrusted pending balance\n"
+            "    \"immature\": x.xxx                  (numeric) Watch-only immature coinbase balance\n"
+            "  }\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getbalances", "")
+            + HelpExampleRpc("getbalances", "")
+        );
+
+    LOCK2(cs_main, pwallet->cs_wallet);
+
+    // Calculate balances by category
+    // "trusted" = confirmed balance + unconfirmed from self
+    // "untrusted_pending" = unconfirmed from others
+    // "immature" = immature coinbase rewards
+    
+    CAmount trusted_balance = 0;
+    CAmount untrusted_pending = 0;
+    CAmount immature_balance = 0;
+    
+    CAmount watchonly_trusted = 0;
+    CAmount watchonly_pending = 0;
+    CAmount watchonly_immature = 0;
+    
+    bool has_watchonly = false;
+    
+    for (const auto& entry : pwallet->mapWallet) {
+        const CWalletTx& wtx = entry.second;
+        
+        // Skip conflicting transactions
+        if (!wtx.GetConflicts().empty()) {
+            continue;
+        }
+        
+        int depth = wtx.GetDepthInMainChain();
+        
+        // Check each output
+        for (unsigned int i = 0; i < wtx.tx->vout.size(); ++i) {
+            const CTxOut& txout = wtx.tx->vout[i];
+            
+            // Skip spent outputs
+            if (pwallet->IsSpent(wtx.GetHash(), i)) {
+                continue;
+            }
+            
+            // Determine ownership type
+            isminetype mine = pwallet->IsMine(txout);
+            
+            if (mine == ISMINE_NO) {
+                continue;
+            }
+            
+            CAmount value = txout.nValue;
+            
+            if (mine & ISMINE_WATCH_ONLY) {
+                has_watchonly = true;
+                
+                if (wtx.IsCoinBase() && depth > 0 && depth < COINBASE_MATURITY) {
+                    watchonly_immature += value;
+                } else if (depth >= 1) {
+                    watchonly_trusted += value;
+                } else if (depth == 0 && wtx.InMempool()) {
+                    watchonly_pending += value;
+                }
+            } else if (mine & ISMINE_SPENDABLE) {
+                if (wtx.IsCoinBase() && depth > 0 && depth < COINBASE_MATURITY) {
+                    immature_balance += value;
+                } else if (depth >= 1) {
+                    trusted_balance += value;
+                } else if (depth == 0) {
+                    // Unconfirmed transaction
+                    if (wtx.InMempool()) {
+                        // Check if it's from us (trusted) or from others (untrusted)
+                        if (wtx.IsFromMe(ISMINE_SPENDABLE)) {
+                            trusted_balance += value;
+                        } else {
+                            untrusted_pending += value;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    UniValue result(UniValue::VOBJ);
+    
+    // Mine balances
+    UniValue mine_balances(UniValue::VOBJ);
+    mine_balances.pushKV("trusted", ValueFromAmount(trusted_balance));
+    mine_balances.pushKV("untrusted_pending", ValueFromAmount(untrusted_pending));
+    mine_balances.pushKV("immature", ValueFromAmount(immature_balance));
+    result.pushKV("mine", mine_balances);
+    
+    // Watch-only balances (only if present)
+    if (has_watchonly) {
+        UniValue watchonly_balances(UniValue::VOBJ);
+        watchonly_balances.pushKV("trusted", ValueFromAmount(watchonly_trusted));
+        watchonly_balances.pushKV("untrusted_pending", ValueFromAmount(watchonly_pending));
+        watchonly_balances.pushKV("immature", ValueFromAmount(watchonly_immature));
+        result.pushKV("watchonly", watchonly_balances);
+    }
+    
+    return result;
+}
+
 static const CRPCCommand commands[] =
 { //  category              name                        actor (function)           argNames
     //  --------------------- ------------------------    -----------------------  ----------
@@ -3532,6 +4407,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "addwitnessaddress",        &addwitnessaddress,        {"address"} },
     { "wallet",             "backupwallet",             &backupwallet,             {"destination"} },
     { "wallet",             "bumpfee",                  &bumpfee,                  {"txid", "options"} },
+    { "wallet",             "createwallet",             &createwallet,             {"wallet_name","disable_private_keys","blank","passphrase","descriptors"} },
     { "wallet",             "dumpprivkey",              &dumpprivkey,              {"address"}  },
     { "wallet",             "dumpwallet",               &dumpwallet,               {"filename"} },
     { "wallet",             "encryptwallet",            &encryptwallet,            {"passphrase"} },
@@ -3539,6 +4415,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "getaccount",               &getaccount,               {"address"} },
     { "wallet",             "getaddressesbyaccount",    &getaddressesbyaccount,    {"account"} },
     { "wallet",             "getbalance",               &getbalance,               {"account","minconf","include_watchonly"} },
+    { "wallet",             "getbalances",              &getbalances,              {} },
     { "wallet",             "getmasterkeyinfo",         &getmasterkeyinfo,         {} },
     { "wallet",             "getmywords",               &getmywords,                        {} },
     { "wallet",             "getnewaddress",            &getnewaddress,            {"account"} },
@@ -3549,6 +4426,7 @@ static const CRPCCommand commands[] =
     { "wallet",             "getunconfirmedbalance",    &getunconfirmedbalance,    {} },
     { "wallet",             "getwalletinfo",            &getwalletinfo,            {} },
     { "wallet",             "importmulti",              &importmulti,              {"requests","options"} },
+    { "wallet",             "importdescriptors",        &importdescriptors,        {"requests"} },
     { "wallet",             "importprivkey",            &importprivkey,            {"privkey","label","rescan"} },
     { "wallet",             "importwallet",             &importwallet,             {"filename"} },
     { "wallet",             "importaddress",            &importaddress,            {"address","label","rescan","p2sh"} },
@@ -3557,7 +4435,9 @@ static const CRPCCommand commands[] =
     { "wallet",             "keypoolrefill",            &keypoolrefill,            {"newsize"} },
     { "wallet",             "listaccounts",             &listaccounts,             {"minconf","include_watchonly"} },
     { "wallet",             "listaddressgroupings",     &listaddressgroupings,     {} },
+    { "wallet",             "listdescriptors",          &listdescriptors,          {"private"} },
     { "wallet",             "listlockunspent",          &listlockunspent,          {} },
+    { "wallet",             "migratewallet",            &migratewallet,            {"options"} },
     { "wallet",             "listreceivedbyaccount",    &listreceivedbyaccount,    {"minconf","include_empty","include_watchonly"} },
     { "wallet",             "listreceivedbyaddress",    &listreceivedbyaddress,    {"minconf","include_empty","include_watchonly"} },
     { "wallet",             "listsinceblock",           &listsinceblock,           {"blockhash","target_confirmations","include_watchonly","include_removed"} },

@@ -19,7 +19,7 @@ else
 LIBUNIVALUE = $(UNIVALUE_LIBS)
 endif
 
-MYNTA_INCLUDES=-I$(builddir) -I$(builddir)/obj $(SQLITE_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS)
+MYNTA_INCLUDES=-I$(builddir) -I$(builddir)/obj $(SQLITE_CPPFLAGS) $(BOOST_CPPFLAGS) $(LEVELDB_CPPFLAGS) $(CRYPTO_CFLAGS) $(SSL_CFLAGS) $(CURL_CFLAGS)
 
 MYNTA_INCLUDES += -I$(srcdir)/secp256k1/include
 MYNTA_INCLUDES += $(UNIVALUE_CFLAGS)
@@ -164,6 +164,7 @@ MYNTA_CORE_H = \
   chainparamsseeds.h \
   checkpoints.h \
   checkqueue.h \
+  clientnotices.h \
   clientversion.h \
   coins.h \
   compat.h \
@@ -211,6 +212,7 @@ MYNTA_CORE_H = \
   rpc/server.h \
   rpc/register.h \
   scheduler.h \
+  script/descriptor.h \
   script/sigcache.h \
   script/sign.h \
   script/standard.h \
@@ -243,6 +245,7 @@ MYNTA_CORE_H = \
   wallet/fees.h \
   wallet/init.h \
   wallet/rpcwallet.h \
+  wallet/scriptpubkeyman.h \
   wallet/wallet.h \
   wallet/walletdb.h \
   wallet/bip39.h \
@@ -277,6 +280,7 @@ libmynta_server_a_SOURCES = \
   blockencodings.cpp \
   chain.cpp \
   checkpoints.cpp \
+  clientnotices.cpp \
   consensus/consensus.cpp \
   consensus/tx_verify.cpp \
   httprpc.cpp \
@@ -362,13 +366,14 @@ libmynta_wallet_a_SOURCES = \
   wallet/init.cpp \
   wallet/rpcdump.cpp \
   wallet/rpcwallet.cpp \
+  wallet/scriptpubkeyman.cpp \
   wallet/wallet.cpp \
   wallet/walletdb.cpp \
   wallet/bip39.cpp \
   $(MYNTA_CORE_H)
 
 # crypto primitives library
-crypto_libmynta_crypto_a_CPPFLAGS = $(AM_CPPFLAGS)
+crypto_libmynta_crypto_a_CPPFLAGS = $(AM_CPPFLAGS) $(MYNTA_INCLUDES)
 crypto_libmynta_crypto_a_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
 crypto_libmynta_crypto_a_SOURCES = \
   crypto/aes.cpp \
@@ -475,6 +480,7 @@ libmynta_common_a_SOURCES = \
   policy/feerate.cpp \
   protocol.cpp \
   scheduler.cpp \
+  script/descriptor.cpp \
   script/sign.cpp \
   script/standard.cpp \
   warnings.cpp \
@@ -542,7 +548,7 @@ myntad_LDADD = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-myntad_LDADD += $(BOOST_LIBS) $(SQLITE_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS)
+myntad_LDADD += $(BOOST_LIBS) $(SQLITE_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(MINIUPNPC_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(CURL_LIBS)
 myntad_LDADD += $(LIBBLST)
 
 # mynta-cli binary #
@@ -561,7 +567,7 @@ mynta_cli_LDADD = \
   $(LIBMYNTA_UTIL) \
   $(LIBMYNTA_CRYPTO)
 
-mynta_cli_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS)
+mynta_cli_LDADD += $(BOOST_LIBS) $(SSL_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS) $(CURL_LIBS)
 #
 
 # mynta-tx binary #

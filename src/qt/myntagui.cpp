@@ -9,6 +9,9 @@
 
 #include "myntagui.h"
 
+#include "clientnotices.h"
+#include "updatenotificationdialog.h"
+
 #include "myntaunits.h"
 #include "clientmodel.h"
 #include "guiconstants.h"
@@ -182,9 +185,7 @@ MyntaGUI::MyntaGUI(const PlatformStyle *_platformStyle, const NetworkStyle *netw
     networkManager = new QNetworkAccessManager();
     request = new QNetworkRequest();
     labelVersionUpdate = new QLabel();
-    networkVersionManager = new QNetworkAccessManager();
-    versionRequest = new QNetworkRequest();
-    
+
     // Mining hashrate update timer (updates every 500ms for smooth animation when mining)
     miningHashrateTimer = new QTimer(this);
     connect(miningHashrateTimer, SIGNAL(timeout()), this, SLOT(updateMiningHashrate()));
@@ -746,7 +747,7 @@ void MyntaGUI::createToolBars()
         comboRvnUnit->setStyleSheet(STRING_LABEL_COLOR);
         comboRvnUnit->setFont(currentMarketFont);
 
-        labelVersionUpdate->setText("<a href=\"https://github.com/myntaproject/mynta-core/releases\">New Wallet Version Available</a>");
+        labelVersionUpdate->setText("<a href=\"https://github.com/Slashx124/mynta-core/releases\">New Wallet Version Available</a>");
         labelVersionUpdate->setTextFormat(Qt::RichText);
         labelVersionUpdate->setTextInteractionFlags(Qt::TextBrowserInteraction);
         labelVersionUpdate->setOpenExternalLinks(true);
@@ -838,101 +839,6 @@ void MyntaGUI::createToolBars()
         pricingTimer->start(10000);
         getPriceInfo();
         /** MYNTA END */
-
-        // Get the latest Mynta release and let the user know if they are using the latest version
-        // Network request code for the header widget
-        QObject::connect(networkVersionManager, &QNetworkAccessManager::finished,
-                         this, [=](QNetworkReply *reply) {
-                    if (reply->error()) {
-                        qDebug() << reply->errorString();
-                        return;
-                    }
-
-                    // Get the data from the network request
-                    QString answer = reply->readAll();
-
-                    UniValue releases(UniValue::VARR);
-                    releases.read(answer.toStdString());
-
-                    if (!releases.isArray()) {
-                        return;
-                    }
-
-                    if (!releases.size()) {
-                        return;
-                    }
-
-                    // Latest release lives in the first index of the array return from github v3 api
-                    auto latestRelease = releases[0];
-
-                    auto keys = latestRelease.getKeys();
-                    for (auto key : keys) {
-                       if (key == "tag_name") {
-                           auto latestVersion = latestRelease["tag_name"].get_str();
-
-                           QRegExp rx("v(\\d+).(\\d+).(\\d+)");
-                           rx.indexIn(QString::fromStdString(latestVersion));
-
-                           // List the found values
-                           QStringList list = rx.capturedTexts();
-                           static const int CLIENT_VERSION_MAJOR_INDEX = 1;
-                           static const int CLIENT_VERSION_MINOR_INDEX = 2;
-                           static const int CLIENT_VERSION_REVISION_INDEX = 3;
-                           bool fNewSoftwareFound = false;
-                           bool fStopSearch = false;
-                           if (list.size() >= 4) {
-                               if (CLIENT_VERSION_MAJOR < list[CLIENT_VERSION_MAJOR_INDEX].toInt()) {
-                                   fNewSoftwareFound = true;
-                               } else {
-                                   if (CLIENT_VERSION_MAJOR > list[CLIENT_VERSION_MAJOR_INDEX].toInt()) {
-                                       fStopSearch = true;
-                                   }
-                               }
-
-                               if (!fStopSearch) {
-                                   if (CLIENT_VERSION_MINOR < list[CLIENT_VERSION_MINOR_INDEX].toInt()) {
-                                       fNewSoftwareFound = true;
-                                   } else {
-                                       if (CLIENT_VERSION_MINOR > list[CLIENT_VERSION_MINOR_INDEX].toInt()) {
-                                           fStopSearch = true;
-                                       }
-                                   }
-                               }
-
-                               if (!fStopSearch) {
-                                   if (CLIENT_VERSION_REVISION < list[CLIENT_VERSION_REVISION_INDEX].toInt()) {
-                                       fNewSoftwareFound = true;
-                                   }
-                               }
-                           }
-
-                           if (fNewSoftwareFound) {
-                               labelVersionUpdate->setToolTip(QString::fromStdString(strprintf("Currently running: %s\nLatest version: %s", FormatFullVersion(),
-                                                                                               latestVersion)));
-                               labelVersionUpdate->show();
-
-                               // Only display the message on startup to the user around 1/2 of the time
-                               if (GetRandInt(2) == 1) {
-                                   bool fRet = uiInterface.ThreadSafeQuestion(
-                                           strprintf("\nCurrently running: %s\nLatest version: %s", FormatFullVersion(),
-                                                     latestVersion) + "\n\nWould you like to visit the releases page?",
-                                           "",
-                                           "New Wallet Version Found",
-                                           CClientUIInterface::MSG_VERSION | CClientUIInterface::BTN_NO);
-                                   if (fRet) {
-                                       QString link = "https://github.com/myntaproject/mynta-core/releases";
-                                       QDesktopServices::openUrl(QUrl(link));
-                                   }
-                               }
-                           } else {
-                               labelVersionUpdate->hide();
-                           }
-                       }
-                    }
-                }
-        );
-
-        getLatestVersion();
     }
 }
 
@@ -1388,6 +1294,11 @@ void MyntaGUI::setNumBlocks(int count, const QDateTime& blockDate, double nVerif
 
         progressBarLabel->setVisible(false);
         progressBar->setVisible(false);
+
+        if (!fVersionCheckDone) {
+            getLatestVersion();
+            fVersionCheckDone = true;
+        }
     }
     else
     {
@@ -2181,6 +2092,95 @@ void MyntaGUI::mnemonic()
 
 void MyntaGUI::getLatestVersion()
 {
-    versionRequest->setUrl(QUrl("https://api.github.com/repos/myntaproject/mynta-core/releases"));
-    networkVersionManager->get(*versionRequest);
+    // Use the new ClientNoticeManager v2.0
+    ClientNoticeManager::Instance().Initialize(GetCurrentClientVersion());
+
+    // 1. Check for Security Notices first (higher priority)
+    ClientNoticeManager::Instance().FetchSecurityNoticesAsync([this](const std::vector<SecurityNotice>& notices) {
+        if (notices.empty()) return;
+
+        // Show a generic warning if there are pending security notices
+        // In a full implementation, we would show a dedicated security dialog
+        for (const auto& notice : notices) {
+            if (!ClientNoticeManager::Instance().IsNoticeAcknowledged(notice.id)) {
+                QMetaObject::invokeMethod(this, "message", Qt::QueuedConnection,
+                    Q_ARG(QString, tr("Security Notice")),
+                    Q_ARG(QString, QString::fromStdString(notice.title + "\n\n" + notice.summary)),
+                    Q_ARG(unsigned int, CClientUIInterface::MSG_WARNING));
+                
+                // For now, auto-acknowledge so it doesn't spam every startup
+                // ClientNoticeManager::Instance().AcknowledgeNotice(notice.id);
+            }
+        }
+    });
+
+    // 2. Check for Software Updates
+    auto forceTestUpdate = [](ReleaseInfo& info) {
+        info.version = ClientVersion(3, 0, 0);
+        info.tag_name = "v3.0.0";
+        info.name = "Test Release v3.0.0 (Custom Dialog)";
+        info.html_url = "https://github.com/Slashx124/mynta-core/releases";
+        return true;
+    };
+
+    ReleaseInfo testRelease;
+    forceTestUpdate(testRelease);
+    
+    // Simulate the async callback with the fake release
+    QTimer::singleShot(5000, this, [this, testRelease]() {
+        QMetaObject::invokeMethod(this, [this, testRelease]() {
+            labelVersionUpdate->setText("<a href=\"" + QString::fromStdString(testRelease.html_url) + "\">" + tr("New Wallet Version Available") + "</a>");
+            labelVersionUpdate->setToolTip(tr("Currently running: %1\nLatest version: %2\n\n%3")
+                                          .arg(QString::fromStdString(GetCurrentClientVersion().ToString()))
+                                          .arg(QString::fromStdString(testRelease.version.ToString()))
+                                          .arg(QString::fromStdString(testRelease.name)));
+            labelVersionUpdate->show();
+
+            UpdateNotificationDialog* dialog = new UpdateNotificationDialog(this);
+            dialog->setAttribute(Qt::WA_DeleteOnClose);
+            dialog->setReleaseInfo(
+                QString::fromStdString(GetCurrentClientVersion().ToString()),
+                QString::fromStdString(testRelease.version.ToString()),
+                QString::fromStdString(testRelease.html_url),
+                QString::fromStdString(testRelease.name)
+            );
+            dialog->show();
+        }, Qt::QueuedConnection);
+    });
+
+    // Still run the real check in background but it won't overwrite the test for now
+    ClientNoticeManager::Instance().CheckForUpdatesAsync([this](const ReleaseInfo& release) {
+        // This is called from a background thread, so we must use QueuedConnection or invokeMethod to touch UI
+        QMetaObject::invokeMethod(this, [this, release]() {
+            labelVersionUpdate->setText("<a href=\"" + QString::fromStdString(release.html_url) + "\">" + tr("New Wallet Version Available") + "</a>");
+            labelVersionUpdate->setToolTip(tr("Currently running: %1\nLatest version: %2\n\n%3")
+                                          .arg(QString::fromStdString(GetCurrentClientVersion().ToString()))
+                                          .arg(QString::fromStdString(release.version.ToString()))
+                                          .arg(QString::fromStdString(release.name)));
+            labelVersionUpdate->show();
+
+            // Show the new v2.0 UpdateNotificationDialog
+            if (!ClientNoticeManager::Instance().IsUpdateDismissed(release.version)) {
+                UpdateNotificationDialog* dialog = new UpdateNotificationDialog(this);
+                dialog->setAttribute(Qt::WA_DeleteOnClose);
+                dialog->setReleaseInfo(
+                    QString::fromStdString(GetCurrentClientVersion().ToString()),
+                    QString::fromStdString(release.version.ToString()),
+                    QString::fromStdString(release.html_url),
+                    QString::fromStdString(release.name)
+                );
+                
+                connect(dialog, &UpdateNotificationDialog::updateDismissed, [](const QString& version) {
+                    ClientNoticeManager::Instance().DismissUpdate(ClientVersion::Parse(version.toStdString()));
+                });
+                
+                dialog->show();
+            }
+        }, Qt::QueuedConnection);
+    }, [this](const std::string& error) {
+        // No update or error
+        QMetaObject::invokeMethod(this, [this]() {
+            labelVersionUpdate->hide();
+        }, Qt::QueuedConnection);
+    });
 }

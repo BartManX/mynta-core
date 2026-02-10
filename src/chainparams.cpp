@@ -258,11 +258,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_COINBASE_ASSETS].nOverrideMinerConfirmationWindow = 1;
 
 
-        // Mynta mainnet - new chain, no minimum chainwork yet
-        consensus.nMinimumChainWork = uint256S("0x00");
+        // Mynta mainnet - updated for faster sync
+        consensus.nMinimumChainWork = uint256S("0x000000000000000000000000000000000000000000000000002b6512c1fae0f5");
 
-        // Mynta mainnet - new chain, no assumevalid yet
-        consensus.defaultAssumeValid = uint256S("0x00");
+        // Mynta mainnet - block 15000
+        consensus.defaultAssumeValid = uint256S("0x0000000000a5d7230bdd91a974005cebb0061a8eb47ef7d946b59e784004fd94");
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -353,14 +353,16 @@ public:
         checkpointData = (CCheckpointData) {
             {
                 { 10000, uint256S("0x0000000000ee5ee58012b64378a715ca1aa1427505e8b63403f4bd6653be6b19")},
+                { 12000, uint256S("0x000000000045f1c5fbfe3733fbfcffcc28717656ba631d50b527fd130cd0f9ad")},
+                { 15000, uint256S("0x0000000000a5d7230bdd91a974005cebb0061a8eb47ef7d946b59e784004fd94")},
             }
         };
 
-        // Mynta mainnet chainTxData (updated at block 10000)
+        // Mynta mainnet chainTxData (updated at block 15000)
         chainTxData = ChainTxData{
-            1768971937,    // timestamp of block 10000
-            10178,         // total transactions at block 10000
-            0.019          // tx rate (txs per second)
+            1769270983,    // timestamp of block 15000
+            15300,         // total transactions at block 15000 (estimated)
+            0.03           // tx rate (txs per second)
         };
 
         /** RVN Start **/

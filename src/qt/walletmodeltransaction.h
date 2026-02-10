@@ -13,7 +13,8 @@
 class SendCoinsRecipient;
 class SendAssetsRecipient;
 
-class CReserveKey;
+class ReserveDestination;
+using CReserveKey = ReserveDestination;
 class CWallet;
 class CWalletTx;
 

@@ -142,8 +142,6 @@ private:
     QNetworkAccessManager* networkManager = nullptr;
     QNetworkRequest* request = nullptr;
     QLabel *labelVersionUpdate = nullptr;
-    QNetworkAccessManager* networkVersionManager = nullptr;
-    QNetworkRequest* versionRequest = nullptr;
 
     QLabel *labelToolbar = nullptr;
     QToolBar *m_toolbar = nullptr;
@@ -172,6 +170,7 @@ private:
 
     const CurrencyUnitDetails* currentPriceDisplay = &CurrencyUnits::CurrencyOptions[0];
     bool unitChanged = true; //Setting this true makes the first price update not appear as an uptick
+    bool fVersionCheckDone = false;
 
     /** Load the custome open sans fonts into the font database */
     void loadFonts();

@@ -15,6 +15,8 @@
 #include "netbase.h"
 #include "rpc/blockchain.h"
 #include "rpc/server.h"
+#include "clientnotices.h"
+#include "script/descriptor.h"
 #include "timedata.h"
 #include "txmempool.h"
 #include "util.h"
@@ -766,7 +768,7 @@ UniValue getaddressmempool(const JSONRPCRequest& request)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
         }
     } else {
-        if (!mempool.getAddressIndex(addresses, RVN, indexes)) {
+        if (!mempool.getAddressIndex(addresses, MYNTA, indexes)) {
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
         }
     }
@@ -836,7 +838,7 @@ UniValue getaddressutxos(const JSONRPCRequest& request)
             );
 
     bool includeChainInfo = false;
-    std::string assetName = RVN;
+    std::string assetName = MYNTA;
     if (request.params[0].isObject()) {
         UniValue chainInfo = find_value(request.params[0].get_obj(), "chainInfo");
         if (chainInfo.isBool()) {
@@ -881,8 +883,8 @@ UniValue getaddressutxos(const JSONRPCRequest& request)
             throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Unknown address type");
         }
 
-        std::string assetNameOut = "RVN";
-        if (assetName != "RVN") {
+        std::string assetNameOut = "MYNTA";
+        if (assetName != "MYNTA") {
             CAmount _amount;
             if (!GetAssetInfoFromScript(it->second.script, assetNameOut, _amount)) {
                 throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't decode asset script");
@@ -958,7 +960,7 @@ UniValue getaddressdeltas(const JSONRPCRequest& request)
         includeChainInfo = chainInfo.get_bool();
     }
 
-    std::string assetName = RVN;
+    std::string assetName = MYNTA;
     UniValue assetNameParam = find_value(request.params[0].get_obj(), "assetName");
     if (assetNameParam.isStr()) {
         if (!AreAssetsDeployed())
@@ -1141,7 +1143,7 @@ UniValue getaddressbalance(const JSONRPCRequest& request)
         std::vector<std::pair<CAddressIndexKey, CAmount> > addressIndex;
 
         for (std::vector<std::pair<uint160, int> >::iterator it = addresses.begin(); it != addresses.end(); it++) {
-            if (!GetAddressIndex((*it).first, (*it).second, RVN, addressIndex)) {
+            if (!GetAddressIndex((*it).first, (*it).second, MYNTA, addressIndex)) {
                 throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
             }
         }
@@ -1236,11 +1238,11 @@ UniValue getaddresstxids(const JSONRPCRequest& request)
             }
         } else {
             if (start > 0 && end > 0) {
-                if (!GetAddressIndex((*it).first, (*it).second, RVN, addressIndex, start, end)) {
+                if (!GetAddressIndex((*it).first, (*it).second, MYNTA, addressIndex, start, end)) {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
                 }
             } else {
-                if (!GetAddressIndex((*it).first, (*it).second, RVN, addressIndex)) {
+                if (!GetAddressIndex((*it).first, (*it).second, MYNTA, addressIndex)) {
                     throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No information available for address");
                 }
             }
@@ -1321,6 +1323,245 @@ UniValue getspentinfo(const JSONRPCRequest& request)
     return obj;
 }
 
+// ============================================================================
+// Descriptor utility RPCs (no wallet required)
+// ============================================================================
+
+UniValue getdescriptorinfo(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 1)
+        throw std::runtime_error(
+            "getdescriptorinfo \"descriptor\"\n"
+            "\nAnalyses a descriptor.\n"
+            "\nArguments:\n"
+            "1. \"descriptor\"    (string, required) The descriptor.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"descriptor\" : \"desc\",        (string) The descriptor in canonical form, without private keys\n"
+            "  \"checksum\" : \"chksum\",        (string) The checksum for the input descriptor\n"
+            "  \"isrange\" : true|false,         (boolean) Whether the descriptor is ranged\n"
+            "  \"issolvable\" : true|false,      (boolean) Whether the descriptor is solvable\n"
+            "  \"hasprivatekeys\" : true|false,  (boolean) Whether the input descriptor contained at least one private key\n"
+            "}\n"
+            "\nExamples:\n"
+            "\nAnalyse a descriptor\n"
+            + HelpExampleCli("getdescriptorinfo", "\"wpkh([d34db33f/84h/0h/0h]0279be667ef9dcbbac55a06295Ce870b07029Bfcdb2dce28d959f2815b16f81798)\"")
+            + HelpExampleRpc("getdescriptorinfo", "\"wpkh([d34db33f/84h/0h/0h]0279be667ef9dcbbac55a06295Ce870b07029Bfcdb2dce28d959f2815b16f81798)\"")
+        );
+
+    std::string desc_str = request.params[0].get_str();
+    
+    FlatSigningProvider provider;
+    std::string error;
+    auto desc = Parse(desc_str, provider, error, false);
+    
+    if (!desc) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, error);
+    }
+    
+    UniValue result(UniValue::VOBJ);
+    
+    // Get canonical descriptor string (without private keys)
+    std::string canonical = desc->ToString();
+    std::string checksum = GetDescriptorChecksum(canonical);
+    
+    result.push_back(Pair("descriptor", canonical + "#" + checksum));
+    result.push_back(Pair("checksum", checksum));
+    result.push_back(Pair("isrange", desc->IsRange()));
+    result.push_back(Pair("issolvable", desc->IsSolvable()));
+    result.push_back(Pair("hasprivatekeys", !provider.keys.empty()));
+    
+    return result;
+}
+
+UniValue deriveaddresses(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() < 1 || request.params.size() > 2)
+        throw std::runtime_error(
+            "deriveaddresses \"descriptor\" ( range )\n"
+            "\nDerives one or more addresses corresponding to an output descriptor.\n"
+            "Examples of output descriptors are:\n"
+            "    pkh(<pubkey>)                        P2PKH outputs for the given pubkey\n"
+            "    wpkh(<pubkey>)                       Native segwit P2WPKH outputs for the given pubkey\n"
+            "    sh(multi(<n>,<pubkey>,<pubkey>,...)) P2SH-multisig outputs for the given threshold and pubkeys\n"
+            "    combo(<pubkey>)                      All output types for the given pubkey\n"
+            "\nIn the above, <pubkey> either refers to a fixed public key in hexadecimal notation, or to an xpub/xprv optionally followed by one\n"
+            "or more path elements separated by \"/\", where \"h\" represents a hardened child key.\n"
+            "For more information on output descriptors, see the documentation at https://github.com/bitcoin/bitcoin/blob/master/doc/descriptors.md.\n"
+            "\nArguments:\n"
+            "1. \"descriptor\"    (string, required) The descriptor.\n"
+            "2. range            (numeric or array, optional) If a ranged descriptor is used, this specifies the end or the range (in [begin,end] notation) to derive.\n"
+            "\nResult:\n"
+            "[ address ] (array) the derived addresses\n"
+            "\nExamples:\n"
+            "\nFirst three native segwit receive addresses\n"
+            + HelpExampleCli("deriveaddresses", "\"wpkh([d34db33f/84h/0h/0h]xpub6DJ2dNUysrn5Vt36jH2KLBT2i1auw1tTSSomg8PhqNiUtx8QX2SvC9nrHu81fT41fvDUnhMjEzQgXnQjKEu3oaqMSzhSrHMxyyoEAmUHQbY/0/*)#cjjspncu\" \"[0,2]\"")
+            + HelpExampleRpc("deriveaddresses", "\"wpkh([d34db33f/84h/0h/0h]xpub6DJ2dNUysrn5Vt36jH2KLBT2i1auw1tTSSomg8PhqNiUtx8QX2SvC9nrHu81fT41fvDUnhMjEzQgXnQjKEu3oaqMSzhSrHMxyyoEAmUHQbY/0/*)#cjjspncu\", \"[0,2]\"")
+        );
+
+    std::string desc_str = request.params[0].get_str();
+    
+    // Parse range
+    int64_t range_begin = 0;
+    int64_t range_end = 0;
+    
+    if (!request.params[1].isNull()) {
+        if (request.params[1].isNum()) {
+            range_end = request.params[1].get_int64();
+        } else if (request.params[1].isArray()) {
+            const UniValue& range = request.params[1].get_array();
+            if (range.size() != 2) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Range must be [begin, end]");
+            }
+            range_begin = range[0].get_int64();
+            range_end = range[1].get_int64();
+        } else {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Range must be a number or [begin, end] array");
+        }
+    }
+    
+    if (range_begin < 0 || range_end < 0 || range_end < range_begin) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid range specified");
+    }
+    
+    if (range_end - range_begin >= 10000) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Range is too large (max 10000)");
+    }
+    
+    FlatSigningProvider provider;
+    std::string error;
+    auto desc = Parse(desc_str, provider, error, false);
+    
+    if (!desc) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, error);
+    }
+    
+    // Non-ranged descriptors can only derive index 0
+    if (!desc->IsRange() && (range_begin != 0 || range_end != 0)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Range should not be specified for non-ranged descriptor");
+    }
+    
+    if (!desc->IsRange()) {
+        range_end = 0;
+    }
+    
+    UniValue addresses(UniValue::VARR);
+    
+    for (int64_t i = range_begin; i <= range_end; ++i) {
+        FlatSigningProvider key_provider;
+        std::vector<CScript> scripts;
+        
+        if (!desc->Expand(i, provider, scripts, key_provider)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Cannot derive script at index " + std::to_string(i));
+        }
+        
+        for (const CScript& script : scripts) {
+            CTxDestination dest;
+            if (ExtractDestination(script, dest)) {
+                addresses.push_back(CMyntaAddress(dest).ToString());
+            }
+        }
+    }
+    
+    if (addresses.empty()) {
+        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "No addresses could be derived");
+    }
+    
+    return addresses;
+}
+
+UniValue getclientnotices(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() > 1)
+        throw std::runtime_error(
+            "getclientnotices ( force_check )\n"
+            "\nReturns information about latest releases and security notices.\n"
+            "\nArguments:\n"
+            "1. force_check          (boolean, optional, default=false) Force a fresh network check bypassing cache\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"current_version\": \"x.x.x\",      (string) The current version of this client\n"
+            "  \"latest_release\": {\n"
+            "    \"available\": true|false,        (boolean) Whether a newer version is available\n"
+            "    \"version\": \"x.x.x\",            (string) Latest version tag\n"
+            "    \"name\": \"xxx\",                 (string) Release name\n"
+            "    \"url\": \"xxx\",                  (string) GitHub release URL\n"
+            "    \"published\": \"xxx\",            (string) Publication timestamp\n"
+            "    \"is_prerelease\": true|false     (boolean) Is this a pre-release?\n"
+            "  },\n"
+            "  \"security_notices\": [             (array) List of notices affecting current version\n"
+            "    {\n"
+            "      \"id\": \"xxx\",                 (string) Notice identifier\n"
+            "      \"title\": \"xxx\",              (string) Notice title\n"
+            "      \"severity\": \"xxx\",           (string) Severity level\n"
+            "      \"summary\": \"xxx\",            (string) Brief description\n"
+            "      \"recommendation\": \"xxx\",     (string) User recommendation\n"
+            "      \"url\": \"xxx\"                 (string) More details URL\n"
+            "    }\n"
+            "  ]\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("getclientnotices", "")
+            + HelpExampleRpc("getclientnotices", "true")
+        );
+
+    bool force = false;
+    if (!request.params[0].isNull()) {
+        force = request.params[0].get_bool();
+    }
+
+    if (force) {
+        ClientNoticeManager::Instance().InvalidateCache();
+    }
+
+    // Try to get cached info first
+    ReleaseInfo latest;
+    bool has_latest = ClientNoticeManager::Instance().GetCachedRelease(latest);
+    
+    // If force or no cache, trigger a sync check
+    if (force || !has_latest) {
+        ClientNoticeManager::Instance().CheckForUpdates(latest);
+        has_latest = true;
+    }
+
+    // DEBUG: Force a fake newer version if we want to test UI
+    if (gArgs.GetBoolArg("-testclientnotices", false)) {
+        latest.version = ClientVersion(3, 0, 0);
+        latest.tag_name = "v3.0.0";
+        latest.name = "Test Release v3.0.0 (UI Debug)";
+        latest.html_url = "https://github.com/Slashx124/mynta-core/releases";
+    }
+
+    UniValue obj(UniValue::VOBJ);
+    obj.push_back(Pair("current_version", ClientNoticeManager::Instance().GetCurrentVersion().ToString()));
+
+    UniValue rel(UniValue::VOBJ);
+    rel.push_back(Pair("available", latest.IsNewerThan(ClientNoticeManager::Instance().GetCurrentVersion())));
+    rel.push_back(Pair("version", latest.version.ToString()));
+    rel.push_back(Pair("name", latest.name));
+    rel.push_back(Pair("url", latest.html_url));
+    rel.push_back(Pair("published", latest.published_at));
+    rel.push_back(Pair("is_prerelease", latest.prerelease));
+    obj.push_back(Pair("latest_release", rel));
+
+    // Security notices
+    std::vector<SecurityNotice> notices = ClientNoticeManager::Instance().FetchSecurityNotices();
+    UniValue noticeArr(UniValue::VARR);
+    for (const auto& notice : notices) {
+        UniValue n(UniValue::VOBJ);
+        n.push_back(Pair("id", notice.id));
+        n.push_back(Pair("title", notice.title));
+        n.push_back(Pair("severity", SeverityToString(notice.severity)));
+        n.push_back(Pair("summary", notice.summary));
+        n.push_back(Pair("recommendation", notice.recommendation));
+        n.push_back(Pair("url", notice.release_url));
+        noticeArr.push_back(n);
+    }
+    obj.push_back(Pair("security_notices", noticeArr));
+
+    return obj;
+}
+
 static const CRPCCommand commands[] =
 { //  category              name                      actor (function)         argNames
   //  --------------------- ------------------------  -----------------------  ----------
@@ -1330,6 +1571,9 @@ static const CRPCCommand commands[] =
     { "util",               "createmultisig",         &createmultisig,         {"nrequired","keys"} },
     { "util",               "verifymessage",          &verifymessage,          {"address","signature","message"} },
     { "util",               "signmessagewithprivkey", &signmessagewithprivkey, {"privkey","message"} },
+    { "util",               "getdescriptorinfo",      &getdescriptorinfo,      {"descriptor"} },
+    { "util",               "deriveaddresses",        &deriveaddresses,        {"descriptor","range"} },
+    { "util",               "getclientnotices",       &getclientnotices,       {"force_check"} },
 
     /* Address index */
     { "addressindex",       "getaddressmempool",      &getaddressmempool,      {"addresses","includeAssets"} },

@@ -52,7 +52,12 @@ BOOST_FIXTURE_TEST_SUITE(asset_tests, BasicTestingSetup)
         BOOST_CHECK(!IsAssetNameValid("RAVEN", type));
         BOOST_CHECK(!IsAssetNameValid("RAVENCOIN", type));
 
-        //- Versions of RAVENCOIN ALLOWED
+        //- Versions of MYNTACOIN NOT allowed
+        BOOST_CHECK(!IsAssetNameValid("MYN", type));
+        BOOST_CHECK(!IsAssetNameValid("MYNTA", type));
+        BOOST_CHECK(!IsAssetNameValid("MYNTACOIN", type));
+
+        //- Versions of RAVENCOIN/MYNTACOIN ALLOWED
         BOOST_CHECK(IsAssetNameValid("RAVEN.COIN", type));
         BOOST_CHECK(IsAssetNameValid("RAVEN_COIN", type));
         BOOST_CHECK(IsAssetNameValid("RVNSPYDER", type));
@@ -61,6 +66,9 @@ BOOST_FIXTURE_TEST_SUITE(asset_tests, BasicTestingSetup)
         BOOST_CHECK(IsAssetNameValid("SPYDERAVEN", type));
         BOOST_CHECK(IsAssetNameValid("BLACK_RAVENS", type));
         BOOST_CHECK(IsAssetNameValid("SERVNOT", type));
+        BOOST_CHECK(IsAssetNameValid("MYNTA.COIN", type));
+        BOOST_CHECK(IsAssetNameValid("MYNTA_COIN", type));
+        BOOST_CHECK(IsAssetNameValid("MYNSPYDER", type));
 
         // subs
         BOOST_CHECK(IsAssetNameValid("ABC/A", type));

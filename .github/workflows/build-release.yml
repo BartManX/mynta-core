@@ -22,6 +22,11 @@ on:
         required: true
         default: true
         type: boolean
+      prerelease:
+        description: 'Mark as pre-release (for testing builds from feature branches)'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   # =============================================================================
@@ -395,7 +400,7 @@ jobs:
             --disable-gui-tests \
             --disable-bip70 \
             CFLAGS="-O2 -g" \
-            CXXFLAGS="-O2 -g"
+            CXXFLAGS="-O2 -g -Wno-deprecated-builtins -Wno-deprecated-declarations -Wno-deprecated-copy"
 
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
@@ -480,13 +485,29 @@ jobs:
           ls -la
           echo "=== Release Version: ${{ env.RELEASE_VERSION }} ==="
 
+      - name: Determine release type
+        id: release_type
+        run: |
+          if [ "${{ github.event.inputs.prerelease }}" = "true" ] || [ "${{ github.ref_name }}" != "main" -a "${{ github.ref_name }}" != "master" ]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "tag_suffix=-rc.${{ github.run_number }}" >> $GITHUB_OUTPUT
+            echo "name_suffix= (Test Build)" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "tag_suffix=" >> $GITHUB_OUTPUT
+            echo "name_suffix=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.RELEASE_VERSION }}
-          name: Mynta Core v${{ env.RELEASE_VERSION }}
+          tag_name: v${{ env.RELEASE_VERSION }}${{ steps.release_type.outputs.tag_suffix }}
+          name: Mynta Core v${{ env.RELEASE_VERSION }}${{ steps.release_type.outputs.name_suffix }}
           body: |
-            ## Mynta Core v${{ env.RELEASE_VERSION }}
+            ## Mynta Core v${{ env.RELEASE_VERSION }}${{ steps.release_type.outputs.name_suffix }}
+            
+            ${{ steps.release_type.outputs.is_prerelease == 'true' && '> ⚠️ **TEST BUILD** - This is a pre-release build from a feature branch. Not for production use.' || '' }}
+            ${{ steps.release_type.outputs.is_prerelease == 'true' && format('> Branch: `{0}`', github.ref_name) || '' }}
             
             This release includes full Qt GUI wallet and command-line tools for all major platforms.
             
@@ -595,7 +616,7 @@ jobs:
             - ✅ All code is open source and auditable
             
           draft: false
-          prerelease: false
+          prerelease: ${{ steps.release_type.outputs.is_prerelease == 'true' }}
           files: |
             release/*
         env:

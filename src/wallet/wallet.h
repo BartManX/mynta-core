@@ -19,6 +19,7 @@
 #include "wallet/crypter.h"
 #include "wallet/walletdb.h"
 #include "wallet/rpcwallet.h"
+#include "wallet/scriptpubkeyman.h"
 #include "assets/assettypes.h"
 
 #include <algorithm>
@@ -79,7 +80,8 @@ static const int64_t TIMESTAMP_MIN = 0;
 class CBlockIndex;
 class CCoinControl;
 class COutput;
-class CReserveKey;
+class ReserveDestination;
+using CReserveKey = ReserveDestination;  // Forward alias for backward compatibility
 class CScript;
 class CScheduler;
 class CTxMemPool;
@@ -101,6 +103,10 @@ enum WalletFeature
     FEATURE_HD_SPLIT = 10000, // Wallet with HD chain split (change outputs will use m/0'/1'/k)
 
     FEATURE_NO_DEFAULT_KEY = 10000, // Wallet without a default key written
+
+    FEATURE_PRE_SPLIT_KEYPOOL = 10000, // Upgraded wallet with pre-split keypool
+
+    FEATURE_DESCRIPTORS = 20000, // Descriptor-based wallet (output descriptors replace individual keys)
 
     FEATURE_LATEST = FEATURE_COMPRPUBKEY // HD is optional, use FEATURE_COMPRPUBKEY as latest version
 };
@@ -836,6 +842,111 @@ public:
     //! check whether we are allowed to upgrade (or already support) to the named feature
     bool CanSupportFeature(enum WalletFeature wf) const { AssertLockHeld(cs_wallet); return nWalletMaxVersion >= wf; }
 
+    //! Wallet type detection (for backwards compatibility with legacy wallets)
+    //! Returns true if this is a legacy (non-descriptor) wallet.
+    //! Legacy wallets store individual keys and use traditional key management.
+    //! All existing wallets before v2.0.0 are legacy wallets.
+    bool IsLegacyWallet() const { return !IsDescriptorWallet(); }
+
+    //! Returns true if this is a descriptor wallet.
+    //! Descriptor wallets store output descriptors instead of individual keys.
+    //! New wallets created with -descriptors flag are descriptor wallets.
+    //! IMPORTANT: This method checks the wallet version, not runtime state.
+    //! Existing legacy wallets will always return false for backwards compatibility.
+    bool IsDescriptorWallet() const { return nWalletVersion >= FEATURE_DESCRIPTORS; }
+
+    // ========================================================================
+    // ScriptPubKeyMan routing (Bitcoin Core v24+ parity)
+    // ========================================================================
+
+private:
+    //! Collection of descriptor-based script managers (only used for descriptor wallets)
+    std::map<uint256, std::unique_ptr<DescriptorScriptPubKeyMan>> m_spk_managers;
+
+    //! Legacy ScriptPubKeyMan (wraps this wallet's CCryptoKeyStore for legacy wallets)
+    std::unique_ptr<LegacyScriptPubKeyMan> m_legacy_spk_man;
+
+    //! Active ScriptPubKeyMans for each output type (external = receive, internal = change)
+    std::map<OutputType, ScriptPubKeyMan*> m_external_spk_managers;
+    std::map<OutputType, ScriptPubKeyMan*> m_internal_spk_managers;
+
+public:
+    //! Initialize ScriptPubKeyMan routing after wallet load.
+    //! For legacy wallets: creates LegacySPKM wrapper.
+    //! For descriptor wallets: populates active SPKM maps from loaded descriptors.
+    void SetupScriptPubKeyMans();
+
+    //! Get the active ScriptPubKeyMan for a given output type
+    //! @param[in] type     The output type (LEGACY, P2SH_SEGWIT, BECH32)
+    //! @param[in] internal True for change addresses, false for receive
+    ScriptPubKeyMan* GetScriptPubKeyMan(OutputType type, bool internal) const;
+
+    //! Find the ScriptPubKeyMan that claims ownership of a script
+    ScriptPubKeyMan* GetScriptPubKeyMan(const CScript& script) const;
+
+    //! Get a new destination (address) from the active ScriptPubKeyMan
+    //! Routes to DescriptorSPKM for descriptor wallets, LegacySPKM for legacy
+    bool GetNewDestination(OutputType type, CTxDestination& dest, std::string& error);
+
+    //! Get the LegacyScriptPubKeyMan (returns nullptr for descriptor wallets)
+    LegacyScriptPubKeyMan* GetLegacyScriptPubKeyMan() const {
+        return m_legacy_spk_man.get();
+    }
+
+    // ========================================================================
+    // Descriptor wallet support (v2.0.0+)
+    // ========================================================================
+    
+    //! Add a descriptor to the wallet (creates and persists DescriptorScriptPubKeyMan)
+    //! Returns the descriptor ID on success, null hash on failure
+    uint256 AddDescriptor(const std::string& descriptor, int64_t creation_time,
+                          int32_t range_start, int32_t range_end, 
+                          bool active, bool internal, std::string& error);
+    
+    //! Get all descriptor managers
+    const std::map<uint256, std::unique_ptr<DescriptorScriptPubKeyMan>>& GetDescriptorManagers() const {
+        return m_spk_managers;
+    }
+    
+    //! Get a specific descriptor manager by ID
+    DescriptorScriptPubKeyMan* GetDescriptorManager(const uint256& id) {
+        auto it = m_spk_managers.find(id);
+        return (it != m_spk_managers.end()) ? it->second.get() : nullptr;
+    }
+    
+    //! Load a descriptor from database (called during LoadWallet)
+    bool LoadDescriptor(const uint256& id, const std::string& descriptor, 
+                        int64_t creation_time, int32_t range_start, int32_t range_end,
+                        int32_t next_index, bool active, bool internal);
+
+    //! Setup default descriptors for a new descriptor wallet
+    //! Creates pkh(xpub.../0/*) for external and pkh(xpub.../1/*) for internal (change)
+    bool SetupDescriptorWallet(const CExtKey& master_key, std::string& error);
+
+    //! Generate descriptors from an xprv key (for wallet creation)
+    //! @param[in] xprv The master extended private key
+    //! @param[in] derivation_path The BIP44-style path (e.g., "44h/175h/0h")
+    //! @param[out] external_desc The external (receiving) descriptor
+    //! @param[out] internal_desc The internal (change) descriptor
+    static bool GenerateDefaultDescriptors(const CExtKey& master_key, 
+                                           const std::string& derivation_path,
+                                           std::string& external_desc,
+                                           std::string& internal_desc,
+                                           std::string& error);
+
+    //! Create a new descriptor wallet (static factory method)
+    //! @param[in] wallet_file Path to the wallet file
+    //! @param[in] disable_private_keys If true, create watch-only wallet
+    //! @param[in] blank If true, don't generate default descriptors
+    //! @param[in] passphrase Encryption passphrase (empty = no encryption)
+    //! @param[out] error Error message on failure
+    //! @return The new wallet, or nullptr on failure
+    static CWallet* CreateDescriptorWallet(const std::string& wallet_file,
+                                           bool disable_private_keys,
+                                           bool blank,
+                                           const std::string& passphrase,
+                                           std::string& error);
+
     /**
      * populate vCoins with vector of available COutputs, and populates vAssetCoins in fWithAssets is set to true.
      */
@@ -1206,36 +1317,72 @@ public:
     bool SetHDSeed(const CPubKey& key);
 };
 
-/** A key allocated from the key pool. */
-class CReserveKey final : public CReserveScript
+/**
+ * A destination reserved from a ScriptPubKeyMan.
+ *
+ * Replaces CReserveKey (Bitcoin Core v24+ parity). Works with both legacy
+ * wallets (keypool reservation) and descriptor wallets (SPKM derivation).
+ *
+ * Lifecycle:
+ *   1. GetReservedDestination() or GetReservedKey() — reserve an address/key
+ *   2. KeepDestination() / KeepKey()               — mark as permanently used
+ *   3. ReturnDestination() / ReturnKey()            — return to pool (or no-op for descriptors)
+ *   4. Destructor calls ReturnDestination() if not kept
+ */
+class ReserveDestination : public CReserveScript
 {
 protected:
     CWallet* pwallet;
-    int64_t nIndex;
-    CPubKey vchPubKey;
-    bool fInternal;
+    ScriptPubKeyMan* m_spk_man{nullptr};   //!< The SPKM that provided the destination (descriptor wallets)
+    int64_t nIndex{-1};                     //!< Keypool index (legacy wallets only, -1 = not reserved)
+    CPubKey vchPubKey;                      //!< Reserved public key
+    bool fInternal{false};                  //!< Whether this is a change (internal) destination
+    CTxDestination address;                 //!< The reserved destination
+    bool fValid{false};                     //!< Whether a destination has been reserved
+
 public:
-    explicit CReserveKey(CWallet* pwalletIn)
+    explicit ReserveDestination(CWallet* pwalletIn)
+        : pwallet(pwalletIn) {}
+
+    ReserveDestination() : pwallet(nullptr) {}
+    ReserveDestination(const ReserveDestination&) = delete;
+    ReserveDestination& operator=(const ReserveDestination&) = delete;
+
+    ~ReserveDestination()
     {
-        nIndex = -1;
-        pwallet = pwalletIn;
-        fInternal = false;
+        ReturnDestination();
     }
 
-    CReserveKey() = default;
-    CReserveKey(const CReserveKey&) = delete;
-    CReserveKey& operator=(const CReserveKey&) = delete;
+    // --- New destination-based API (preferred) ---
 
-    ~CReserveKey()
-    {
-        ReturnKey();
-    }
+    //! Reserve a new destination from the active ScriptPubKeyMan
+    //! For descriptor wallets: derives next address from active descriptor
+    //! For legacy wallets: reserves a key from the keypool
+    bool GetReservedDestination(CTxDestination& dest, bool internal, std::string& error);
 
-    void ReturnKey();
-    bool GetReservedKey(CPubKey &pubkey, bool internal = false);
-    void KeepKey();
-    void KeepScript() override { KeepKey(); }
+    //! Mark the reserved destination as permanently used
+    void KeepDestination();
+
+    //! Return the reserved destination to the pool (no-op for descriptor wallets)
+    void ReturnDestination();
+
+    // --- Legacy key-based API (backward compatibility) ---
+
+    //! Reserve a key from the keypool (legacy) or derive from SPKM (descriptor)
+    bool GetReservedKey(CPubKey& pubkey, bool internal = false);
+
+    //! Keep the reserved key/destination (alias for KeepDestination)
+    void KeepKey() { KeepDestination(); }
+
+    //! Return the reserved key/destination (alias for ReturnDestination)
+    void ReturnKey() { ReturnDestination(); }
+
+    //! CReserveScript compatibility
+    void KeepScript() override { KeepDestination(); }
 };
+
+//! Backward compatibility alias — all existing CReserveKey usage works unchanged.
+using CReserveKey = ReserveDestination;
 
 
 /** 
