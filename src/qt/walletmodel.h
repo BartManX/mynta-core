@@ -32,8 +32,7 @@ class COutput;
 class CPubKey;
 class CWallet;
 class CWalletTx;
-class ReserveDestination;
-using CReserveKey = ReserveDestination;
+class CReserveKey;
 class uint256;
 
 QT_BEGIN_NAMESPACE

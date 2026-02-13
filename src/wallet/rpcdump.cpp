@@ -82,9 +82,6 @@ UniValue importprivkey(const JSONRPCRequest& request)
     if (request.fHelp || request.params.size() < 1 || request.params.size() > 3)
         throw std::runtime_error(
             "importprivkey \"privkey\" ( \"label\" ) ( rescan )\n"
-            "\n*** DEPRECATED ***\n"
-            "This RPC is deprecated and will be removed in a future version.\n"
-            "Use descriptor wallets with importdescriptors for key management.\n"
             "\nAdds a private key (as returned by dumpprivkey) to your wallet.\n"
             "\nArguments:\n"
             "1. \"privkey\"          (string, required) The private key (see dumpprivkey)\n"
@@ -106,21 +103,6 @@ UniValue importprivkey(const JSONRPCRequest& request)
 
 
     LOCK2(cs_main, pwallet->cs_wallet);
-
-    // Block on descriptor wallets - private key import not supported
-    if (pwallet->IsDescriptorWallet()) {
-        throw JSONRPCError(RPC_WALLET_ERROR,
-            "importprivkey is not supported for descriptor wallets. "
-            "Use importdescriptors to import keys via descriptors. "
-            "Example: importdescriptors '[{\"desc\":\"pkh(YOUR_PRIVKEY)\",\"timestamp\":\"now\"}]'");
-    }
-
-    // Deprecation warning for legacy wallets
-    if (!gArgs.GetBoolArg("-deprecatedrpc=importprivkey", false)) {
-        LogPrintf("WARNING: importprivkey is deprecated and will be removed in a future version. "
-                  "Use descriptor wallets for new deployments. "
-                  "Start with -deprecatedrpc=importprivkey to suppress this warning.\n");
-    }
 
     EnsureWalletIsUnlocked(pwallet);
 
@@ -264,6 +246,7 @@ UniValue importaddress(const JSONRPCRequest& request)
             + HelpExampleRpc("importaddress", "\"myscript\", \"testing\", false")
         );
 
+
     std::string strLabel = "";
     if (!request.params[1].isNull())
         strLabel = request.params[1].get_str();
@@ -282,14 +265,6 @@ UniValue importaddress(const JSONRPCRequest& request)
         fP2SH = request.params[3].get_bool();
 
     LOCK2(cs_main, pwallet->cs_wallet);
-
-    // Block on descriptor wallets - address import not supported
-    if (pwallet->IsDescriptorWallet()) {
-        throw JSONRPCError(RPC_WALLET_ERROR,
-            "importaddress is not supported for descriptor wallets. "
-            "Use importdescriptors to import watch-only addresses via descriptors. "
-            "Example: importdescriptors '[{\"desc\":\"addr(YOUR_ADDRESS)\",\"timestamp\":\"now\"}]'");
-    }
 
     CTxDestination dest = DecodeDestination(request.params[0].get_str());
     if (IsValidDestination(dest)) {
@@ -459,14 +434,6 @@ UniValue importpubkey(const JSONRPCRequest& request)
 
     LOCK2(cs_main, pwallet->cs_wallet);
 
-    // Block on descriptor wallets - pubkey import not supported
-    if (pwallet->IsDescriptorWallet()) {
-        throw JSONRPCError(RPC_WALLET_ERROR,
-            "importpubkey is not supported for descriptor wallets. "
-            "Use importdescriptors to import public keys via descriptors. "
-            "Example: importdescriptors '[{\"desc\":\"pkh(YOUR_PUBKEY)\",\"timestamp\":\"now\"}]'");
-    }
-
     ImportAddress(pwallet, pubKey.GetID(), strLabel);
     ImportScript(pwallet, GetScriptForRawPubKey(pubKey), strLabel, false);
 
@@ -506,14 +473,6 @@ UniValue importwallet(const JSONRPCRequest& request)
         throw JSONRPCError(RPC_WALLET_ERROR, "Importing wallets is disabled in pruned mode");
 
     LOCK2(cs_main, pwallet->cs_wallet);
-
-    // Block on descriptor wallets - wallet dump import not supported
-    if (pwallet->IsDescriptorWallet()) {
-        throw JSONRPCError(RPC_WALLET_ERROR,
-            "importwallet is not supported for descriptor wallets. "
-            "Wallet dump files contain legacy keys which cannot be imported into descriptor wallets. "
-            "Use importdescriptors to import keys via descriptors, or create a legacy wallet for import.");
-    }
 
     EnsureWalletIsUnlocked(pwallet);
 
@@ -599,13 +558,10 @@ UniValue dumpprivkey(const JSONRPCRequest& request)
     if (request.fHelp || request.params.size() != 1)
         throw std::runtime_error(
             "dumpprivkey \"address\"\n"
-            "\n*** DEPRECATED ***\n"
-            "This RPC is deprecated and will be removed in a future version.\n"
-            "Use descriptor wallets with listdescriptors for wallet backup.\n"
             "\nReveals the private key corresponding to 'address'.\n"
             "Then the importprivkey can be used with this output\n"
             "\nArguments:\n"
-            "1. \"address\"   (string, required) The mynta address for the private key\n"
+            "1. \"address\"   (string, required) The raven address for the private key\n"
             "\nResult:\n"
             "\"key\"                (string) The private key\n"
             "\nExamples:\n"
@@ -615,22 +571,6 @@ UniValue dumpprivkey(const JSONRPCRequest& request)
         );
 
     LOCK2(cs_main, pwallet->cs_wallet);
-
-    // Block on descriptor wallets - private key export not supported
-    if (pwallet->IsDescriptorWallet()) {
-        throw JSONRPCError(RPC_WALLET_ERROR,
-            "dumpprivkey is not supported for descriptor wallets. "
-            "Use listdescriptors to export wallet descriptor configuration. "
-            "Descriptor wallets use deterministic key derivation - backing up "
-            "the descriptor is sufficient to recover all keys.");
-    }
-
-    // Deprecation warning for legacy wallets
-    if (!gArgs.GetBoolArg("-deprecatedrpc=dumpprivkey", false)) {
-        LogPrintf("WARNING: dumpprivkey is deprecated and will be removed in a future version. "
-                  "Use descriptor wallets for new deployments. "
-                  "Start with -deprecatedrpc=dumpprivkey to suppress this warning.\n");
-    }
 
     EnsureWalletIsUnlocked(pwallet);
 
@@ -663,7 +603,7 @@ UniValue dumpwallet(const JSONRPCRequest& request)
             "dumpwallet \"filename\"\n"
             "\nDumps all wallet keys in a human-readable format to a server-side file. This does not allow overwriting existing files.\n"
             "\nArguments:\n"
-            "1. \"filename\"    (string, required) The filename with path (either absolute or relative to myntad)\n"
+            "1. \"filename\"    (string, required) The filename with path (either absolute or relative to ravend)\n"
             "\nResult:\n"
             "{                           (json object)\n"
             "  \"filename\" : {        (string) The filename with full absolute path\n"
@@ -674,15 +614,6 @@ UniValue dumpwallet(const JSONRPCRequest& request)
         );
 
     LOCK2(cs_main, pwallet->cs_wallet);
-
-    // Block on descriptor wallets - wallet dump not supported
-    if (pwallet->IsDescriptorWallet()) {
-        throw JSONRPCError(RPC_WALLET_ERROR,
-            "dumpwallet is not supported for descriptor wallets. "
-            "Use listdescriptors to export wallet descriptor configuration. "
-            "Descriptor wallets use deterministic key derivation - backing up "
-            "the descriptor is sufficient to recover all keys.");
-    }
 
     EnsureWalletIsUnlocked(pwallet);
 
@@ -1350,14 +1281,6 @@ UniValue importmulti(const JSONRPCRequest& mainRequest)
     }
 
     LOCK2(cs_main, pwallet->cs_wallet);
-
-    // Block on descriptor wallets - importmulti not supported
-    if (pwallet->IsDescriptorWallet()) {
-        throw JSONRPCError(RPC_WALLET_ERROR,
-            "importmulti is not supported for descriptor wallets. "
-            "Use importdescriptors instead, which provides the same functionality with descriptor syntax.");
-    }
-
     EnsureWalletIsUnlocked(pwallet);
 
     // Verify all timestamps are present before importing any keys.
@@ -1425,7 +1348,7 @@ UniValue importmulti(const JSONRPCRequest& mainRequest)
                                       "block from time %d, which is after or within %d seconds of key creation, and "
                                       "could contain transactions pertaining to the key. As a result, transactions "
                                       "and coins using this key may not appear in the wallet. This error could be "
-                                      "caused by pruning or data corruption (see myntad log for details) and could "
+                                      "caused by pruning or data corruption (see ravend log for details) and could "
                                       "be dealt with by downloading and rescanning the relevant blocks (see -reindex "
                                       "and -rescan options).",
                                 GetImportTimestamp(request, now), scannedTime - TIMESTAMP_WINDOW - 1, TIMESTAMP_WINDOW)));

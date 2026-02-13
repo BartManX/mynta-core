@@ -8,7 +8,7 @@
 
 #include "tinyformat.h"
 
-const std::string CURRENCY_UNIT = "MYNTA";
+const std::string CURRENCY_UNIT = "RVN";
 
 CFeeRate::CFeeRate(const CAmount& nFeePaid, size_t nBytes_)
 {

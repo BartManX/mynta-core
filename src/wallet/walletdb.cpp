@@ -576,39 +576,6 @@ bool ReadKeyValue(CWallet* pwallet, CDataStream& ssKey, CDataStream& ssValue,
                 return false;
             }
         }
-        else if (strType == "desc")
-        {
-            // Load descriptor wallet data
-            // Value is stored as vector<unsigned char> containing serialized fields
-            uint256 id;
-            ssKey >> id;
-            
-            std::vector<unsigned char> vchData;
-            ssValue >> vchData;
-            
-            CDataStream ssDescData(vchData, SER_DISK, CLIENT_VERSION);
-            std::string descriptor;
-            int64_t creation_time;
-            int32_t range_start, range_end, next_index;
-            bool active, internal;
-            
-            ssDescData >> descriptor;
-            ssDescData >> creation_time;
-            ssDescData >> range_start;
-            ssDescData >> range_end;
-            ssDescData >> next_index;
-            ssDescData >> active;
-            ssDescData >> internal;
-            
-            if (!pwallet->LoadDescriptor(id, descriptor, creation_time, 
-                                         range_start, range_end, next_index, 
-                                         active, internal))
-            {
-                strErr = strprintf("Error loading descriptor %s", id.ToString());
-                // Non-fatal - continue loading other wallet data
-                LogPrintf("Warning: %s\n", strErr);
-            }
-        }
     } catch (...)
     {
         return false;
@@ -1001,93 +968,6 @@ bool CWalletDB::EraseDestData(const std::string &address, const std::string &key
 bool CWalletDB::WriteHDChain(const CHDChain& chain)
 {
     return WriteIC(std::string("hdchain"), chain);
-}
-
-// ============================================================================
-// Descriptor wallet methods (v2.0.0+)
-// ============================================================================
-
-bool CWalletDB::WriteWalletType(const std::string& type)
-{
-    return WriteIC(std::string("wallettype"), type);
-}
-
-bool CWalletDB::ReadWalletType(std::string& type)
-{
-    // Default to "legacy" for backwards compatibility
-    // Existing wallets without this key are legacy wallets
-    if (!batch.Read(std::string("wallettype"), type)) {
-        type = "legacy";
-        return true; // Not an error - absence means legacy
-    }
-    return true;
-}
-
-bool CWalletDB::WriteDescriptor(const uint256& id, const std::string& descriptor,
-                                int64_t creation_time, int32_t range_start, int32_t range_end,
-                                int32_t next_index, bool active, bool internal)
-{
-    // Serialize all descriptor fields into a byte stream, then store as
-    // vector<unsigned char> so Read/Write template serialization is symmetric.
-    // (CDataStream::Serialize writes raw bytes without a length prefix, which
-    // would cause ReadDescriptor to fail because vector<unsigned char> deserialization
-    // expects a compact-size prefix.)
-    CDataStream ss(SER_DISK, CLIENT_VERSION);
-    ss << descriptor;
-    ss << creation_time;
-    ss << range_start;
-    ss << range_end;
-    ss << next_index;
-    ss << active;
-    ss << internal;
-    
-    std::vector<unsigned char> vchData(ss.begin(), ss.end());
-    return WriteIC(std::make_pair(std::string("desc"), id), vchData);
-}
-
-bool CWalletDB::ReadDescriptor(const uint256& id, std::string& descriptor,
-                               int64_t& creation_time, int32_t& range_start, int32_t& range_end,
-                               int32_t& next_index, bool& active, bool& internal)
-{
-    std::vector<unsigned char> vchData;
-    if (!batch.Read(std::make_pair(std::string("desc"), id), vchData)) {
-        return false;
-    }
-    
-    try {
-        CDataStream ss(vchData, SER_DISK, CLIENT_VERSION);
-        ss >> descriptor;
-        ss >> creation_time;
-        ss >> range_start;
-        ss >> range_end;
-        ss >> next_index;
-        ss >> active;
-        ss >> internal;
-    } catch (const std::exception& e) {
-        LogPrintf("CWalletDB::ReadDescriptor: deserialization failed for %s: %s\n",
-                  id.ToString(), e.what());
-        return false;
-    }
-    
-    return true;
-}
-
-bool CWalletDB::EraseDescriptor(const uint256& id)
-{
-    return EraseIC(std::make_pair(std::string("desc"), id));
-}
-
-bool CWalletDB::WriteDescriptorKey(const uint256& desc_id, int32_t index, const CPubKey& pubkey)
-{
-    return WriteIC(std::make_pair(std::string("desckey"), std::make_pair(desc_id, index)), pubkey);
-}
-
-bool CWalletDB::WriteDescriptorCryptedKey(const uint256& desc_id, int32_t index,
-                                          const CPubKey& pubkey,
-                                          const std::vector<unsigned char>& crypted_secret)
-{
-    return WriteIC(std::make_pair(std::string("cdesckey"), std::make_pair(desc_id, index)),
-                   std::make_pair(pubkey, crypted_secret));
 }
 
 bool CWalletDB::TxnBegin()

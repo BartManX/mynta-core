@@ -345,7 +345,7 @@ UniValue distributereward(const JSONRPCRequest& request) {
     std::string asset_name(request.params[0].get_str());
     int snapshot_height = request.params[1].get_int();
     std::string distribution_asset_name(request.params[2].get_str());
-    CAmount distribution_amount = AmountFromValue(request.params[3], (distribution_asset_name == "MYNTA"));
+    CAmount distribution_amount = AmountFromValue(request.params[3], (distribution_asset_name == "RVN"));
     std::string exception_addresses;
     if (request.params.size() > 4) {
         exception_addresses = request.params[4].get_str();
@@ -357,7 +357,7 @@ UniValue distributereward(const JSONRPCRequest& request) {
     if (request.params.size() > 5) {
         change_address = request.params[5].get_str();
         if (!change_address.empty() && !IsValidDestinationString(change_address))
-            throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid change address: Use a valid MYNTA address"));
+            throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid change address: Use a valid RVN address"));
     }
 
     AssetType ownershipAssetType;
@@ -373,7 +373,7 @@ UniValue distributereward(const JSONRPCRequest& request) {
         throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid snapshot_height: block height should be less than or equal to the current active chain height"));
     }
 
-    if (distribution_asset_name != "MYNTA") {
+    if (distribution_asset_name != "RVN") {
         if (!IsAssetNameValid(distribution_asset_name, distributionAssetType))
             throw JSONRPCError(RPC_INVALID_PARAMETER, std::string("Invalid distribution_asset_name: Please use a valid asset name"));
 
@@ -448,7 +448,7 @@ UniValue getdistributestatus(const JSONRPCRequest& request) {
     std::string asset_name(request.params[0].get_str());
     int snapshot_height = request.params[1].get_int();
     std::string distribution_asset_name(request.params[2].get_str());
-    CAmount distribution_amount = AmountFromValue(request.params[3], (distribution_asset_name == "MYNTA"));
+    CAmount distribution_amount = AmountFromValue(request.params[3], (distribution_asset_name == "RVN"));
     std::string exception_addresses;
     if (request.params.size() > 4) {
         exception_addresses = request.params[4].get_str();

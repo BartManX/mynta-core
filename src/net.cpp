@@ -2203,7 +2203,6 @@ void Discover(boost::thread_group& threadGroup)
 #else
     // Get local host ip
     struct ifaddrs* myaddrs;
-    bool fHasGlobalIPv6 = false;
     if (getifaddrs(&myaddrs) == 0)
     {
         for (struct ifaddrs* ifa = myaddrs; ifa != nullptr; ifa = ifa->ifa_next)
@@ -2225,19 +2224,9 @@ void Discover(boost::thread_group& threadGroup)
                 CNetAddr addr(s6->sin6_addr);
                 if (AddLocal(addr, LOCAL_IF))
                     LogPrintf("%s: IPv6 %s: %s\n", __func__, ifa->ifa_name, addr.ToString());
-                
-                if (addr.IsRoutable() && !addr.IsInternal() && !addr.IsRFC1918()) {
-                    fHasGlobalIPv6 = true;
-                }
             }
         }
         freeifaddrs(myaddrs);
-
-        // Auto-disable IPv6 if no global address is found and not explicitly forced
-        if (!fHasGlobalIPv6 && IsReachable(NET_IPV6) && !gArgs.GetBoolArg("-forceipv6", false)) {
-            LogPrintf("%s: No global IPv6 address found, auto-limiting NET_IPV6 to speed up sync\n", __func__);
-            SetLimited(NET_IPV6, true);
-        }
     }
 #endif
 }

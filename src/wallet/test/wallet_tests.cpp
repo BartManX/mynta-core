@@ -403,7 +403,7 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
             CWallet wallet;
             AddKey(wallet, coinbaseKey);
             BOOST_CHECK_EQUAL(nullBlock, wallet.ScanForWalletTransactions(oldTip, nullptr));
-            BOOST_CHECK_EQUAL(wallet.GetImmatureBalance(), 9700 * COIN);
+            BOOST_CHECK_EQUAL(wallet.GetImmatureBalance(), 10000 * COIN);
         }
 
         // Prune the older block file.
@@ -416,18 +416,14 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
             CWallet wallet;
             AddKey(wallet, coinbaseKey);
             BOOST_CHECK_EQUAL(oldTip, wallet.ScanForWalletTransactions(oldTip, nullptr));
-            BOOST_CHECK_EQUAL(wallet.GetImmatureBalance(), 4850 * COIN);
+            BOOST_CHECK_EQUAL(wallet.GetImmatureBalance(), 5000 * COIN);
         }
 
         // Verify importmulti RPC returns failure for a key whose creation time is
         // before the missing block, and success for a key whose creation time is
         // after.
         {
-            std::unique_ptr<WalletDatabase> dbw(new WalletDatabase());
-            dbw->MakeMock();
-            CWallet wallet(std::move(dbw));
-            bool firstRun;
-            wallet.LoadWallet(firstRun);
+            CWallet wallet;
             vpwallets.insert(vpwallets.begin(), &wallet);
             UniValue keys;
             keys.setArray();
@@ -455,7 +451,7 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
                                         "timestamp %d. There was an error reading a block from time %d, which is after or within %d "
                                         "seconds of key creation, and could contain transactions pertaining to the key. As a result, "
                                         "transactions and coins using this key may not appear in the wallet. This error could be caused "
-                                        "by pruning or data corruption (see myntad log for details) and could be dealt with by "
+                                        "by pruning or data corruption (see ravend log for details) and could be dealt with by "
                                         "downloading and rescanning the relevant blocks (see -reindex and -rescan "
                                         "options).\"}},{\"success\":true}]",
                                         0, oldTip->GetBlockTimeMax(), TIMESTAMP_WINDOW));
@@ -489,11 +485,7 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
 
         // Import key into wallet and call dumpwallet to create backup file.
         {
-            std::unique_ptr<WalletDatabase> dbw(new WalletDatabase());
-            dbw->MakeMock();
-            CWallet wallet(std::move(dbw));
-            bool firstRun;
-            wallet.LoadWallet(firstRun);
+            CWallet wallet;
             LOCK(wallet.cs_wallet);
             wallet.mapKeyMetadata[coinbaseKey.GetPubKey().GetID()].nCreateTime = KEY_TIME;
             wallet.AddKeyPubKey(coinbaseKey, coinbaseKey.GetPubKey());
@@ -508,11 +500,7 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
         // Call importwallet RPC and verify all blocks with timestamps >= BLOCK_TIME
         // were scanned, and no prior blocks were scanned.
         {
-            std::unique_ptr<WalletDatabase> dbw(new WalletDatabase());
-            dbw->MakeMock();
-            CWallet wallet(std::move(dbw));
-            bool firstRun;
-            wallet.LoadWallet(firstRun);
+            CWallet wallet;
 
             JSONRPCRequest request;
             request.params.setArray();
@@ -558,7 +546,7 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
         // credit amount is calculated.
         wtx.MarkDirty();
         wallet.AddKeyPubKey(coinbaseKey, coinbaseKey.GetPubKey());
-        BOOST_CHECK_EQUAL(wtx.GetImmatureCredit(), 4850 * COIN);
+        BOOST_CHECK_EQUAL(wtx.GetImmatureCredit(), 5000 * COIN);
     }
 
     static int64_t AddTx(CWallet &wallet, uint32_t lockTime, int64_t mockTime, int64_t blockTime)
@@ -692,7 +680,7 @@ BOOST_FIXTURE_TEST_SUITE(wallet_tests, WalletTestingSetup)
         BOOST_CHECK_EQUAL(list.begin()->second.size(), (uint64_t)1L);
 
         // Check initial balance from one mature coinbase transaction.
-        BOOST_CHECK_EQUAL(4850 * COIN, wallet->GetAvailableBalance());
+        BOOST_CHECK_EQUAL(5000 * COIN, wallet->GetAvailableBalance());
 
         // Add a transaction creating a change address, and confirm ListCoins still
         // returns the coin associated with the change address underneath the

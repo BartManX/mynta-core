@@ -40,8 +40,7 @@
 // Forward declarations
 class CBlock;
 class CDBWrapper;
-class ReserveDestination;
-using CReserveKey = ReserveDestination;
+class CReserveKey;
 class CWallet;
 
 // HTLC script type identifiers
@@ -325,8 +324,7 @@ std::string GetTradingPairKey(const std::string& assetA, const std::string& asse
 
 #ifdef ENABLE_WALLET
 class CWallet;
-class ReserveDestination;
-using CReserveKey = ReserveDestination;
+class CReserveKey;
 
 namespace HTLCTransactions {
 

@@ -52,18 +52,6 @@ WalletModel::WalletModel(const PlatformStyle *platformStyle, CWallet *_wallet, O
     cachedEncryptionStatus(Unencrypted),
     cachedNumBlocks(0)
 {
-    // SAFETY GUARD: Warn if a descriptor wallet is loaded in the GUI.
-    // Descriptor wallets are RPC-only infrastructure in v2.0.0. The GUI has not
-    // been updated to handle descriptor wallet edge cases (e.g., no encryption,
-    // different key management). Allow loading but log a clear warning.
-    if (wallet->IsDescriptorWallet()) {
-        LogPrintf("WARNING: Descriptor wallet '%s' loaded in GUI. Descriptor wallets are "
-                  "designed for RPC/CLI use (exchanges, pools). Some GUI features "
-                  "(encryption, key export) may not work correctly. For full GUI "
-                  "support, use a legacy wallet or wait for v2.1.0.\n",
-                  wallet->GetName());
-    }
-
     fHaveWatchOnly = wallet->HaveWatchOnly();
     fForceCheckBalanceChanged = false;
 

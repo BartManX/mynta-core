@@ -59,7 +59,6 @@
 #include <wallet/wallet.h>
 #endif
 #include "warnings.h"
-#include "clientnotices.h"
 #include "tinyformat.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -1343,52 +1342,6 @@ bool AppInitLockDataDirectory()
     return true;
 }
 
-/**
- * Check for update and security notices at startup (daemon/CLI)
- * 
- * This function:
- * - Runs synchronously but with short timeout
- * - Never blocks startup beyond the timeout
- * - Logs update notifications and security warnings
- * - Respects user preferences for dismissed notices
- */
-void CheckStartupNotices()
-{
-    // Initialize notice manager with current version
-    ClientNoticeManager& mgr = ClientNoticeManager::Instance();
-    mgr.Initialize(GetCurrentClientVersion());
-    
-    // Short timeout to avoid blocking startup
-    const int TIMEOUT_SECONDS = 5;
-    
-    // Check for updates (non-critical, log once)
-    try {
-        ReleaseInfo release;
-        if (mgr.CheckForUpdates(release, TIMEOUT_SECONDS)) {
-            if (!mgr.IsUpdateDismissed(release.version)) {
-                LogPrintf("\n");
-                LogPrintf("%s", FormatReleaseForLog(release));
-                LogPrintf("\n");
-            }
-        }
-    } catch (...) {
-        // Silently ignore errors - never block startup
-    }
-    
-    // Check for security notices (critical, always show unless acknowledged)
-    try {
-        auto notices = mgr.FetchSecurityNotices(TIMEOUT_SECONDS);
-        for (const auto& notice : notices) {
-            if (!mgr.IsNoticeAcknowledged(notice.id)) {
-                // Security notices always logged prominently
-                LogPrintf("%s", FormatNoticeForLog(notice));
-            }
-        }
-    } catch (...) {
-        // Silently ignore errors - never block startup
-    }
-}
-
 bool AppInitMain(boost::thread_group& threadGroup, CScheduler& scheduler)
 {
     const CChainParams& chainparams = GetParams();
@@ -2112,13 +2065,6 @@ bool AppInitMain(boost::thread_group& threadGroup, CScheduler& scheduler)
 
     // ********************************************************* Step 13: finished
     uiInterface.InitMessage(_("Done Loading"));
-
-    // ********************************************************* Step 14: update & security notice check
-    // Non-blocking check for updates and security notices
-    // Respects -disableupdatecheck and never blocks startup
-    if (!gArgs.GetBoolArg("-disableupdatecheck", false)) {
-        CheckStartupNotices();
-    }
 
     return !fRequestShutdown;
 }
