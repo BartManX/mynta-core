@@ -27,10 +27,10 @@ AC_DEFUN([MYNTA_FIND_SQLITE],[
 
   if test "x$SQLITE_LIBS" = "x"; then
     AC_CHECK_LIB([sqlite3],[sqlite3_open_v2],[
-      SQLITE_LIBS="-lsqlite3"
+      SQLITE_LIBS="-lsqlite3 -lpthread"
     ],[
       AC_MSG_ERROR([libsqlite3 missing. ]AC_PACKAGE_NAME[ requires SQLite for wallet functionality (--disable-wallet to disable wallet functionality)])
-    ])
+    ],[-lpthread])
   fi
   AC_SUBST(SQLITE_LIBS)
 
