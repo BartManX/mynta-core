@@ -609,6 +609,7 @@ void MasternodePage::onRegisterMasternodeClicked()
         params.push_back(votingAddress.toStdString());
         params.push_back(operatorReward);
         params.push_back(payoutAddress.toStdString());
+        params.push_back(blsSecretKey.toStdString());  // operatorSecretOrPoP - BLS secret key for proof of possession
         req.params = params;
         
         UniValue result = tableRPC.execute(req);
