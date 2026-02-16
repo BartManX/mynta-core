@@ -272,24 +272,45 @@ void MasternodePage::onViewDetails()
         
         UniValue result = tableRPC.execute(req);
         
+        // Build details string with safe JSON access
         QString details;
         details += tr("ProTxHash: %1\n\n").arg(proTxHash);
-        details += tr("Collateral Hash: %1\n").arg(QString::fromStdString(result["collateralHash"].get_str()));
-        details += tr("Collateral Index: %1\n").arg(result["collateralIndex"].get_int());
-        details += tr("Status: %1\n\n").arg(QString::fromStdString(result["state"]["status"].get_str()));
         
-        const UniValue &state = result["state"];
-        details += tr("Service: %1\n").arg(QString::fromStdString(state["service"].get_str()));
-        details += tr("Owner Address: %1\n").arg(QString::fromStdString(state["ownerAddress"].get_str()));
-        details += tr("Voting Address: %1\n").arg(QString::fromStdString(state["votingAddress"].get_str()));
+        // Helper lambda for safe string extraction
+        auto getStr = [](const UniValue& obj, const std::string& key, const QString& defaultVal = "N/A") -> QString {
+            if (obj.exists(key)) {
+                const UniValue& val = obj[key];
+                if (val.isStr()) return QString::fromStdString(val.get_str());
+                return QString::fromStdString(val.write());
+            }
+            return defaultVal;
+        };
         
-        if (state.exists("payoutAddress")) {
-            details += tr("Payout Address: %1\n").arg(QString::fromStdString(state["payoutAddress"].get_str()));
+        // Helper lambda for safe int extraction
+        auto getInt = [](const UniValue& obj, const std::string& key, int defaultVal = 0) -> int {
+            if (obj.exists(key)) {
+                const UniValue& val = obj[key];
+                if (val.isNum()) return val.get_int();
+            }
+            return defaultVal;
+        };
+        
+        details += tr("Collateral Hash: %1\n").arg(getStr(result, "collateralHash"));
+        details += tr("Collateral Index: %1\n").arg(getInt(result, "collateralIndex"));
+        
+        if (result.exists("state") && result["state"].isObject()) {
+            const UniValue &state = result["state"];
+            details += tr("Status: %1\n\n").arg(getStr(state, "status", "UNKNOWN"));
+            details += tr("Service: %1\n").arg(getStr(state, "service"));
+            details += tr("Owner Address: %1\n").arg(getStr(state, "ownerAddress"));
+            details += tr("Voting Address: %1\n").arg(getStr(state, "votingAddress"));
+            details += tr("Payout Address: %1\n").arg(getStr(state, "payoutAddress"));
+            details += tr("\nRegistered Height: %1\n").arg(getInt(state, "registeredHeight"));
+            details += tr("Last Paid Height: %1\n").arg(getInt(state, "lastPaidHeight"));
+            details += tr("PoSe Penalty: %1\n").arg(getInt(state, "PoSePenalty"));
+        } else {
+            details += tr("\nState information not available");
         }
-        
-        details += tr("\nRegistered Height: %1\n").arg(state["registeredHeight"].get_int());
-        details += tr("Last Paid Height: %1\n").arg(state["lastPaidHeight"].get_int());
-        details += tr("PoSe Penalty: %1\n").arg(state["PoSePenalty"].get_int());
         
         QMessageBox::information(this, tr("Masternode Details"), details);
         

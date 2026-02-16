@@ -123,6 +123,9 @@ private:
     int totalCount;
     int enabledCount;
     int myMasternodeCount;
+    
+    // Current block height for payment calculations
+    int currentBlockHeight;
 
     void updateFilteredList();
     bool isWalletMasternode(const QString &ownerAddress, const QString &payoutAddress) const;

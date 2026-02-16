@@ -63,10 +63,11 @@ MasternodeModel::MasternodeModel(ClientModel *_clientModel, WalletModel *_wallet
     sortOrder(Qt::AscendingOrder),
     totalCount(0),
     enabledCount(0),
-    myMasternodeCount(0)
+    myMasternodeCount(0),
+    currentBlockHeight(0)
 {
     columns << tr("Status") << tr("ProTxHash") << tr("IP:Port") << tr("Payout Address") 
-            << tr("Registered") << tr("Last Paid") << tr("PoSe");
+            << tr("Registered") << tr("Blocks until Payment") << tr("PoSe");
     
     refreshTimer = new QTimer(this);
     connect(refreshTimer, SIGNAL(timeout()), this, SLOT(refresh()));
@@ -114,7 +115,23 @@ QVariant MasternodeModel::data(const QModelIndex &index, int role) const
         case RegisteredHeight:
             return mn.registeredHeight;
         case LastPaidHeight:
-            return mn.lastPaidHeight > 0 ? QString::number(mn.lastPaidHeight) : tr("Never");
+            // Calculate blocks until payment
+            if (mn.status != "ENABLED") {
+                return tr("N/A");
+            }
+            if (mn.lastPaidHeight == 0) {
+                // Never paid, estimate from registration
+                int blocksSinceReg = currentBlockHeight - mn.registeredHeight;
+                int estimatedWait = enabledCount > 0 ? enabledCount : 1;
+                int blocksUntil = estimatedWait - blocksSinceReg;
+                return blocksUntil > 0 ? QString::number(blocksUntil) : tr("Due");
+            } else {
+                // Has been paid before
+                int blocksSincePaid = currentBlockHeight - mn.lastPaidHeight;
+                int estimatedCycle = enabledCount > 0 ? enabledCount : 1;
+                int blocksUntil = estimatedCycle - blocksSincePaid;
+                return blocksUntil > 0 ? QString::number(blocksUntil) : tr("Due");
+            }
         case PoSePenalty:
             return mn.posePenalty;
         }
@@ -302,6 +319,15 @@ void MasternodeModel::refresh()
         // Update counts
         totalCount = countResult["total"].get_int();
         enabledCount = countResult["enabled"].get_int();
+        
+        // Get current block height for payment calculations
+        JSONRPCRequest blockCountRequest;
+        blockCountRequest.strMethod = "getblockcount";
+        UniValue blockCountParams(UniValue::VARR);
+        blockCountRequest.params = blockCountParams;
+        
+        UniValue blockCountResult = tableRPC.execute(blockCountRequest);
+        currentBlockHeight = blockCountResult.get_int();
         
         // Parse masternode list
         std::vector<MasternodeEntry> newMasternodes;
