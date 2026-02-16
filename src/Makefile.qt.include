@@ -117,6 +117,8 @@ QT_FORMS_UI = \
   qt/forms/createassetdialog.ui \
   qt/forms/reissueassetdialog.ui \
   qt/forms/restrictedassetsdialog.ui \
+  qt/forms/masternodepage.ui \
+  qt/forms/donatepage.ui \
   qt/forms/restrictedassignqualifier.ui \
   qt/forms/restrictedfreezeaddress.ui \
   qt/forms/sendassetsentry.ui \
@@ -181,6 +183,9 @@ QT_MOC_CPP = \
   qt/moc_createassetdialog.cpp \
   qt/moc_reissueassetdialog.cpp \
   qt/moc_restrictedassetsdialog.cpp \
+  qt/moc_masternodemodel.cpp \
+  qt/moc_masternodepage.cpp \
+  qt/moc_donatepage.cpp \
   qt/moc_restrictedassignqualifier.cpp \
   qt/moc_restrictedfreezeaddress.cpp \
   qt/moc_sendassetsentry.cpp \
@@ -256,6 +261,9 @@ MYNTA_QT_H = \
   qt/recentrequeststablemodel.h \
   qt/reissueassetdialog.h \
   qt/restrictedassetsdialog.h \
+  qt/masternodemodel.h \
+  qt/masternodepage.h \
+  qt/donatepage.h \
   qt/restrictedassignqualifier.h \
   qt/restrictedfreezeaddress.h \
   qt/rpcconsole.h \
@@ -442,6 +450,9 @@ MYNTA_QT_WALLET_CPP = \
   qt/recentrequeststablemodel.cpp \
   qt/reissueassetdialog.cpp \
   qt/restrictedassetsdialog.cpp \
+  qt/masternodemodel.cpp \
+  qt/masternodepage.cpp \
+  qt/donatepage.cpp \
   qt/restrictedassignqualifier.cpp \
   qt/restrictedfreezeaddress.cpp \
   qt/sendassetsentry.cpp \

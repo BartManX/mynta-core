@@ -42,14 +42,19 @@ cd depends
 make HOST=x86_64-w64-mingw32 -j$(nproc)
 cd "$SCRIPT_DIR"
 
+# Clean any previous Linux build
+echo "[5/7] Cleaning previous build..."
+make clean 2>/dev/null || true
+make distclean 2>/dev/null || true
+rm -f src/qt/paymentrequest.pb.h src/qt/paymentrequest.pb.cc 2>/dev/null || true
+
 # Run autogen
-echo "[5/6] Running autogen.sh..."
+echo "[6/7] Running autogen.sh..."
 ./autogen.sh
 
 # Configure for Windows WITH GUI
-echo "[6/6] Configuring and building for Windows with QT GUI..."
-export CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site
-./configure \
+echo "[7/7] Configuring and building for Windows with QT GUI..."
+CONFIG_SITE="$PWD/depends/x86_64-w64-mingw32/share/config.site" ./configure \
     --prefix=/ \
     --disable-bench \
     --disable-tests \
@@ -59,7 +64,8 @@ export CONFIG_SITE=$PWD/depends/x86_64-w64-mingw32/share/config.site
     LIBS='-lpthread' \
     CXXFLAGS="-O2 -fpermissive -Wno-error=incompatible-pointer-types"
 
-make -j$(nproc)
+NPROC=$(nproc 2>/dev/null || echo 4)
+make -j$NPROC
 
 echo ""
 echo "=== Build Complete ==="

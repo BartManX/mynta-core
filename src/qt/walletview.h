@@ -24,6 +24,8 @@ class AssetsDialog;
 class CreateAssetDialog;
 class ReissueAssetDialog;
 class RestrictedAssetsDialog;
+class MasternodePage;
+class DonatePage;
 
 QT_BEGIN_NAMESPACE
 class QModelIndex;
@@ -81,6 +83,8 @@ private:
     CreateAssetDialog *createAssetsPage;
     ReissueAssetDialog *manageAssetsPage;
     RestrictedAssetsDialog *restrictedAssetsPage;
+    MasternodePage *masternodePage;
+    DonatePage *donatePage;
     /** MYNTA END */
 
 public Q_SLOTS:
@@ -137,6 +141,12 @@ public Q_SLOTS:
     void gotoCreateAssetsPage();
     void gotoManageAssetsPage();
     void gotoRestrictedAssetsPage();
+    
+    /** Switch to masternodes page */
+    void gotoMasternodePage();
+    
+    /** Switch to donate page */
+    void gotoDonatePage();
 
     /** MYNTA END */
 

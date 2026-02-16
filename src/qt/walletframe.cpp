@@ -241,3 +241,17 @@ void WalletFrame::gotoRestrictedAssetsPage()
     for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
         i.value()->gotoRestrictedAssetsPage();
 }
+
+void WalletFrame::gotoMasternodePage()
+{
+    QMap<QString, WalletView*>::const_iterator i;
+    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
+        i.value()->gotoMasternodePage();
+}
+
+void WalletFrame::gotoDonatePage()
+{
+    QMap<QString, WalletView*>::const_iterator i;
+    for (i = mapWalletViews.constBegin(); i != mapWalletViews.constEnd(); ++i)
+        i.value()->gotoDonatePage();
+}

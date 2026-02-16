@@ -103,6 +103,12 @@ public Q_SLOTS:
     void gotoCreateAssetsPage();
     void gotoManageAssetsPage();
     void gotoRestrictedAssetsPage();
+    
+    /** Switch to masternodes page */
+    void gotoMasternodePage();
+    
+    /** Switch to donate page */
+    void gotoDonatePage();
     /** MYNTA END */
 };
 

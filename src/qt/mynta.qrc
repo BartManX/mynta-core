@@ -76,6 +76,10 @@
         <file alias="myntatext">res/icons/myntatext.png</file>
 	<file alias="restricted_asset">res/icons/restricted_asset.png</file>
 	<file alias="restricted_asset_selected">res/icons/restricted_asset_selected.png</file>
+	<file alias="masternode">res/icons/masternode.png</file>
+	<file alias="masternode_selected">res/icons/masternode_selected.png</file>
+	<file alias="donate">res/icons/donate.png</file>
+	<file alias="donate_selected">res/icons/donate_selected.png</file>
     </qresource>
     <qresource prefix="/movies">
         <file alias="spinner-000">res/movies/spinner-000.png</file>

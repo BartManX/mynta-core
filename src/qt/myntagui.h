@@ -134,6 +134,8 @@ private:
     QAction *messagingAction = nullptr;
     QAction *votingAction = nullptr;
     QAction *restrictedAssetAction = nullptr;
+    QAction *masternodeAction = nullptr;
+    QAction *donateAction = nullptr;
     QWidget *headerWidget = nullptr;
     QLabel *labelCurrentMarket = nullptr;
     QLabel *labelCurrentPrice = nullptr;
@@ -282,6 +284,10 @@ private Q_SLOTS:
     void gotoCreateAssetsPage();
     void gotoManageAssetsPage();
     void gotoRestrictedAssetsPage();
+    /** Switch to masternodes page */
+    void gotoMasternodePage();
+    /** Switch to donate page */
+    void gotoDonatePage();
     /** MYNTA END */
 
 #endif // ENABLE_WALLET

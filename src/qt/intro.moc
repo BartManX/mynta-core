@@ -5,13 +5,12 @@
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
-#include <memory>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qmetatype.h>
 #if !defined(Q_MOC_OUTPUT_REVISION)
 #error "The header file 'intro.cpp' doesn't include <QObject>."
 #elif Q_MOC_OUTPUT_REVISION != 67
-#error "This file was generated using the moc from 5.15.17. It"
+#error "This file was generated using the moc from 5.12.11. It"
 #error "cannot be used with the include files from this version of Qt."
 #error "(The moc has changed too much.)"
 #endif
@@ -76,7 +75,7 @@ void FreespaceChecker::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int
 {
     if (_c == QMetaObject::InvokeMetaMethod) {
         auto *_t = static_cast<FreespaceChecker *>(_o);
-        (void)_t;
+        Q_UNUSED(_t)
         switch (_id) {
         case 0: _t->reply((*reinterpret_cast< int(*)>(_a[1])),(*reinterpret_cast< const QString(*)>(_a[2])),(*reinterpret_cast< quint64(*)>(_a[3]))); break;
         case 1: _t->check(); break;
@@ -95,7 +94,7 @@ void FreespaceChecker::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int
 }
 
 QT_INIT_METAOBJECT const QMetaObject FreespaceChecker::staticMetaObject = { {
-    QMetaObject::SuperData::link<QObject::staticMetaObject>(),
+    &QObject::staticMetaObject,
     qt_meta_stringdata_FreespaceChecker.data,
     qt_meta_data_FreespaceChecker,
     qt_static_metacall,
@@ -137,7 +136,7 @@ int FreespaceChecker::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
 // SIGNAL 0
 void FreespaceChecker::reply(int _t1, const QString & _t2, quint64 _t3)
 {
-    void *_a[] = { nullptr, const_cast<void*>(reinterpret_cast<const void*>(std::addressof(_t1))), const_cast<void*>(reinterpret_cast<const void*>(std::addressof(_t2))), const_cast<void*>(reinterpret_cast<const void*>(std::addressof(_t3))) };
+    void *_a[] = { nullptr, const_cast<void*>(reinterpret_cast<const void*>(&_t1)), const_cast<void*>(reinterpret_cast<const void*>(&_t2)), const_cast<void*>(reinterpret_cast<const void*>(&_t3)) };
     QMetaObject::activate(this, &staticMetaObject, 0, _a);
 }
 QT_WARNING_POP

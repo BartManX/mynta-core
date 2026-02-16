@@ -84,9 +84,14 @@ AC_DEFUN([MYNTA_QT_INIT],[
     [use_dbus=$withval],
     [use_dbus=auto])
 
-  dnl Android doesn't support D-Bus and certainly doesn't use it for notifications
+  dnl Android and Windows don't support D-Bus and certainly don't use it for notifications
   case $host in
     *android*)
+      if test "x$use_dbus" != xyes; then
+        use_dbus=no
+      fi
+    ;;
+    *mingw*)
       if test "x$use_dbus" != xyes; then
         use_dbus=no
       fi

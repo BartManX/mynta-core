@@ -1,11 +1,11 @@
-Name "Mynta Core (-bit)"
+Name "Mynta Core (64-bit)"
 
 RequestExecutionLevel highest
 SetCompressor /SOLID lzma
 
 # General Symbol Definitions
 !define REGKEY "SOFTWARE\$(^Name)"
-!define VERSION 1.1.0
+!define VERSION 1.2.2
 !define COMPANY "Mynta Core project"
 !define URL https://mynta.network/
 
@@ -20,7 +20,7 @@ SetCompressor /SOLID lzma
 !define MUI_STARTMENUPAGE_REGISTRY_KEY ${REGKEY}
 !define MUI_STARTMENUPAGE_REGISTRY_VALUENAME StartMenuGroup
 !define MUI_STARTMENUPAGE_DEFAULTFOLDER "Mynta Core"
-!define MUI_FINISHPAGE_RUN $INSTDIR\@RAVEN_GUI_NAME@
+!define MUI_FINISHPAGE_RUN $INSTDIR\@RAVEN_GUI_NAME@.exe
 !define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
 !define MUI_UNWELCOMEFINISHPAGE_BITMAP "/mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/share/pixmaps/nsis-wizard.bmp"
 !define MUI_UNFINISHPAGE_NOAUTOCLOSE
@@ -28,7 +28,7 @@ SetCompressor /SOLID lzma
 # Included files
 !include Sections.nsh
 !include MUI2.nsh
-!if "" == "64"
+!if "64" == "64"
 !include x64.nsh
 !endif
 
@@ -48,8 +48,8 @@ Var StartMenuGroup
 !insertmacro MUI_LANGUAGE English
 
 # Installer attributes
-OutFile /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/mynta-${VERSION}-win-setup.exe
-!if "" == "64"
+OutFile /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/mynta-${VERSION}-win64-setup.exe
+!if "64" == "64"
 InstallDir $PROGRAMFILES64\Mynta
 !else
 InstallDir $PROGRAMFILES\Mynta
@@ -73,12 +73,12 @@ ShowUninstDetails show
 Section -Main SEC0000
     SetOutPath $INSTDIR
     SetOverwrite on
-    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_GUI_NAME@
+    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_GUI_NAME@.exe
     File /oname=COPYING.txt /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/COPYING
     File /oname=readme.txt /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/doc/README_windows.txt
     SetOutPath $INSTDIR\daemon
-    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_DAEMON_NAME@
-    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_CLI_NAME@
+    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_DAEMON_NAME@.exe
+    File /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/release/@RAVEN_CLI_NAME@.exe
     SetOutPath $INSTDIR\doc
     File /r /mnt/c/Users/Drock/Documents/.Mynta-Workspace/mynta-core/doc\*.*
     SetOutPath $INSTDIR
@@ -91,8 +91,8 @@ Section -post SEC0001
     WriteUninstaller $INSTDIR\uninstall.exe
     !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
     CreateDirectory $SMPROGRAMS\$StartMenuGroup
-    CreateShortcut "$SMPROGRAMS\$StartMenuGroup\$(^Name).lnk" $INSTDIR\@RAVEN_GUI_NAME@
-    CreateShortcut "$SMPROGRAMS\$StartMenuGroup\Mynta Core (testnet, -bit).lnk" "$INSTDIR\@RAVEN_GUI_NAME@" "-testnet" "$INSTDIR\@RAVEN_GUI_NAME@" 1
+    CreateShortcut "$SMPROGRAMS\$StartMenuGroup\$(^Name).lnk" $INSTDIR\@RAVEN_GUI_NAME@.exe
+    CreateShortcut "$SMPROGRAMS\$StartMenuGroup\Mynta Core (testnet, 64-bit).lnk" "$INSTDIR\@RAVEN_GUI_NAME@.exe" "-testnet" "$INSTDIR\@RAVEN_GUI_NAME@.exe" 1
     CreateShortcut "$SMPROGRAMS\$StartMenuGroup\Uninstall $(^Name).lnk" $INSTDIR\uninstall.exe
     !insertmacro MUI_STARTMENU_WRITE_END
     WriteRegStr HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)" DisplayName "$(^Name)"
@@ -105,8 +105,8 @@ Section -post SEC0001
     WriteRegDWORD HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)" NoRepair 1
     WriteRegStr HKCR "mynta" "URL Protocol" ""
     WriteRegStr HKCR "mynta" "" "URL:Mynta"
-    WriteRegStr HKCR "mynta\DefaultIcon" "" $INSTDIR\@RAVEN_GUI_NAME@
-    WriteRegStr HKCR "mynta\shell\open\command" "" '"$INSTDIR\@RAVEN_GUI_NAME@" "%1"'
+    WriteRegStr HKCR "mynta\DefaultIcon" "" $INSTDIR\@RAVEN_GUI_NAME@.exe
+    WriteRegStr HKCR "mynta\shell\open\command" "" '"$INSTDIR\@RAVEN_GUI_NAME@.exe" "%1"'
 SectionEnd
 
 # Macro for selecting uninstaller sections
@@ -124,7 +124,7 @@ done${UNSECTION_ID}:
 
 # Uninstaller sections
 Section /o -un.Main UNSEC0000
-    Delete /REBOOTOK $INSTDIR\@RAVEN_GUI_NAME@
+    Delete /REBOOTOK $INSTDIR\@RAVEN_GUI_NAME@.exe
     Delete /REBOOTOK $INSTDIR\COPYING.txt
     Delete /REBOOTOK $INSTDIR\readme.txt
     RMDir /r /REBOOTOK $INSTDIR\daemon
@@ -136,7 +136,7 @@ Section -un.post UNSEC0001
     DeleteRegKey HKCU "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$(^Name)"
     Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\Uninstall $(^Name).lnk"
     Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\$(^Name).lnk"
-    Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\Mynta Core (testnet, -bit).lnk"
+    Delete /REBOOTOK "$SMPROGRAMS\$StartMenuGroup\Mynta Core (testnet, 64-bit).lnk"
     Delete /REBOOTOK "$SMSTARTUP\Mynta.lnk"
     Delete /REBOOTOK $INSTDIR\uninstall.exe
     Delete /REBOOTOK $INSTDIR\debug.log
@@ -158,7 +158,7 @@ SectionEnd
 # Installer functions
 Function .onInit
     InitPluginsDir
-!if "" == "64"
+!if "64" == "64"
     ${If} ${RunningX64}
       ; disable registry redirection (enable access to 64-bit portion of registry)
       SetRegView 64

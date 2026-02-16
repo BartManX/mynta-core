@@ -430,6 +430,22 @@ void MyntaGUI::createActions()
     restrictedAssetAction->setFont(font);
     tabGroup->addAction(restrictedAssetAction);
 
+    masternodeAction = new QAction(platformStyle->SingleColorIconOnOff(":/icons/masternode_selected", ":/icons/masternode"), tr("&Masternodes"), this);
+    masternodeAction->setStatusTip(tr("View and manage masternodes"));
+    masternodeAction->setToolTip(masternodeAction->statusTip());
+    masternodeAction->setCheckable(true);
+    masternodeAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_9));
+    masternodeAction->setFont(font);
+    tabGroup->addAction(masternodeAction);
+
+    donateAction = new QAction(platformStyle->SingleColorIconOnOff(":/icons/donate_selected", ":/icons/donate"), tr("&Donate"), this);
+    donateAction->setStatusTip(tr("Support Mynta development with a donation"));
+    donateAction->setToolTip(donateAction->statusTip());
+    donateAction->setCheckable(true);
+    donateAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_0));
+    donateAction->setFont(font);
+    tabGroup->addAction(donateAction);
+
     /** MYNTA END */
 
 #ifdef ENABLE_WALLET
@@ -455,6 +471,10 @@ void MyntaGUI::createActions()
     connect(manageAssetAction, SIGNAL(triggered()), this, SLOT(gotoManageAssetsPage()));
     connect(restrictedAssetAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
     connect(restrictedAssetAction, SIGNAL(triggered()), this, SLOT(gotoRestrictedAssetsPage()));
+    connect(masternodeAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
+    connect(masternodeAction, SIGNAL(triggered()), this, SLOT(gotoMasternodePage()));
+    connect(donateAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
+    connect(donateAction, SIGNAL(triggered()), this, SLOT(gotoDonatePage()));
     // TODO add messaging actions to go to messaging page when clicked
     // TODO add voting actions to go to voting page when clicked
 #endif // ENABLE_WALLET
@@ -636,11 +656,13 @@ void MyntaGUI::createToolBars()
         m_toolbar->setMovable(false);
 
         if(IconsOnly) {
-            m_toolbar->setMaximumWidth(65);
+            m_toolbar->setMinimumWidth(56);
+            m_toolbar->setMaximumWidth(56);
             m_toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
         }
         else {
-            m_toolbar->setMinimumWidth(labelToolbar->width());
+            m_toolbar->setMinimumWidth(260);
+            m_toolbar->setMaximumWidth(260);
             m_toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         }
         m_toolbar->addAction(overviewAction);
@@ -653,6 +675,8 @@ void MyntaGUI::createToolBars()
 //        m_toolbar->addAction(messagingAction);
 //        m_toolbar->addAction(votingAction);
         m_toolbar->addAction(restrictedAssetAction);
+        m_toolbar->addAction(masternodeAction);
+        m_toolbar->addAction(donateAction);
 
         QString openSansFontString = "font: normal 22pt \"Open Sans\";";
         QString normalString = "font: normal 22pt \"Arial\";";
@@ -665,22 +689,56 @@ void MyntaGUI::createToolBars()
 #endif
 
         /** MYNTA START */
-        QString tbStyleSheet = ".QToolBar {background-color : transparent; border-color: transparent; }  "
-                               ".QToolButton {background-color: transparent; border-color: transparent; width: 260px; color: %1; border: none; padding-left: 12px; font-size: 17px;} "
-                               ".QToolButton:checked {background: none; background-color: none; selection-background-color: none; color: %2; border: none; font-size: 17px; font: %4} "
-                               ".QToolButton:hover {background: none; background-color: none; border: none; color: %3;} "
-                               ".QToolButton:disabled {color: gray;}";
+        // Modern aligned toolbar styling with compact spacing (reduced by 50%)
+        QString tbStyleSheet = ".QToolBar {"
+                               "    background-color: transparent;"
+                               "    border: none;"
+                               "    spacing: 0px;"  // Minimal spacing between buttons
+                               "}"
+                               ".QToolButton {"
+                               "    background-color: transparent;"
+                               "    border: none;"
+                               "    border-radius: 4px;"
+                               "    width: 240px;"
+                               "    min-width: 240px;"
+                               "    max-width: 240px;"
+                               "    height: 32px;"
+                               "    min-height: 32px;"
+                               "    color: %1;"
+                               "    padding-left: 16px;"
+                               "    padding-right: 8px;"
+                               "    margin: 1px 8px;"
+                               "    font-size: 14px;"
+                               "    text-align: left;"
+                               "}"
+                               ".QToolButton:checked {"
+                               "    background-color: rgba(245, 158, 11, 0.15);"
+                               "    color: %2;"
+                               "    font-size: 14px;"
+                               "    font: %4;"
+                               "}"
+                               ".QToolButton:hover {"
+                               "    background-color: rgba(255, 255, 255, 0.05);"
+                               "    color: %3;"
+                               "}"
+                               ".QToolButton:disabled {"
+                               "    color: #555555;"
+                               "}";
 
         m_toolbar->setStyleSheet(tbStyleSheet.arg(platformStyle->ToolBarNotSelectedTextColor().name(),
                                                 platformStyle->ToolBarSelectedTextColor().name(),
                                                 platformStyle->DarkOrangeColor().name(), stringToUse));
 
         m_toolbar->setOrientation(Qt::Vertical);
-        m_toolbar->setIconSize(QSize(30, 30));
+        m_toolbar->setIconSize(QSize(24, 24));  // Consistent icon size matching our Lucide icons
 
+        // Ensure consistent alignment for all toolbar items (compact spacing)
         QLayout* lay = m_toolbar->layout();
-        for(int i = 0; i < lay->count(); ++i)
-            lay->itemAt(i)->setAlignment(Qt::AlignLeft);
+        lay->setSpacing(2);  // Reduced vertical spacing (was 4)
+        lay->setContentsMargins(0, 4, 0, 4);  // Reduced top/bottom padding (was 8)
+        for(int i = 0; i < lay->count(); ++i) {
+            lay->itemAt(i)->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        }
 
         overviewAction->setChecked(true);
 
@@ -746,7 +804,7 @@ void MyntaGUI::createToolBars()
         comboRvnUnit->setStyleSheet(STRING_LABEL_COLOR);
         comboRvnUnit->setFont(currentMarketFont);
 
-        labelVersionUpdate->setText("<a href=\"https://github.com/myntaproject/mynta-core/releases\">New Wallet Version Available</a>");
+        labelVersionUpdate->setText("<a href=\"https://github.com/Slashx124/mynta-core/releases\">New Wallet Version Available</a>");
         labelVersionUpdate->setTextFormat(Qt::RichText);
         labelVersionUpdate->setTextInteractionFlags(Qt::TextBrowserInteraction);
         labelVersionUpdate->setOpenExternalLinks(true);
@@ -920,7 +978,7 @@ void MyntaGUI::createToolBars()
                                            "New Wallet Version Found",
                                            CClientUIInterface::MSG_VERSION | CClientUIInterface::BTN_NO);
                                    if (fRet) {
-                                       QString link = "https://github.com/myntaproject/mynta-core/releases";
+                                       QString link = "https://github.com/Slashx124/mynta-core/releases";
                                        QDesktopServices::openUrl(QUrl(link));
                                    }
                                }
@@ -940,13 +998,14 @@ void MyntaGUI::updateIconsOnlyToolbar(bool IconsOnly)
 {
     if(IconsOnly) {
         labelToolbar->setPixmap(QPixmap::fromImage(QImage(":/icons/myntatext")));
-        m_toolbar->setMaximumWidth(65);
+        m_toolbar->setMinimumWidth(56);
+        m_toolbar->setMaximumWidth(56);
         m_toolbar->setToolButtonStyle(Qt::ToolButtonIconOnly);
     }
     else {
         labelToolbar->setPixmap(QPixmap::fromImage(QImage(":/icons/myntacoinfulltext")));
-        m_toolbar->setMinimumWidth(labelToolbar->width());
-        m_toolbar->setMaximumWidth(255);
+        m_toolbar->setMinimumWidth(260);
+        m_toolbar->setMaximumWidth(260);
         m_toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);        
     }
 }
@@ -1094,6 +1153,8 @@ void MyntaGUI::setWalletActionsEnabled(bool enabled)
     messagingAction->setEnabled(false);
     votingAction->setEnabled(false);
     restrictedAssetAction->setEnabled(false);
+    masternodeAction->setEnabled(enabled);
+    donateAction->setEnabled(enabled);
     /** MYNTA END */
 }
 
@@ -1268,6 +1329,18 @@ void MyntaGUI::gotoRestrictedAssetsPage()
 {
     restrictedAssetAction->setChecked(true);
     if (walletFrame) walletFrame->gotoRestrictedAssetsPage();
+};
+
+void MyntaGUI::gotoMasternodePage()
+{
+    masternodeAction->setChecked(true);
+    if (walletFrame) walletFrame->gotoMasternodePage();
+};
+
+void MyntaGUI::gotoDonatePage()
+{
+    donateAction->setChecked(true);
+    if (walletFrame) walletFrame->gotoDonatePage();
 };
 /** MYNTA END */
 #endif // ENABLE_WALLET

@@ -1,0 +1,1119 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MasternodePage</class>
+ <widget class="QWidget" name="MasternodePage">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>900</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Masternodes</string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="leftMargin">
+    <number>20</number>
+   </property>
+   <property name="topMargin">
+    <number>20</number>
+   </property>
+   <property name="rightMargin">
+    <number>20</number>
+   </property>
+   <property name="bottomMargin">
+    <number>20</number>
+   </property>
+   <item>
+    <layout class="QHBoxLayout" name="headerLayout">
+     <item>
+      <widget class="QLabel" name="pageTitle">
+       <property name="font">
+        <font>
+         <pointsize>14</pointsize>
+         <weight>75</weight>
+         <bold>true</bold>
+        </font>
+       </property>
+       <property name="text">
+        <string>🖥️ Masternodes</string>
+       </property>
+       <property name="toolTip">
+        <string>Masternodes are special servers that help the Mynta network process transactions faster and more securely. Running one earns you rewards!</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="headerSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="totalCountLabel">
+       <property name="text">
+        <string>Total: 0</string>
+       </property>
+       <property name="toolTip">
+        <string>The total number of masternodes currently registered on the entire Mynta network worldwide</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="enabledCountLabel">
+       <property name="text">
+        <string>Enabled: 0</string>
+       </property>
+       <property name="toolTip">
+        <string>How many masternodes are currently online and actively helping secure the network. A healthy network has most masternodes enabled.</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="myCountLabel">
+       <property name="text">
+        <string>My Masternodes: 0</string>
+       </property>
+       <property name="toolTip">
+        <string>The number of masternodes YOU own and control from this wallet. These are earning rewards for you!</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="refreshButton">
+       <property name="text">
+        <string>🔄 Refresh</string>
+       </property>
+       <property name="toolTip">
+        <string>Click to get the latest masternode information from the network. This updates all the lists below with current data.</string>
+       </property>
+       <property name="icon">
+        <iconset resource="../mynta.qrc">
+         <normaloff>:/icons/refresh</normaloff>:/icons/refresh</iconset>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="Line" name="headerLine">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <!-- Tab 0: My Masternodes -->
+     <widget class="QWidget" name="myMasternodesTab">
+      <attribute name="title">
+       <string>📊 My Masternodes</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="myMasternodesLayout">
+       <item>
+        <widget class="QFrame" name="myMasternodesInfoFrame">
+         <property name="styleSheet">
+          <string>QFrame { background-color: rgba(245, 158, 11, 0.1); border-radius: 6px; padding: 6px; margin-bottom: 5px; }</string>
+         </property>
+         <layout class="QHBoxLayout" name="myMasternodesInfoLayout">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <property name="leftMargin">
+           <number>8</number>
+          </property>
+          <property name="topMargin">
+           <number>4</number>
+          </property>
+          <property name="rightMargin">
+           <number>8</number>
+          </property>
+          <property name="bottomMargin">
+           <number>4</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="myMasternodesDescription">
+            <property name="text">
+             <string>📋 Your masternodes linked through owner/payout address. 💡 ENABLED = working &amp; earning. BANNED = issue to resolve.</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="styleSheet">
+             <string>background: transparent; font-size: 11px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QTableView" name="myMasternodesTable">
+         <property name="alternatingRowColors">
+          <bool>true</bool>
+         </property>
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+         <property name="selectionBehavior">
+          <enum>QAbstractItemView::SelectRows</enum>
+         </property>
+         <property name="sortingEnabled">
+          <bool>true</bool>
+         </property>
+         <property name="toolTip">
+          <string>This table shows all your masternodes. Click on any row to see more details. Right-click for additional options like copying the ProTxHash.</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <!-- Tab 1: Network Masternodes -->
+     <widget class="QWidget" name="networkTab">
+      <attribute name="title">
+       <string>🌐 Network</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="networkLayout">
+       <item>
+        <widget class="QFrame" name="networkInfoFrame">
+         <property name="styleSheet">
+          <string>QFrame { background-color: rgba(59, 130, 246, 0.1); border-radius: 6px; padding: 6px; margin-bottom: 5px; }</string>
+         </property>
+         <layout class="QHBoxLayout" name="networkInfoLayout">
+          <property name="leftMargin">
+           <number>8</number>
+          </property>
+          <property name="topMargin">
+           <number>4</number>
+          </property>
+          <property name="rightMargin">
+           <number>8</number>
+          </property>
+          <property name="bottomMargin">
+           <number>4</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="networkDescription">
+            <property name="text">
+             <string>🌍 All masternodes on the Mynta network. 💡 More masternodes = more security and faster transactions.</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="styleSheet">
+             <string>background: transparent; font-size: 11px;</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="searchLayout">
+         <item>
+          <widget class="QLabel" name="searchLabel">
+           <property name="text">
+            <string>🔍 Search:</string>
+           </property>
+           <property name="toolTip">
+            <string>Search through all network masternodes</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="searchLineEdit">
+           <property name="placeholderText">
+            <string>Type to filter by ProTxHash, IP address, or payout address...</string>
+           </property>
+           <property name="clearButtonEnabled">
+            <bool>true</bool>
+           </property>
+           <property name="toolTip">
+            <string>Start typing to filter the masternode list. You can search by:
+• ProTxHash - The unique identifier for each masternode
+• IP Address - The server's internet address (e.g., 192.168.1.1)
+• Payout Address - The MYNTA address receiving rewards</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTableView" name="networkMasternodesTable">
+         <property name="alternatingRowColors">
+          <bool>true</bool>
+         </property>
+         <property name="selectionMode">
+          <enum>QAbstractItemView::SingleSelection</enum>
+         </property>
+         <property name="selectionBehavior">
+          <enum>QAbstractItemView::SelectRows</enum>
+         </property>
+         <property name="sortingEnabled">
+          <bool>true</bool>
+         </property>
+         <property name="toolTip">
+          <string>All masternodes on the network. Click any row to see details. This helps you understand the network's health and distribution.</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <!-- Tab 2: Register New Masternode -->
+     <widget class="QWidget" name="registerTab">
+      <attribute name="title">
+       <string>➕ Register Masternode</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="registerLayout">
+       <item>
+        <layout class="QHBoxLayout" name="stepsLayout">
+         <item>
+          <widget class="QLabel" name="step1Label">
+           <property name="text">
+            <string>1️⃣ Collateral</string>
+           </property>
+           <property name="toolTip">
+            <string>Step 1: Select the coins you'll "lock up" to prove you're serious about running a masternode. Think of it like a security deposit.</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="stepArrow1">
+           <property name="text">
+            <string>→</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="step2Label">
+           <property name="text">
+            <string>2️⃣ Configuration</string>
+           </property>
+           <property name="toolTip">
+            <string>Step 2: Set up the addresses and keys that control your masternode. This determines who owns it and where rewards go.</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="stepArrow2">
+           <property name="text">
+            <string>→</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="step3Label">
+           <property name="text">
+            <string>3️⃣ Confirm</string>
+           </property>
+           <property name="toolTip">
+            <string>Step 3: Review all your settings before registering. Once submitted, some settings can only be changed with a new transaction.</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="stepArrow3">
+           <property name="text">
+            <string>→</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="step4Label">
+           <property name="text">
+            <string>4️⃣ Complete</string>
+           </property>
+           <property name="toolTip">
+            <string>Step 4: Your masternode registration is broadcast to the network. After confirmation, your masternode goes live!</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="stepsSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="Line" name="stepsLine">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QScrollArea" name="registerScrollArea">
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <widget class="QWidget" name="registerScrollContents">
+          <layout class="QVBoxLayout" name="registerScrollLayout">
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+        <widget class="QStackedWidget" name="wizardStack">
+         <!-- Page 0: Welcome -->
+         <widget class="QWidget" name="welcomePage">
+          <layout class="QVBoxLayout" name="welcomeLayout">
+           <item>
+            <spacer name="welcomeTopSpacer">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="QLabel" name="welcomeTitle">
+             <property name="font">
+              <font>
+               <pointsize>16</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>🚀 Register a New Masternode</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="welcomeInfoFrame">
+             <property name="styleSheet">
+              <string>QFrame { background-color: rgba(245, 158, 11, 0.1); border-radius: 8px; padding: 12px; margin: 10px; }</string>
+             </property>
+             <layout class="QVBoxLayout" name="welcomeInfoLayout">
+              <property name="spacing">
+               <number>4</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="welcomeDescription">
+                <property name="text">
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body style="font-size:11px;"&gt;
+&lt;b&gt;🎉 Congratulations!&lt;/b&gt; This wizard guides you through registering a masternode on Mynta. Masternodes help process transactions and keep the network secure - and you get rewarded!&lt;br/&gt;&lt;br/&gt;
+&lt;b&gt;📋 What you'll need:&lt;/b&gt; • &lt;b&gt;Collateral&lt;/b&gt; - MYNTA locked as a "security deposit" • &lt;b&gt;VPS Server&lt;/b&gt; - Computer running 24/7 with static IP • &lt;b&gt;BLS Keys&lt;/b&gt; - Cryptographic keys (we can generate these!)&lt;br/&gt;&lt;br/&gt;
+&lt;span style="color: #22c55e;"&gt;✅ We'll explain everything along the way!&lt;/span&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="alignment">
+                 <set>Qt::AlignLeft|Qt::AlignTop</set>
+                </property>
+                <property name="styleSheet">
+                 <string>background: transparent; font-size: 11px;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item alignment="Qt::AlignHCenter">
+            <widget class="QPushButton" name="startRegisterButton">
+             <property name="text">
+              <string>🚀 Start Registration</string>
+             </property>
+             <property name="minimumSize">
+              <size>
+               <width>200</width>
+               <height>45</height>
+              </size>
+             </property>
+             <property name="styleSheet">
+              <string>QPushButton { background-color: #f59e0b; color: #0f172a; font-weight: bold; font-size: 14px; border-radius: 8px; } QPushButton:hover { background-color: #fbbf24; }</string>
+             </property>
+             <property name="toolTip">
+              <string>Click here to begin the masternode registration process. We'll guide you through each step!</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="welcomeBottomSpacer">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+         <!-- Page 1: Collateral Selection -->
+         <widget class="QWidget" name="collateralPage">
+          <layout class="QVBoxLayout" name="collateralLayout">
+           <item>
+            <widget class="QLabel" name="collateralTitle">
+             <property name="font">
+              <font>
+               <pointsize>14</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>1️⃣ Step 1: Select Your Collateral</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="collateralInfoFrame">
+             <property name="styleSheet">
+              <string>QFrame { background-color: rgba(59, 130, 246, 0.1); border-radius: 6px; padding: 8px; margin-bottom: 5px; }</string>
+             </property>
+             <layout class="QVBoxLayout" name="collateralInfoLayout">
+              <property name="spacing">
+               <number>2</number>
+              </property>
+              <property name="leftMargin">
+               <number>6</number>
+              </property>
+              <property name="topMargin">
+               <number>4</number>
+              </property>
+              <property name="rightMargin">
+               <number>6</number>
+              </property>
+              <property name="bottomMargin">
+               <number>4</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="collateralDescription">
+                <property name="text">
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body style="font-size:11px;"&gt;
+&lt;b&gt;🔐 What is Collateral?&lt;/b&gt; Collateral is like a "security deposit" that proves you're committed to running your masternode honestly. The coins stay in YOUR wallet - they're just marked as being used for your masternode.&lt;br/&gt;
+&lt;b&gt;📌 Important:&lt;/b&gt; • Collateral must be &lt;b&gt;exactly&lt;/b&gt; the required amount • Coins will be "locked" while your masternode runs • Spending these coins stops your masternode • You can reclaim them by unregistering&lt;br/&gt;
+&lt;b&gt;💡 Example:&lt;/b&gt; If collateral is 10,000 MYNTA, you need a single output of exactly 10,000 MYNTA (not 5,000 + 5,000).
+&lt;/body&gt;&lt;/html&gt;</string>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="styleSheet">
+                 <string>background: transparent; font-size: 11px;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="collateralSelectLayout">
+             <item>
+              <widget class="QLabel" name="collateralSelectLabel">
+               <property name="text">
+                <string>Select Collateral:</string>
+               </property>
+               <property name="toolTip">
+                <string>Choose which coins to use as your masternode collateral. Only outputs with exactly the required amount are shown.</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QComboBox" name="collateralComboBox">
+               <property name="minimumSize">
+                <size>
+                 <width>400</width>
+                 <height>0</height>
+                </size>
+               </property>
+               <property name="toolTip">
+                <string>This dropdown shows all your wallet outputs that have exactly the required collateral amount. 
+Each entry shows: Transaction ID (first 16 chars) : Output Index (Amount) - Address
+
+If this is empty, you need to create a collateral output first:
+1. Go to Send tab
+2. Send the exact collateral amount to one of your own addresses
+3. Wait for 15 confirmations
+4. Come back here and click Refresh</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="selectCollateralButton">
+               <property name="text">
+                <string>✓ Select</string>
+               </property>
+               <property name="toolTip">
+                <string>Click to confirm your collateral selection. This locks in your choice for the next step.</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <widget class="QLabel" name="selectedCollateralLabel">
+             <property name="text">
+              <string>Selected: None</string>
+             </property>
+             <property name="styleSheet">
+              <string>color: #f59e0b; font-weight: bold; padding: 10px;</string>
+             </property>
+             <property name="toolTip">
+              <string>Shows which collateral you've selected. This will be your masternode's "security deposit".</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="collateralSpacer">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>40</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+         <!-- Page 2: Address & Keys Configuration -->
+         <widget class="QWidget" name="configPage">
+          <layout class="QVBoxLayout" name="configLayout">
+           <item>
+            <widget class="QLabel" name="configTitle">
+             <property name="font">
+              <font>
+               <pointsize>14</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>2️⃣ Step 2: Configure Addresses &amp; Keys</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QScrollArea" name="configScrollArea">
+             <property name="widgetResizable">
+              <bool>true</bool>
+             </property>
+             <widget class="QWidget" name="configScrollContents">
+              <layout class="QVBoxLayout" name="configContentLayout">
+               <!-- Addresses Section -->
+               <item>
+                <widget class="QGroupBox" name="addressesGroup">
+                 <property name="title">
+                  <string>📍 Addresses - Who Controls What</string>
+                 </property>
+                 <property name="toolTip">
+                  <string>These addresses determine who can control, vote with, and receive rewards from your masternode.</string>
+                 </property>
+                 <layout class="QFormLayout" name="addressesFormLayout">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="ownerAddressLabel">
+                    <property name="text">
+                     <string>👑 Owner Address:</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>The "boss" address - whoever has the private key for this address owns the masternode and can update its settings.</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QLineEdit" name="ownerAddressEdit">
+                    <property name="placeholderText">
+                     <string>Enter a MYNTA address from your wallet (this is the "boss")</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;👑 Owner Address - The Boss&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;This address has ultimate control over your masternode. Whoever holds the private key can:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Update masternode settings&lt;/li&gt;
+&lt;li&gt;Change the operator or payout address&lt;/li&gt;
+&lt;li&gt;Revoke the masternode registration&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;💡 Best Practice:&lt;/b&gt; Use an address from THIS wallet so you maintain full control.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Example:&lt;/b&gt; MYNTAabc123def456...&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QLabel" name="votingAddressLabel">
+                    <property name="text">
+                     <string>🗳️ Voting Address:</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>This address can vote on network proposals. Leave empty to use the owner address.</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QLineEdit" name="votingAddressEdit">
+                    <property name="placeholderText">
+                     <string>(Optional) Leave blank to use owner address for voting</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;🗳️ Voting Address - Your Voice&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;This address can vote on governance proposals for the Mynta network.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;When to use a different voting address:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;You want someone else (like a delegate) to vote on your behalf&lt;/li&gt;
+&lt;li&gt;You want to keep voting separate from ownership for security&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;💡 For most users:&lt;/b&gt; Leave this blank - it will automatically use your owner address.&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="payoutAddressLabel">
+                    <property name="text">
+                     <string>💰 Payout Address:</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>This is where your masternode rewards will be sent! Make sure you control this address.</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QLineEdit" name="payoutAddressEdit">
+                    <property name="placeholderText">
+                     <string>Where should your masternode rewards be sent?</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;💰 Payout Address - Your Rewards!&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;This is the address where you'll receive your masternode rewards. Every time your masternode is selected to process transactions, the reward goes here!&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;⚠️ Important:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Make sure you control this address!&lt;/li&gt;
+&lt;li&gt;Can be the same as owner address, or different&lt;/li&gt;
+&lt;li&gt;You can change this later if needed&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;💡 Example:&lt;/b&gt; Use a receiving address from this wallet's Receive tab.&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <!-- Server Section -->
+               <item>
+                <widget class="QGroupBox" name="serverGroup">
+                 <property name="title">
+                  <string>🖥️ Server Information</string>
+                 </property>
+                 <property name="toolTip">
+                  <string>Information about the server that will run your masternode software.</string>
+                 </property>
+                 <layout class="QFormLayout" name="serverFormLayout">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="serviceAddressLabel">
+                    <property name="text">
+                     <string>🌐 Server IP:Port:</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>The IP address and port where your masternode server is running.</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QLineEdit" name="serviceAddressEdit">
+                    <property name="placeholderText">
+                     <string>e.g., 123.456.789.012:12024</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;🌐 Service Address - Your Server's Location&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;This is how other nodes on the network will find and communicate with your masternode.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Format:&lt;/b&gt; IP_ADDRESS:PORT&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Examples:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;123.45.67.89:12024 (IPv4)&lt;/li&gt;
+&lt;li&gt;[2001:db8::1]:12024 (IPv6)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;⚠️ Requirements:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;Must be a static (unchanging) public IP address&lt;/li&gt;
+&lt;li&gt;The port must be open and accessible from the internet&lt;/li&gt;
+&lt;li&gt;Your VPS/server must be running the masternode software&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;💡 Tip:&lt;/b&gt; The default port for Mynta mainnet is 12024. For testnet, it's 12026.&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QLabel" name="operatorRewardLabel">
+                    <property name="text">
+                     <string>📊 Operator Reward %:</string>
+                    </property>
+                    <property name="toolTip">
+                     <string>If someone else is operating your masternode, what percentage of rewards should they get?</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QDoubleSpinBox" name="operatorRewardSpinBox">
+                    <property name="maximum">
+                     <double>100.000000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.000000000000000</double>
+                    </property>
+                    <property name="toolTip">
+                     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;📊 Operator Reward Percentage&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;This is useful if you're paying someone else to run your masternode for you.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;How it works:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;0% = You keep all rewards (most common for self-operated nodes)&lt;/li&gt;
+&lt;li&gt;10% = Operator gets 10%, you get 90% of each reward&lt;/li&gt;
+&lt;li&gt;100% = Operator gets everything (rare, for hosted services)&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;💡 For most users:&lt;/b&gt; Leave this at 0% if you're running your own server.&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <!-- BLS Keys Section -->
+               <item>
+                <widget class="QGroupBox" name="blsGroup">
+                 <property name="title">
+                  <string>🔑 BLS Keys - Cryptographic Security</string>
+                 </property>
+                 <property name="toolTip">
+                  <string>BLS keys are special cryptographic keys that your masternode uses to sign messages and prove its identity on the network.</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="blsGroupLayout">
+                  <item>
+                   <widget class="QLabel" name="blsExplanation">
+                    <property name="text">
+                     <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;🔐 &lt;b&gt;What are BLS Keys?&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;BLS (Boneh-Lynn-Shacham) keys are special cryptographic keys that allow your masternode to participate in network operations securely. Think of them like a digital signature that proves your masternode's identity.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;• Public Key:&lt;/b&gt; Safe to share - goes in the registration&lt;br/&gt;
+&lt;b&gt;• Secret Key:&lt;/b&gt; NEVER share this! Put it in your server's config&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                    </property>
+                    <property name="wordWrap">
+                     <bool>true</bool>
+                    </property>
+                    <property name="styleSheet">
+                     <string>background-color: rgba(245, 158, 11, 0.1); border-radius: 6px; padding: 10px;</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <layout class="QFormLayout" name="blsFormLayout">
+                    <item row="0" column="0">
+                     <widget class="QLabel" name="blsPublicKeyLabel">
+                      <property name="text">
+                       <string>🔓 BLS Public Key:</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="0" column="1">
+                     <widget class="QLineEdit" name="blsPublicKeyEdit">
+                      <property name="placeholderText">
+                       <string>Click "Generate BLS Keys" or paste an existing public key</string>
+                      </property>
+                      <property name="toolTip">
+                       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;🔓 BLS Public Key&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;This is the "identity card" your masternode shows to the network. It's safe to share and will be stored on the blockchain.&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;Options:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;b&gt;Generate New:&lt;/b&gt; Click the button below to create fresh keys&lt;/li&gt;
+&lt;li&gt;&lt;b&gt;Use Existing:&lt;/b&gt; If you already generated keys on your server, paste the public key here&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;💡 Tip:&lt;/b&gt; If you're setting up a new masternode, generating keys here is the easiest option.&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="1" column="0">
+                     <widget class="QLabel" name="blsSecretKeyLabel">
+                      <property name="text">
+                       <string>🔒 BLS Secret Key:</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="1" column="1">
+                     <widget class="QLineEdit" name="blsSecretKeyEdit">
+                      <property name="readOnly">
+                       <bool>true</bool>
+                      </property>
+                      <property name="placeholderText">
+                       <string>Will appear here after generating - SAVE THIS SECURELY!</string>
+                      </property>
+                      <property name="toolTip">
+                       <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;🔒 BLS Secret Key - TOP SECRET!&lt;/b&gt;&lt;/p&gt;
+&lt;p style="color: #ef4444;"&gt;&lt;b&gt;⚠️ CRITICAL SECURITY WARNING&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;This key is like the password to your masternode's identity. Anyone with this key can impersonate your masternode!&lt;/p&gt;
+&lt;p&gt;&lt;b&gt;DO:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;✅ Copy this key and store it securely (password manager, encrypted file)&lt;/li&gt;
+&lt;li&gt;✅ Put this in your masternode server's mynta.conf file&lt;/li&gt;
+&lt;li&gt;✅ Keep a backup in a safe place&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;&lt;b&gt;DON'T:&lt;/b&gt;&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;❌ Share this with anyone&lt;/li&gt;
+&lt;li&gt;❌ Post this online or in chat&lt;/li&gt;
+&lt;li&gt;❌ Store this in plain text on shared computers&lt;/li&gt;
+&lt;/ul&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                      </property>
+                      <property name="styleSheet">
+                       <string>background-color: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444;</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item row="2" column="1">
+                     <widget class="QPushButton" name="generateBlsButton">
+                      <property name="text">
+                       <string>🔑 Generate BLS Keys</string>
+                      </property>
+                      <property name="toolTip">
+                       <string>Click to generate a new pair of BLS keys. The public key will be used for registration, and the secret key must be saved and put in your server's configuration.</string>
+                      </property>
+                      <property name="styleSheet">
+                       <string>QPushButton { background-color: #3b82f6; color: white; font-weight: bold; padding: 8px 16px; border-radius: 4px; } QPushButton:hover { background-color: #2563eb; }</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+         <!-- Page 3: Confirmation -->
+         <widget class="QWidget" name="confirmPage">
+          <layout class="QVBoxLayout" name="confirmLayout">
+           <item>
+            <widget class="QLabel" name="confirmTitle">
+             <property name="font">
+              <font>
+               <pointsize>14</pointsize>
+               <weight>75</weight>
+               <bold>true</bold>
+              </font>
+             </property>
+             <property name="text">
+              <string>3️⃣ Step 3: Review &amp; Confirm</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="confirmInfoFrame">
+             <property name="styleSheet">
+              <string>QFrame { background-color: rgba(34, 197, 94, 0.1); border-radius: 8px; padding: 10px; margin-bottom: 10px; }</string>
+             </property>
+             <layout class="QVBoxLayout" name="confirmInfoLayout">
+              <item>
+               <widget class="QLabel" name="confirmDescription">
+                <property name="text">
+                 <string>✅ Almost there! Please review your masternode configuration carefully before submitting.
+
+Once you click "Register Masternode", a transaction will be sent to the network. Some settings can be changed later, but it's best to get them right the first time!</string>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="styleSheet">
+                 <string>background: transparent;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPlainTextEdit" name="confirmationSummary">
+             <property name="readOnly">
+              <bool>true</bool>
+             </property>
+             <property name="toolTip">
+              <string>This summary shows all the details of your masternode registration. Review each line carefully before proceeding.</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QFrame" name="warningFrame">
+             <property name="styleSheet">
+              <string>QFrame { background-color: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; border-radius: 8px; padding: 15px; }</string>
+             </property>
+             <layout class="QHBoxLayout" name="warningLayout">
+              <item>
+               <widget class="QLabel" name="confirmWarning">
+                <property name="text">
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;
+&lt;p&gt;&lt;b&gt;⚠️ CRITICAL: Save Your BLS Secret Key!&lt;/b&gt;&lt;/p&gt;
+&lt;p&gt;Before clicking Register, make sure you have:&lt;/p&gt;
+&lt;ul&gt;
+&lt;li&gt;✅ Copied your BLS secret key to a safe place&lt;/li&gt;
+&lt;li&gt;✅ Ready to add it to your server's mynta.conf file&lt;/li&gt;
+&lt;/ul&gt;
+&lt;p&gt;Without the secret key, your masternode won't be able to operate!&lt;/p&gt;
+&lt;/body&gt;&lt;/html&gt;</string>
+                </property>
+                <property name="wordWrap">
+                 <bool>true</bool>
+                </property>
+                <property name="styleSheet">
+                 <string>background: transparent; color: #fca5a5;</string>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="Line" name="wizardBottomLine">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="wizardButtonsLayout">
+         <item>
+          <widget class="QPushButton" name="backButton">
+           <property name="text">
+            <string>← Back</string>
+           </property>
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="toolTip">
+            <string>Go back to the previous step to make changes</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="wizardButtonsSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="nextButton">
+           <property name="text">
+            <string>Next →</string>
+           </property>
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="toolTip">
+            <string>Continue to the next step after completing this one</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="registerButton">
+           <property name="text">
+            <string>🚀 Register Masternode</string>
+           </property>
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>160</width>
+             <height>32</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>200</width>
+             <height>36</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string>QPushButton { background-color: #22c55e; color: white; font-weight: bold; padding: 6px 12px; border-radius: 4px; font-size: 12px; } QPushButton:hover { background-color: #16a34a; } QPushButton:disabled { background-color: #4b5563; color: #9ca3af; }</string>
+           </property>
+           <property name="toolTip">
+            <string>Submit your masternode registration to the network. This will create a transaction that registers your masternode on the blockchain!</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../mynta.qrc"/>
+ </resources>
+ <connections/>
+</ui>

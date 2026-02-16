@@ -5,13 +5,12 @@
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
-#include <memory>
 #include <QtCore/qbytearray.h>
 #include <QtCore/qmetatype.h>
 #if !defined(Q_MOC_OUTPUT_REVISION)
 #error "The header file 'overviewpage.cpp' doesn't include <QObject>."
 #elif Q_MOC_OUTPUT_REVISION != 67
-#error "This file was generated using the moc from 5.15.17. It"
+#error "This file was generated using the moc from 5.12.11. It"
 #error "cannot be used with the include files from this version of Qt."
 #error "(The moc has changed too much.)"
 #endif
@@ -55,14 +54,14 @@ static const uint qt_meta_data_TxViewDelegate[] = {
 
 void TxViewDelegate::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
-    (void)_o;
-    (void)_id;
-    (void)_c;
-    (void)_a;
+    Q_UNUSED(_o);
+    Q_UNUSED(_id);
+    Q_UNUSED(_c);
+    Q_UNUSED(_a);
 }
 
 QT_INIT_METAOBJECT const QMetaObject TxViewDelegate::staticMetaObject = { {
-    QMetaObject::SuperData::link<QAbstractItemDelegate::staticMetaObject>(),
+    &QAbstractItemDelegate::staticMetaObject,
     qt_meta_stringdata_TxViewDelegate.data,
     qt_meta_data_TxViewDelegate,
     qt_static_metacall,
@@ -125,14 +124,14 @@ static const uint qt_meta_data_AssetViewDelegate[] = {
 
 void AssetViewDelegate::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
-    (void)_o;
-    (void)_id;
-    (void)_c;
-    (void)_a;
+    Q_UNUSED(_o);
+    Q_UNUSED(_id);
+    Q_UNUSED(_c);
+    Q_UNUSED(_a);
 }
 
 QT_INIT_METAOBJECT const QMetaObject AssetViewDelegate::staticMetaObject = { {
-    QMetaObject::SuperData::link<QAbstractItemDelegate::staticMetaObject>(),
+    &QAbstractItemDelegate::staticMetaObject,
     qt_meta_stringdata_AssetViewDelegate.data,
     qt_meta_data_AssetViewDelegate,
     qt_static_metacall,

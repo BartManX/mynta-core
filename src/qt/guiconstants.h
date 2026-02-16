@@ -115,7 +115,7 @@ static const int MAX_URI_LENGTH = 255;
 #define SPINNER_FRAMES 36
 
 #define QAPP_ORG_NAME "Mynta"
-#define QAPP_ORG_DOMAIN "mynta.network"
+#define QAPP_ORG_DOMAIN "myntacoin.org"
 #define QAPP_APP_NAME_DEFAULT "Mynta-Qt"
 #define QAPP_APP_NAME_TESTNET "Mynta-Qt-testnet"
 

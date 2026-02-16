@@ -24,6 +24,8 @@
 #include "createassetdialog.h"
 #include "reissueassetdialog.h"
 #include "restrictedassetsdialog.h"
+#include "masternodepage.h"
+#include "donatepage.h"
 #include <validation.h>
 
 #include "ui_interface.h"
@@ -67,6 +69,8 @@ WalletView::WalletView(const PlatformStyle *_platformStyle, QWidget *parent):
     createAssetsPage = new CreateAssetDialog(platformStyle);
     manageAssetsPage = new ReissueAssetDialog(platformStyle);
     restrictedAssetsPage = new RestrictedAssetsDialog(platformStyle);
+    masternodePage = new MasternodePage(platformStyle);
+    donatePage = new DonatePage(platformStyle);
 
     usedSendingAddressesPage = new AddressBookPage(platformStyle, AddressBookPage::ForEditing, AddressBookPage::SendingTab, this);
     usedReceivingAddressesPage = new AddressBookPage(platformStyle, AddressBookPage::ForEditing, AddressBookPage::ReceivingTab, this);
@@ -81,6 +85,8 @@ WalletView::WalletView(const PlatformStyle *_platformStyle, QWidget *parent):
     addWidget(createAssetsPage);
     addWidget(manageAssetsPage);
     addWidget(restrictedAssetsPage);
+    addWidget(masternodePage);
+    addWidget(donatePage);
     /** MYNTA END */
 
     // Clicking on a transaction on the overview pre-selects the transaction on the transaction history page
@@ -107,6 +113,9 @@ WalletView::WalletView(const PlatformStyle *_platformStyle, QWidget *parent):
     connect(overviewPage, SIGNAL(assetIssueSubClicked(QModelIndex)), createAssetsPage, SLOT(focusSubAsset(QModelIndex)));
     connect(overviewPage, SIGNAL(assetIssueUniqueClicked(QModelIndex)), createAssetsPage, SLOT(focusUniqueAsset(QModelIndex)));
     connect(overviewPage, SIGNAL(assetReissueClicked(QModelIndex)), manageAssetsPage, SLOT(focusReissueAsset(QModelIndex)));
+    
+    // Donate page: clicking custom amount goes to send page with address pre-filled
+    connect(donatePage, SIGNAL(gotoSendCoinsPageWithAddress(QString)), this, SLOT(gotoSendCoinsPage(QString)));
     /** RNV END */
 }
 
@@ -156,6 +165,7 @@ void WalletView::setClientModel(ClientModel *_clientModel)
 
     overviewPage->setClientModel(_clientModel);
     sendCoinsPage->setClientModel(_clientModel);
+    masternodePage->setClientModel(_clientModel);
 }
 
 void WalletView::setWalletModel(WalletModel *_walletModel)
@@ -175,6 +185,8 @@ void WalletView::setWalletModel(WalletModel *_walletModel)
     createAssetsPage->setModel(_walletModel);
     manageAssetsPage->setModel(_walletModel);
     restrictedAssetsPage->setModel(_walletModel);
+    masternodePage->setWalletModel(_walletModel);
+    donatePage->setWalletModel(_walletModel);
 
     if (_walletModel)
     {
@@ -450,5 +462,15 @@ void WalletView::gotoManageAssetsPage()
 void WalletView::gotoRestrictedAssetsPage()
 {
     setCurrentWidget(restrictedAssetsPage);
+}
+
+void WalletView::gotoMasternodePage()
+{
+    setCurrentWidget(masternodePage);
+}
+
+void WalletView::gotoDonatePage()
+{
+    setCurrentWidget(donatePage);
 }
 /** MYNTA END */
