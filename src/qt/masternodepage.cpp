@@ -364,10 +364,10 @@ void MasternodePage::onStartRegisterClicked()
         return;
     }
     
-    // Check if wallet is locked
-    if (walletModel->getEncryptionStatus() == WalletModel::Locked) {
-        QMessageBox::warning(this, tr("Error"), 
-            tr("Please unlock your wallet before registering a masternode."));
+    // Request wallet unlock if needed
+    WalletModel::UnlockContext ctx(walletModel->requestUnlock());
+    if (!ctx.isValid()) {
+        // User cancelled unlock dialog
         return;
     }
     
@@ -604,6 +604,13 @@ void MasternodePage::onRegisterMasternodeClicked()
 {
     if (!walletModel)
         return;
+    
+    // Request wallet unlock if needed
+    WalletModel::UnlockContext ctx(walletModel->requestUnlock());
+    if (!ctx.isValid()) {
+        // User cancelled unlock dialog
+        return;
+    }
     
     // Confirm registration
     QMessageBox::StandardButton confirm = QMessageBox::question(this, 
