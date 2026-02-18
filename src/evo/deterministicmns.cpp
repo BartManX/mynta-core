@@ -263,20 +263,42 @@ uint256 CDeterministicMNList::GetOperatorKeyHash(const std::vector<unsigned char
 
 std::vector<CDeterministicMNCPtr> CDeterministicMNList::GetValidMNsForPayment() const
 {
+    return GetValidMNsForPayment(nHeight);
+}
+
+std::vector<CDeterministicMNCPtr> CDeterministicMNList::GetValidMNsForPayment(int currentHeight) const
+{
+    const auto& consensusParams = GetParams().GetConsensus();
     std::vector<CDeterministicMNCPtr> result;
+    
     for (const auto& pair : mnMap) {
-        if (pair.second->IsValid()) {
-            result.push_back(pair.second);
+        if (!pair.second->IsValid()) {
+            continue;
         }
+        
+        // CRITICAL FIX: Require confirmations before eligible for payment
+        // A masternode must have sufficient confirmations on its registration
+        // to prevent consensus issues with newly registered masternodes
+        int confirmations = currentHeight - pair.second->state.nRegisteredHeight;
+        if (confirmations < consensusParams.nMasternodeCollateralConfirmations) {
+            LogPrint(BCLog::MASTERNODE, "GetValidMNsForPayment: MN %s not mature yet (%d/%d confirmations)\n",
+                     pair.second->proTxHash.ToString().substr(0, 16),
+                     confirmations,
+                     consensusParams.nMasternodeCollateralConfirmations);
+            continue;
+        }
+        
+        result.push_back(pair.second);
     }
     return result;
 }
 
 CDeterministicMNCPtr CDeterministicMNList::GetMNPayee(const uint256& blockHashForPayment, int currentHeight) const
 {
-    // Get all valid masternodes
-    std::vector<CDeterministicMNCPtr> validMNs = GetValidMNsForPayment();
+    // Get all valid masternodes with sufficient confirmations
+    std::vector<CDeterministicMNCPtr> validMNs = GetValidMNsForPayment(currentHeight);
     if (validMNs.empty()) {
+        LogPrint(BCLog::MASTERNODE, "GetMNPayee: No valid masternodes eligible for payment at height %d\n", currentHeight);
         return nullptr;
     }
 
@@ -295,6 +317,11 @@ CDeterministicMNCPtr CDeterministicMNList::GetMNPayee(const uint256& blockHashFo
             lowestScore = score;
             first = false;
         }
+    }
+
+    if (winner) {
+        LogPrint(BCLog::MASTERNODE, "GetMNPayee: Selected MN %s for payment at height %d\n",
+                 winner->proTxHash.ToString().substr(0, 16), currentHeight);
     }
 
     return winner;
