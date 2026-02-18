@@ -632,8 +632,12 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
     {
         // Determine which masternode should have been paid in this block
         // We use the previous list since we need the state before this block
-        if (prevList && prevList->GetValidMNsCount() > 0) {
-            CDeterministicMNCPtr payee = prevList->GetMNPayee(pindex->GetBlockHash(), pindex->nHeight);
+        // 
+        // CRITICAL: Must use the PREVIOUS block's hash as entropy, matching
+        // what getblocktemplate does when building the block. This ensures
+        // the winner calculation is consistent between block creation and validation.
+        if (prevList && prevList->GetValidMNsCount() > 0 && pindex->pprev) {
+            CDeterministicMNCPtr payee = prevList->GetMNPayee(pindex->pprev->GetBlockHash(), pindex->nHeight);
             if (payee) {
                 // Update the paid masternode's last paid height
                 auto paidMN = newList.GetMN(payee->proTxHash);
