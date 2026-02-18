@@ -207,6 +207,7 @@ public:
 
     // Get valid masternodes for payment
     std::vector<CDeterministicMNCPtr> GetValidMNsForPayment() const;
+    std::vector<CDeterministicMNCPtr> GetValidMNsForPayment(int currentHeight) const;
 
     // Calculate which masternode should be paid
     // Uses current height for fair payment rotation based on last paid height

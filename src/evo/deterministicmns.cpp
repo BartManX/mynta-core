@@ -789,8 +789,10 @@ CDeterministicMNCPtr CDeterministicMNManager::GetMNPayee(const CBlockIndex* pind
     auto list = const_cast<CDeterministicMNManager*>(this)->GetListForBlock(pindex);
     if (!list) return nullptr;
     
-    // Pass the height to enable fair payment rotation
-    return list->GetMNPayee(pindex->GetBlockHash(), pindex->nHeight);
+    // CRITICAL: Pass the NEXT block's height (pindex->nHeight + 1)
+    // This is the block we're building/validating, not the previous block
+    // The confirmation check must validate against the NEW block height
+    return list->GetMNPayee(pindex->GetBlockHash(), pindex->nHeight + 1);
 }
 
 void CDeterministicMNManager::UpdatedBlockTip(const CBlockIndex* pindexNew, const CBlockIndex* pindexFork, bool fInitialDownload)
