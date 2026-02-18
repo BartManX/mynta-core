@@ -715,7 +715,14 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
     result.push_back(Pair("previousblockhash", pblock->hashPrevBlock.GetHex()));
     result.push_back(Pair("transactions", transactions));
     result.push_back(Pair("coinbaseaux", aux));
-    result.push_back(Pair("coinbasevalue", (int64_t)pblock->vtx[0]->vout[0].nValue));
+    // BIP22: coinbasevalue = total coinbase budget (subsidy + fees)
+    {
+        CAmount nCoinbaseValue = 0;
+        for (const auto& txout : pblock->vtx[0]->vout) {
+            nCoinbaseValue += txout.nValue;
+        }
+        result.push_back(Pair("coinbasevalue", (int64_t)nCoinbaseValue));
+    }
     
     // Dev allocation info for mining pools
     // Pools MUST include a dev allocation output in the coinbase transaction
