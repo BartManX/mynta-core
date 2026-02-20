@@ -20,6 +20,7 @@
 #include "utilmoneystr.h"
 #include "utiltime.h"
 #include "hash.h"
+#include "evo/providertx.h"
 
 CTxMemPoolEntry::CTxMemPoolEntry(const CTransactionRef& _tx, const CAmount& _nFee,
                                  int64_t _nTime, unsigned int _entryHeight,
@@ -818,6 +819,25 @@ void CTxMemPool::removeForReorg(const CCoinsViewCache *pcoins, unsigned int nMem
             mapTx.modify(it, update_lock_points(lp));
         }
     }
+
+    // Re-validate special transactions (ProRegTx, ProUpServTx, etc.) against
+    // the post-reorg chain state.  After a reorg, collateral UTXOs or service
+    // addresses referenced by these txs may no longer be valid.
+    {
+        const CBlockIndex* pindexPrev = chainActive.Tip();
+        for (indexed_transaction_set::const_iterator it = mapTx.begin(); it != mapTx.end(); it++) {
+            const CTransaction& tx = it->GetTx();
+            if (IsTxTypeSpecial(tx)) {
+                CValidationState state;
+                if (!CheckSpecialTx(tx, pindexPrev, state, nullptr, pcoins)) {
+                    LogPrint(BCLog::MEMPOOL, "removeForReorg: evicting stale special tx %s (%s)\n",
+                             tx.GetHash().ToString(), state.GetRejectReason());
+                    txToRemove.insert(it);
+                }
+            }
+        }
+    }
+
     setEntries setAllRemoves;
     for (txiter it : txToRemove) {
         CalculateDescendants(it, setAllRemoves);
