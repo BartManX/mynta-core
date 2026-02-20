@@ -1036,6 +1036,38 @@ void CTxMemPool::removeForBlock(const std::vector<CTransactionRef>& vtx, unsigne
     blockSinceLastRollingFeeBump = true;
 }
 
+void CTxMemPool::removeStaleSpecialTx(const CCoinsViewCache* pcoins)
+{
+    LOCK(cs);
+    setEntries txToRemove;
+
+    const CBlockIndex* pindexPrev = chainActive.Tip();
+    if (!pindexPrev)
+        return;
+
+    for (indexed_transaction_set::const_iterator it = mapTx.begin(); it != mapTx.end(); it++) {
+        const CTransaction& tx = it->GetTx();
+        if (IsTxTypeSpecial(tx)) {
+            CValidationState state;
+            if (!CheckSpecialTx(tx, pindexPrev, state, nullptr, pcoins)) {
+                LogPrint(BCLog::MEMPOOL, "removeStaleSpecialTx: evicting invalid special tx %s (%s)\n",
+                         tx.GetHash().ToString(), state.GetRejectReason());
+                txToRemove.insert(it);
+            }
+        }
+    }
+
+    if (!txToRemove.empty()) {
+        setEntries setAllRemoves;
+        for (txiter it : txToRemove) {
+            CalculateDescendants(it, setAllRemoves);
+        }
+        RemoveStaged(setAllRemoves, false, MemPoolRemovalReason::CONFLICT);
+        LogPrint(BCLog::MEMPOOL, "removeStaleSpecialTx: removed %u stale special transactions\n",
+                 setAllRemoves.size());
+    }
+}
+
 void CTxMemPool::_clear()
 {
     mapLinks.clear();

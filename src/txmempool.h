@@ -583,6 +583,7 @@ public:
     void removeConflicts(const CTransaction &tx);
     void removeForBlock(const std::vector<CTransactionRef>& vtx, unsigned int nBlockHeight, ConnectedBlockAssetData& connectedBlockData );
     void removeForBlock(const std::vector<CTransactionRef>& vtx, unsigned int nBlockHeight);
+    void removeStaleSpecialTx(const CCoinsViewCache* pcoins);
 
     void clear();
     void _clear(); //lock free

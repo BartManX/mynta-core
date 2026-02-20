@@ -415,14 +415,14 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
     // Validate collateral amount
     //
     // When called from ConnectBlock, pCoinsView points to the
-    // block-local CCoinsViewCache that already contains the outputs
-    // created by earlier transactions in the same block.  This is
-    // critical: the global pcoinsTip is only flushed AFTER the block
-    // is fully connected, so using it here would miss same-block
-    // collateral outputs.
+    // block-local CCoinsViewCache.  By the time ProcessSpecialTxsInBlock
+    // runs, UpdateCoins has already consumed all tx inputs, so if the
+    // ProRegTx spends its own collateral as an input (self-referencing
+    // pattern), the coin will appear spent in pCoinsView.  In that case
+    // we fall back to pcoinsTip which still has the pre-block state.
     //
     // When called from mempool acceptance (pCoinsView == nullptr),
-    // we fall back to the global pcoinsTip.
+    // we use pcoinsTip directly.
     // ============================================================
     {
         const auto& consensusParams = GetParams().GetConsensus();
@@ -436,20 +436,41 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
 
         const Coin& collateralCoin = coins->AccessCoin(proTx.collateralOutpoint);
 
-        if (collateralCoin.IsSpent()) {
+        const Coin* pCollateral = &collateralCoin;
+        Coin fallbackCoin;
+
+        if (collateralCoin.IsSpent() && pCoinsView && pcoinsTip) {
+            bool spentBySelf = false;
+            for (const auto& txin : tx.vin) {
+                if (txin.prevout == proTx.collateralOutpoint) {
+                    spentBySelf = true;
+                    break;
+                }
+            }
+            if (spentBySelf) {
+                fallbackCoin = pcoinsTip->AccessCoin(proTx.collateralOutpoint);
+                if (!fallbackCoin.IsSpent()) {
+                    pCollateral = &fallbackCoin;
+                    LogPrint(BCLog::MASTERNODE, "CheckProRegTx: collateral %s spent by own input, using pcoinsTip fallback\n",
+                             proTx.collateralOutpoint.ToString());
+                }
+            }
+        }
+
+        if (pCollateral->IsSpent()) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-not-found",
                             false, "Collateral UTXO does not exist or is already spent");
         }
 
-        if (collateralCoin.out.nValue != consensusParams.nMasternodeCollateral) {
+        if (pCollateral->out.nValue != consensusParams.nMasternodeCollateral) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-amount",
                             false, strprintf("Collateral amount must be exactly %d MYNTA, got %d",
                                             consensusParams.nMasternodeCollateral / COIN,
-                                            collateralCoin.out.nValue / COIN));
+                                            pCollateral->out.nValue / COIN));
         }
 
         {
-            int collateralHeight = collateralCoin.nHeight;
+            int collateralHeight = pCollateral->nHeight;
             int currentHeight = pindexPrev ? pindexPrev->nHeight + 1 : 0;
             int confirmations = currentHeight - collateralHeight;
 
@@ -460,7 +481,7 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
             }
 
             LogPrint(BCLog::MASTERNODE, "CheckProRegTx: Collateral validated - %s has %d MYNTA with %d confirmations\n",
-                      proTx.collateralOutpoint.ToString(), collateralCoin.out.nValue / COIN, confirmations);
+                      proTx.collateralOutpoint.ToString(), pCollateral->out.nValue / COIN, confirmations);
         }
     }
     
