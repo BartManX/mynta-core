@@ -428,7 +428,7 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
         const auto& consensusParams = GetParams().GetConsensus();
 
         LOCK(cs_main);
-        const CCoinsViewCache* coins = pCoinsView ? pCoinsView : pcoinsTip.get();
+        const CCoinsViewCache* coins = pCoinsView ? pCoinsView : pcoinsTip;
         if (!coins) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-utxo-unavailable",
                             false, "UTXO set not available for collateral validation");
