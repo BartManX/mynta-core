@@ -316,18 +316,35 @@ public:
     std::string ToString() const;
 };
 
+class CCoinsViewCache;
+class CDeterministicMNList;
+
 // Validation functions
-bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
-bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
-bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
+// pExtraList: when non-null, provides an accumulated intra-block MN list that
+// is checked IN ADDITION to the on-chain list.  This catches duplicate
+// ProRegTx within the same block.
+// pCoinsView: when non-null, used for UTXO lookups (collateral validation)
+// instead of the global pcoinsTip.  This is critical during ConnectBlock
+// where the block-local view already contains the current block's outputs.
+bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                   const CDeterministicMNList* pExtraList = nullptr,
+                   const CCoinsViewCache* pCoinsView = nullptr);
+bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                      const CDeterministicMNList* pExtraList = nullptr);
+bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                     const CDeterministicMNList* pExtraList = nullptr);
 bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
 bool CheckQuorumCommitmentTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
 
 // Master validation dispatcher
-bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state);
+bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                    const CDeterministicMNList* pExtraList = nullptr,
+                    const CCoinsViewCache* pCoinsView = nullptr);
 
 // Process special transactions during block connection
-bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CValidationState& state, bool fJustCheck);
+// pCoinsView: the block-local UTXO view from ConnectBlock (may be nullptr for fJustCheck)
+bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CValidationState& state,
+                              bool fJustCheck, const CCoinsViewCache* pCoinsView = nullptr);
 
 // Undo special transactions during block disconnection
 bool UndoSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex);

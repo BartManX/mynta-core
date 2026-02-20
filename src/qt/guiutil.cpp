@@ -700,8 +700,8 @@ fs::path static GetAutostartFilePath()
 {
     std::string chain = ChainNameFromCommandLine();
     if (chain == CBaseChainParams::MAIN)
-        return GetAutostartDir() / "raven.desktop";
-    return GetAutostartDir() / strprintf("raven-%s.lnk", chain);
+        return GetAutostartDir() / "mynta.desktop";
+    return GetAutostartDir() / strprintf("mynta-%s.lnk", chain);
 }
 
 bool GetStartOnSystemStartup()

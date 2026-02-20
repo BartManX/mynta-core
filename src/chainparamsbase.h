@@ -11,7 +11,7 @@
 #include <vector>
 
 /**
- * CBaseChainParams defines the base parameters (shared between raven-cli and ravend)
+ * CBaseChainParams defines the base parameters (shared between mynta-cli and myntad)
  * of a given instance of the Mynta system.
  */
 class CBaseChainParams

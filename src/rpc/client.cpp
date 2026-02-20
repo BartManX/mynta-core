@@ -218,6 +218,9 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "getkawpowhash", 3, "height"},
     { "protx", 2, "collateralIndex"},
     { "protx", 7, "operatorReward"},
+    { "protx", 1, "baseBlock"},
+    { "protx", 2, "block"},
+    { "protx", 3, "reason"},
 };
 
 class CRPCConvertTable

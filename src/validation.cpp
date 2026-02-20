@@ -2323,7 +2323,7 @@ static bool FindUndoPos(CValidationState &state, int nFile, CDiskBlockPos &pos, 
 static CCheckQueue<CScriptCheck> scriptcheckqueue(128);
 
 void ThreadScriptCheck() {
-    RenameThread("raven-scriptch");
+    RenameThread("mynta-scriptch");
     scriptcheckqueue.Thread();
 }
 
@@ -2847,7 +2847,8 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
         return true;
 
     // Process special transactions (DIP2/DIP3 masternode registrations, updates, etc.)
-    if (!ProcessSpecialTxsInBlock(block, pindex, state, false)) {
+    // Pass the block-local UTXO view so collateral validation sees same-block outputs.
+    if (!ProcessSpecialTxsInBlock(block, pindex, state, false, &view)) {
         return error("ConnectBlock(): ProcessSpecialTxsInBlock failed");
     }
 

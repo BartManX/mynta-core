@@ -136,19 +136,19 @@ QVariant MasternodeModel::data(const QModelIndex &index, int role) const
             return mn.posePenalty;
         }
     } else if (role == Qt::ForegroundRole) {
-        // Color based on status
         if (index.column() == Status) {
             if (mn.status == "ENABLED")
-                return QBrush(QColor(0, 128, 0));  // Green
+                return QBrush(QColor("#22c55e"));  // green-500
             else if (mn.status == "POSE_BANNED")
-                return QBrush(QColor(255, 0, 0));  // Red
+                return QBrush(QColor("#ef4444"));  // red-500
             else
-                return QBrush(QColor(255, 165, 0));  // Orange for others
+                return QBrush(QColor("#f59e0b"));  // amber-500
         }
+        // All other columns: use a light readable color on dark backgrounds
+        return QBrush(QColor("#e2e8f0"));  // slate-200
     } else if (role == Qt::BackgroundRole) {
-        // Highlight wallet-owned masternodes
         if (mn.isMyMasternode) {
-            return QBrush(QColor(230, 247, 255));  // Light blue background
+            return QBrush(QColor("#1e3a5f"));  // dark blue tint, visible on #0f172a
         }
     } else if (role == Qt::ToolTipRole) {
         switch (index.column()) {

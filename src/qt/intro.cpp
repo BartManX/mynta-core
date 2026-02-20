@@ -204,7 +204,7 @@ bool Intro::pickDataDirectory()
         /* If current default data directory does not exist, let the user choose one */
         Intro intro;
         intro.setDataDirectory(dataDir);
-        intro.setWindowIcon(QIcon(":icons/raven"));
+        intro.setWindowIcon(QIcon(":icons/mynta"));
 
         while(true)
         {
@@ -229,7 +229,7 @@ bool Intro::pickDataDirectory()
     }
     /* Only override -datadir if different from the default, to make it possible to
      * override -datadir in the mynta.conf file in the default data directory
-     * (to be consistent with ravend behavior)
+     * (to be consistent with myntad behavior)
      */
     if(dataDir != getDefaultDataDirectory())
         gArgs.SoftSetArg("-datadir", GUIUtil::qstringToBoostPath(dataDir).string()); // use OS locale for path setting

@@ -644,6 +644,560 @@ UniValue protx_info(const JSONRPCRequest& request)
     return MNToJson(mn);
 }
 
+UniValue protx_update_service(const JSONRPCRequest& request)
+{
+#ifdef ENABLE_WALLET
+    CWallet* const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+
+    if (request.fHelp || request.params.size() < 3 || request.params.size() > 5)
+        throw std::runtime_error(
+            "protx update_service \"proTxHash\" \"ipAndPort\" \"operatorKey\" ( \"operatorPayoutAddress\" \"fundAddress\" )\n"
+            "\nCreates and sends a ProUpServTx to the network.\n"
+            "This will update the IP address and/or port of a registered masternode.\n"
+            "The transaction is signed with the operator BLS key.\n"
+            "\nArguments:\n"
+            "1. \"proTxHash\"              (string, required) The ProTx hash of the masternode\n"
+            "2. \"ipAndPort\"             (string, required) New IP and port in format \"IP:PORT\"\n"
+            "3. \"operatorKey\"           (string, required) Operator BLS secret key (32 bytes hex)\n"
+            "4. \"operatorPayoutAddress\" (string, optional) New operator payout address\n"
+            "5. \"fundAddress\"           (string, optional) Fund the transaction from this address\n"
+            "\nResult:\n"
+            "\"txid\"                     (string) The transaction id.\n"
+            "\nExamples:\n"
+            + HelpExampleCli("protx", "update_service \"abc123...\" \"192.168.1.1:8770\" \"operatorsecretkey...\"")
+        );
+
+    LOCK2(cs_main, pwallet->cs_wallet);
+    EnsureWalletIsUnlocked(pwallet);
+
+    uint256 proTxHash = ParseHashV(request.params[0], "proTxHash");
+    std::string strIpPort = request.params[1].get_str();
+    std::string strOperatorKey = request.params[2].get_str();
+
+    if (!deterministicMNManager) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Masternode manager not initialized");
+    }
+
+    auto mn = deterministicMNManager->GetMN(proTxHash);
+    if (!mn) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "ProTx not found: " + proTxHash.ToString());
+    }
+
+    CService addr;
+    if (!Lookup(strIpPort.c_str(), addr, 0, false)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, strprintf("Invalid IP:Port: %s", strIpPort));
+    }
+
+    std::vector<unsigned char> vchOperatorKeyBytes = ParseHex(strOperatorKey);
+    if (vchOperatorKeyBytes.size() != 32) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Operator key must be 32 bytes (BLS secret key)");
+    }
+    CBLSSecretKey operatorKey;
+    if (!operatorKey.SetSecretKey(vchOperatorKeyBytes)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid operator BLS secret key");
+    }
+
+    CBLSPublicKey derivedPubKey = operatorKey.GetPublicKey();
+    std::vector<uint8_t> derivedBytes = derivedPubKey.ToBytes();
+    if (derivedBytes != mn->state.vchOperatorPubKey) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Operator key does not match the registered operator public key");
+    }
+
+    CProUpServTx proUpServTx;
+    proUpServTx.nVersion = CProUpServTx::CURRENT_VERSION;
+    proUpServTx.proTxHash = proTxHash;
+    proUpServTx.addr = addr;
+
+    if (request.params.size() >= 4 && !request.params[3].isNull()) {
+        std::string strOperatorPayoutAddress = request.params[3].get_str();
+        if (!strOperatorPayoutAddress.empty()) {
+            CTxDestination opPayoutDest = DecodeDestination(strOperatorPayoutAddress);
+            if (!IsValidDestination(opPayoutDest)) {
+                throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid operator payout address");
+            }
+            proUpServTx.scriptOperatorPayout = GetScriptForDestination(opPayoutDest);
+        }
+    }
+
+    CMutableTransaction tx;
+    tx.nVersion = 3;
+    tx.nType = static_cast<uint16_t>(TxType::TRANSACTION_PROVIDER_UPDATE_SERVICE);
+
+    CAmount nFee = 0.01 * COIN;
+    std::vector<COutput> vAvailableCoins;
+    pwallet->AvailableCoins(vAvailableCoins);
+
+    CAmount nValueIn = 0;
+    for (const auto& out : vAvailableCoins) {
+        if (out.tx->tx->vout[out.i].nValue >= nFee) {
+            tx.vin.push_back(CTxIn(out.tx->GetHash(), out.i));
+            nValueIn = out.tx->tx->vout[out.i].nValue;
+            break;
+        }
+    }
+    if (nValueIn == 0) {
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds for fee");
+    }
+
+    CReserveKey reservekey(pwallet);
+    CPubKey changeKey;
+    if (!reservekey.GetReservedKey(changeKey, true)) {
+        throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Keypool ran out");
+    }
+    tx.vout.push_back(CTxOut(nValueIn - nFee, GetScriptForDestination(changeKey.GetID())));
+
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    for (const auto& input : tx.vin) {
+        hw << input.prevout;
+    }
+    proUpServTx.inputsHash = hw.GetHash();
+
+    uint256 signHash = proUpServTx.GetSignatureHash();
+    CBLSSignature sig = operatorKey.SignWithDomain(signHash, BLSDomainTags::OPERATOR_KEY);
+    if (!sig.IsValid()) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to sign ProUpServTx");
+    }
+    proUpServTx.vchSig = sig.ToBytes();
+
+    SetTxPayload(tx, proUpServTx);
+
+    CTransaction txConst(tx);
+    int nIn = 0;
+    for (const auto& input : tx.vin) {
+        const CWalletTx* wtx = pwallet->GetWalletTx(input.prevout.hash);
+        if (!wtx) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Input not found in wallet");
+        }
+        SignatureData sigdata;
+        if (!ProduceSignature(TransactionSignatureCreator(pwallet, &txConst, nIn,
+                              wtx->tx->vout[input.prevout.n].nValue, SIGHASH_ALL),
+                              wtx->tx->vout[input.prevout.n].scriptPubKey, sigdata)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to sign transaction input");
+        }
+        UpdateTransaction(tx, nIn, sigdata);
+        nIn++;
+    }
+
+    CWalletTx wtx;
+    wtx.fTimeReceivedIsTxTime = true;
+    wtx.BindWallet(pwallet);
+    wtx.SetTx(MakeTransactionRef(std::move(tx)));
+
+    CValidationState state;
+    if (!pwallet->CommitTransaction(wtx, reservekey, g_connman.get(), state)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Failed to commit transaction: %s",
+            FormatStateMessage(state).empty() ? state.GetRejectReason() : FormatStateMessage(state)));
+    }
+
+    return wtx.GetHash().ToString();
+#else
+    throw JSONRPCError(RPC_WALLET_ERROR, "Wallet support not compiled in");
+#endif
+}
+
+UniValue protx_update_registrar(const JSONRPCRequest& request)
+{
+#ifdef ENABLE_WALLET
+    CWallet* const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+
+    if (request.fHelp || request.params.size() < 4 || request.params.size() > 7)
+        throw std::runtime_error(
+            "protx update_registrar \"proTxHash\" \"operatorPubKey\" \"votingAddress\" \"payoutAddress\" ( \"operatorSecretOrPoP\" \"fundAddress\" )\n"
+            "\nCreates and sends a ProUpRegTx to the network.\n"
+            "Updates the operator key, voting key, or payout address. Signed by the owner key.\n"
+            "\nArguments:\n"
+            "1. \"proTxHash\"          (string, required) The ProTx hash of the masternode\n"
+            "2. \"operatorPubKey\"     (string, required) New operator BLS public key (48 bytes hex), or \"\" to keep current\n"
+            "3. \"votingAddress\"      (string, required) New voting address (P2PKH), or \"\" to keep current\n"
+            "4. \"payoutAddress\"      (string, required) New payout address, or \"\" to keep current\n"
+            "5. \"operatorSecretOrPoP\" (string, optional) Required when changing operator key. BLS secret (32 bytes) or PoP (96 bytes)\n"
+            "6. \"fundAddress\"        (string, optional) Fund the transaction from this address\n"
+            "\nResult:\n"
+            "\"txid\"                  (string) The transaction id.\n"
+            "\nExamples:\n"
+            + HelpExampleCli("protx", "update_registrar \"abc123...\" \"\" \"\" \"MnewPayout...\"")
+        );
+
+    LOCK2(cs_main, pwallet->cs_wallet);
+    EnsureWalletIsUnlocked(pwallet);
+
+    uint256 proTxHash = ParseHashV(request.params[0], "proTxHash");
+    std::string strOperatorPubKey = request.params[1].get_str();
+    std::string strVotingAddress = request.params[2].get_str();
+    std::string strPayoutAddress = request.params[3].get_str();
+
+    if (!deterministicMNManager) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Masternode manager not initialized");
+    }
+
+    auto mn = deterministicMNManager->GetMN(proTxHash);
+    if (!mn) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "ProTx not found: " + proTxHash.ToString());
+    }
+
+    CProUpRegTx proUpRegTx;
+    proUpRegTx.nVersion = CProUpRegTx::CURRENT_VERSION;
+    proUpRegTx.proTxHash = proTxHash;
+
+    if (!strOperatorPubKey.empty()) {
+        proUpRegTx.vchOperatorPubKey = ParseHex(strOperatorPubKey);
+        if (proUpRegTx.vchOperatorPubKey.size() != 48) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Operator public key must be 48 bytes (BLS)");
+        }
+
+        if (request.params.size() < 5 || request.params[4].isNull() || request.params[4].get_str().empty()) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "operatorSecretOrPoP is required when changing operator key");
+        }
+        std::string strSecretOrPoP = request.params[4].get_str();
+        std::vector<unsigned char> vchSecretOrPoP = ParseHex(strSecretOrPoP);
+
+        if (vchSecretOrPoP.size() == 32) {
+            CBLSSecretKey operatorKey;
+            if (!operatorKey.SetSecretKey(vchSecretOrPoP)) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid operator BLS secret key");
+            }
+            CBLSPublicKey derivedPubKey = operatorKey.GetPublicKey();
+            if (derivedPubKey.ToBytes() != proUpRegTx.vchOperatorPubKey) {
+                throw JSONRPCError(RPC_INVALID_PARAMETER, "Operator secret key does not match provided public key");
+            }
+            CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+            hw << std::string("MYNTA_POP_PROUPREG");
+            hw << proUpRegTx.vchOperatorPubKey;
+            hw << proTxHash;
+            uint256 popHash = hw.GetHash();
+            CBLSSignature popSig = operatorKey.SignWithDomain(popHash, BLSDomainTags::OPERATOR_KEY);
+            if (!popSig.IsValid()) {
+                throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to generate PoP signature");
+            }
+            proUpRegTx.vchOperatorPoP = popSig.ToBytes();
+        } else if (vchSecretOrPoP.size() == 96) {
+            proUpRegTx.vchOperatorPoP = vchSecretOrPoP;
+        } else {
+            throw JSONRPCError(RPC_INVALID_PARAMETER,
+                "operatorSecretOrPoP must be 32 bytes (secret key) or 96 bytes (PoP signature)");
+        }
+    }
+
+    if (!strVotingAddress.empty()) {
+        CTxDestination votingDest = DecodeDestination(strVotingAddress);
+        if (!IsValidDestination(votingDest) || !boost::get<CKeyID>(&votingDest)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid voting address");
+        }
+        proUpRegTx.keyIDVoting = boost::get<CKeyID>(votingDest);
+    }
+
+    if (!strPayoutAddress.empty()) {
+        CTxDestination payoutDest = DecodeDestination(strPayoutAddress);
+        if (!IsValidDestination(payoutDest)) {
+            throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Invalid payout address");
+        }
+        proUpRegTx.scriptPayout = GetScriptForDestination(payoutDest);
+    }
+
+    CMutableTransaction tx;
+    tx.nVersion = 3;
+    tx.nType = static_cast<uint16_t>(TxType::TRANSACTION_PROVIDER_UPDATE_REGISTRAR);
+
+    CAmount nFee = 0.01 * COIN;
+    std::vector<COutput> vAvailableCoins;
+    pwallet->AvailableCoins(vAvailableCoins);
+
+    CAmount nValueIn = 0;
+    for (const auto& out : vAvailableCoins) {
+        if (out.tx->tx->vout[out.i].nValue >= nFee) {
+            tx.vin.push_back(CTxIn(out.tx->GetHash(), out.i));
+            nValueIn = out.tx->tx->vout[out.i].nValue;
+            break;
+        }
+    }
+    if (nValueIn == 0) {
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds for fee");
+    }
+
+    CReserveKey reservekey(pwallet);
+    CPubKey changeKey;
+    if (!reservekey.GetReservedKey(changeKey, true)) {
+        throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Keypool ran out");
+    }
+    tx.vout.push_back(CTxOut(nValueIn - nFee, GetScriptForDestination(changeKey.GetID())));
+
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    for (const auto& input : tx.vin) {
+        hw << input.prevout;
+    }
+    proUpRegTx.inputsHash = hw.GetHash();
+
+    CKey ownerKey;
+    if (!pwallet->GetKey(mn->state.keyIDOwner, ownerKey)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Owner key not found in wallet");
+    }
+    uint256 sigHash = proUpRegTx.GetSignatureHash();
+    if (!ownerKey.SignCompact(sigHash, proUpRegTx.vchSig)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, "Failed to sign ProUpRegTx");
+    }
+
+    SetTxPayload(tx, proUpRegTx);
+
+    CTransaction txConst(tx);
+    int nIn = 0;
+    for (const auto& input : tx.vin) {
+        const CWalletTx* wtx = pwallet->GetWalletTx(input.prevout.hash);
+        if (!wtx) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Input not found in wallet");
+        }
+        SignatureData sigdata;
+        if (!ProduceSignature(TransactionSignatureCreator(pwallet, &txConst, nIn,
+                              wtx->tx->vout[input.prevout.n].nValue, SIGHASH_ALL),
+                              wtx->tx->vout[input.prevout.n].scriptPubKey, sigdata)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to sign transaction input");
+        }
+        UpdateTransaction(tx, nIn, sigdata);
+        nIn++;
+    }
+
+    CWalletTx wtx;
+    wtx.fTimeReceivedIsTxTime = true;
+    wtx.BindWallet(pwallet);
+    wtx.SetTx(MakeTransactionRef(std::move(tx)));
+
+    CValidationState state;
+    if (!pwallet->CommitTransaction(wtx, reservekey, g_connman.get(), state)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Failed to commit transaction: %s",
+            FormatStateMessage(state).empty() ? state.GetRejectReason() : FormatStateMessage(state)));
+    }
+
+    return wtx.GetHash().ToString();
+#else
+    throw JSONRPCError(RPC_WALLET_ERROR, "Wallet support not compiled in");
+#endif
+}
+
+UniValue protx_revoke(const JSONRPCRequest& request)
+{
+#ifdef ENABLE_WALLET
+    CWallet* const pwallet = GetWalletForJSONRPCRequest(request);
+    if (!EnsureWalletIsAvailable(pwallet, request.fHelp)) {
+        return NullUniValue;
+    }
+
+    if (request.fHelp || request.params.size() < 2 || request.params.size() > 4)
+        throw std::runtime_error(
+            "protx revoke \"proTxHash\" \"operatorKey\" ( reason \"fundAddress\" )\n"
+            "\nCreates and sends a ProUpRevTx to the network.\n"
+            "This will revoke the masternode registration. Signed by the operator BLS key.\n"
+            "\nArguments:\n"
+            "1. \"proTxHash\"    (string, required) The ProTx hash of the masternode\n"
+            "2. \"operatorKey\"  (string, required) Operator BLS secret key (32 bytes hex)\n"
+            "3. reason           (numeric, optional, default=0) Revocation reason:\n"
+            "                    0=not specified, 1=termination, 2=compromised, 3=change of keys\n"
+            "4. \"fundAddress\"  (string, optional) Fund the transaction from this address\n"
+            "\nResult:\n"
+            "\"txid\"            (string) The transaction id.\n"
+            "\nExamples:\n"
+            + HelpExampleCli("protx", "revoke \"abc123...\" \"operatorsecretkey...\"")
+            + HelpExampleCli("protx", "revoke \"abc123...\" \"operatorsecretkey...\" 1")
+        );
+
+    LOCK2(cs_main, pwallet->cs_wallet);
+    EnsureWalletIsUnlocked(pwallet);
+
+    uint256 proTxHash = ParseHashV(request.params[0], "proTxHash");
+    std::string strOperatorKey = request.params[1].get_str();
+    uint16_t nReason = 0;
+    if (request.params.size() >= 3) {
+        nReason = (uint16_t)request.params[2].get_int();
+        if (nReason > CProUpRevTx::REASON_CHANGE_OF_KEYS) {
+            throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid reason (0-3)");
+        }
+    }
+
+    if (!deterministicMNManager) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Masternode manager not initialized");
+    }
+
+    auto mn = deterministicMNManager->GetMN(proTxHash);
+    if (!mn) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "ProTx not found: " + proTxHash.ToString());
+    }
+
+    std::vector<unsigned char> vchOperatorKeyBytes = ParseHex(strOperatorKey);
+    if (vchOperatorKeyBytes.size() != 32) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Operator key must be 32 bytes (BLS secret key)");
+    }
+    CBLSSecretKey operatorKey;
+    if (!operatorKey.SetSecretKey(vchOperatorKeyBytes)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid operator BLS secret key");
+    }
+
+    CBLSPublicKey derivedPubKey = operatorKey.GetPublicKey();
+    if (derivedPubKey.ToBytes() != mn->state.vchOperatorPubKey) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Operator key does not match the registered operator public key");
+    }
+
+    CProUpRevTx proUpRevTx;
+    proUpRevTx.nVersion = CProUpRevTx::CURRENT_VERSION;
+    proUpRevTx.proTxHash = proTxHash;
+    proUpRevTx.nReason = nReason;
+
+    CMutableTransaction tx;
+    tx.nVersion = 3;
+    tx.nType = static_cast<uint16_t>(TxType::TRANSACTION_PROVIDER_UPDATE_REVOKE);
+
+    CAmount nFee = 0.01 * COIN;
+    std::vector<COutput> vAvailableCoins;
+    pwallet->AvailableCoins(vAvailableCoins);
+
+    CAmount nValueIn = 0;
+    for (const auto& out : vAvailableCoins) {
+        if (out.tx->tx->vout[out.i].nValue >= nFee) {
+            tx.vin.push_back(CTxIn(out.tx->GetHash(), out.i));
+            nValueIn = out.tx->tx->vout[out.i].nValue;
+            break;
+        }
+    }
+    if (nValueIn == 0) {
+        throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, "Insufficient funds for fee");
+    }
+
+    CReserveKey reservekey(pwallet);
+    CPubKey changeKey;
+    if (!reservekey.GetReservedKey(changeKey, true)) {
+        throw JSONRPCError(RPC_WALLET_KEYPOOL_RAN_OUT, "Keypool ran out");
+    }
+    tx.vout.push_back(CTxOut(nValueIn - nFee, GetScriptForDestination(changeKey.GetID())));
+
+    CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
+    for (const auto& input : tx.vin) {
+        hw << input.prevout;
+    }
+    proUpRevTx.inputsHash = hw.GetHash();
+
+    uint256 signHash = proUpRevTx.GetSignatureHash();
+    CBLSSignature sig = operatorKey.SignWithDomain(signHash, BLSDomainTags::OPERATOR_KEY);
+    if (!sig.IsValid()) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Failed to sign ProUpRevTx");
+    }
+    proUpRevTx.vchSig = sig.ToBytes();
+
+    SetTxPayload(tx, proUpRevTx);
+
+    CTransaction txConst(tx);
+    int nIn = 0;
+    for (const auto& input : tx.vin) {
+        const CWalletTx* wtx = pwallet->GetWalletTx(input.prevout.hash);
+        if (!wtx) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Input not found in wallet");
+        }
+        SignatureData sigdata;
+        if (!ProduceSignature(TransactionSignatureCreator(pwallet, &txConst, nIn,
+                              wtx->tx->vout[input.prevout.n].nValue, SIGHASH_ALL),
+                              wtx->tx->vout[input.prevout.n].scriptPubKey, sigdata)) {
+            throw JSONRPCError(RPC_WALLET_ERROR, "Failed to sign transaction input");
+        }
+        UpdateTransaction(tx, nIn, sigdata);
+        nIn++;
+    }
+
+    CWalletTx wtx;
+    wtx.fTimeReceivedIsTxTime = true;
+    wtx.BindWallet(pwallet);
+    wtx.SetTx(MakeTransactionRef(std::move(tx)));
+
+    CValidationState state;
+    if (!pwallet->CommitTransaction(wtx, reservekey, g_connman.get(), state)) {
+        throw JSONRPCError(RPC_WALLET_ERROR, strprintf("Failed to commit transaction: %s",
+            FormatStateMessage(state).empty() ? state.GetRejectReason() : FormatStateMessage(state)));
+    }
+
+    return wtx.GetHash().ToString();
+#else
+    throw JSONRPCError(RPC_WALLET_ERROR, "Wallet support not compiled in");
+#endif
+}
+
+UniValue protx_diff(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() != 2)
+        throw std::runtime_error(
+            "protx diff baseBlock block\n"
+            "\nCalculates a diff between two deterministic masternode lists.\n"
+            "Shows which masternodes were added, removed, or updated.\n"
+            "\nArguments:\n"
+            "1. baseBlock    (numeric, required) The starting block height\n"
+            "2. block        (numeric, required) The ending block height\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"baseHeight\": n,       (numeric) Base block height\n"
+            "  \"blockHeight\": n,      (numeric) Target block height\n"
+            "  \"addedMNs\": [...],     (array) Masternodes added between the two blocks\n"
+            "  \"removedMNs\": [...],   (array) ProTx hashes of removed masternodes\n"
+            "  \"updatedMNs\": [...],   (array) Masternodes with state changes\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("protx", "diff 1000 2000")
+        );
+
+    int baseHeight = request.params[0].get_int();
+    int blockHeight = request.params[1].get_int();
+
+    if (!deterministicMNManager) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Masternode manager not initialized");
+    }
+
+    LOCK(cs_main);
+
+    if (baseHeight < 0 || baseHeight > chainActive.Height()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid baseBlock height");
+    }
+    if (blockHeight < 0 || blockHeight > chainActive.Height()) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid block height");
+    }
+
+    auto baseList = deterministicMNManager->GetListForBlock(chainActive[baseHeight]);
+    auto blockList = deterministicMNManager->GetListForBlock(chainActive[blockHeight]);
+
+    if (!baseList || !blockList) {
+        throw JSONRPCError(RPC_INTERNAL_ERROR, "Could not retrieve masternode lists");
+    }
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("baseHeight", baseHeight);
+    result.pushKV("blockHeight", blockHeight);
+
+    UniValue addedMNs(UniValue::VARR);
+    UniValue removedMNs(UniValue::VARR);
+    UniValue updatedMNs(UniValue::VARR);
+
+    blockList->ForEachMN(false, [&](const CDeterministicMNCPtr& mn) {
+        auto baseMN = baseList->GetMN(mn->proTxHash);
+        if (!baseMN) {
+            addedMNs.push_back(MNToJson(mn));
+        } else if (baseMN->state != mn->state) {
+            UniValue obj = MNToJson(mn);
+            obj.pushKV("previousState", UniValue(UniValue::VOBJ));
+            updatedMNs.push_back(obj);
+        }
+    });
+
+    baseList->ForEachMN(false, [&](const CDeterministicMNCPtr& mn) {
+        if (!blockList->GetMN(mn->proTxHash)) {
+            removedMNs.push_back(mn->proTxHash.ToString());
+        }
+    });
+
+    result.pushKV("addedMNs", addedMNs);
+    result.pushKV("removedMNs", removedMNs);
+    result.pushKV("updatedMNs", updatedMNs);
+
+    return result;
+}
+
 // Command dispatcher
 UniValue masternode(const JSONRPCRequest& request)
 {
@@ -700,9 +1254,13 @@ UniValue protx(const JSONRPCRequest& request)
             "\nArguments:\n"
             "1. \"command\"        (string, required) The command to execute\n"
             "\nAvailable commands:\n"
-            "  register     - Register a new masternode\n"
-            "  list         - List ProTx registrations\n"
-            "  info         - Get info about a specific ProTx\n"
+            "  register          - Register a new masternode\n"
+            "  update_service    - Update masternode IP/port (operator signs)\n"
+            "  update_registrar  - Update operator key, voting key, or payout address (owner signs)\n"
+            "  revoke            - Revoke masternode registration (operator signs)\n"
+            "  list              - List ProTx registrations\n"
+            "  info              - Get info about a specific ProTx\n"
+            "  diff              - Show differences between MN lists at two block heights\n"
         );
     }
 
@@ -715,10 +1273,18 @@ UniValue protx(const JSONRPCRequest& request)
 
     if (strCommand == "register") {
         return protx_register(newRequest);
+    } else if (strCommand == "update_service") {
+        return protx_update_service(newRequest);
+    } else if (strCommand == "update_registrar") {
+        return protx_update_registrar(newRequest);
+    } else if (strCommand == "revoke") {
+        return protx_revoke(newRequest);
     } else if (strCommand == "list") {
         return protx_list(newRequest);
     } else if (strCommand == "info") {
         return protx_info(newRequest);
+    } else if (strCommand == "diff") {
+        return protx_diff(newRequest);
     }
 
     throw JSONRPCError(RPC_INVALID_PARAMETER, "Unknown protx command: " + strCommand);

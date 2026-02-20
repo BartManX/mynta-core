@@ -343,7 +343,7 @@ void RenameThread(const char *name);
 template<typename Callable>
 void TraceThread(const char *name, Callable func)
 {
-    std::string s = strprintf("raven-%s", name);
+    std::string s = strprintf("mynta-%s", name);
     RenameThread(s.c_str());
     try
     {

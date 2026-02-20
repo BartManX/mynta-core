@@ -57,8 +57,8 @@ static int AppInitRawTx(int argc, char* argv[])
         // First part of help message is specific to this utility
         std::string strUsage = strprintf(_("%s mynta-tx utility version"), _(PACKAGE_NAME)) + " " + FormatFullVersion() + "\n\n" +
             _("Usage:") + "\n" +
-              "  mynta-tx [options] <hex-tx> [commands]  " + _("Update hex-encoded raven transaction") + "\n" +
-              "  mynta-tx [options] -create [commands]   " + _("Create hex-encoded raven transaction") + "\n" +
+              "  mynta-tx [options] <hex-tx> [commands]  " + _("Update hex-encoded Mynta transaction") + "\n" +
+              "  mynta-tx [options] -create [commands]   " + _("Create hex-encoded Mynta transaction") + "\n" +
               "\n";
 
         fprintf(stdout, "%s", strUsage.c_str());

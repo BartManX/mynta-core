@@ -99,7 +99,7 @@ static void InitMessage(const std::string &message)
  */
 static std::string Translate(const char* psz)
 {
-    return QCoreApplication::translate("raven-core", psz).toStdString();
+    return QCoreApplication::translate("mynta-core", psz).toStdString();
 }
 
 static QString GetLangTerritory()
@@ -146,11 +146,11 @@ static void initTranslations(QTranslator &qtTranslatorBase, QTranslator &qtTrans
     if (qtTranslator.load("qt_" + lang_territory, QLibraryInfo::location(QLibraryInfo::TranslationsPath)))
         QApplication::installTranslator(&qtTranslator);
 
-    // Load e.g. raven_de.qm (shortcut "de" needs to be defined in raven.qrc)
+    // Load e.g. mynta_de.qm (shortcut "de" needs to be defined in mynta.qrc)
     if (translatorBase.load(lang, ":/translations/"))
         QApplication::installTranslator(&translatorBase);
 
-    // Load e.g. raven_de_DE.qm (shortcut "de_DE" needs to be defined in raven.qrc)
+    // Load e.g. mynta_de_DE.qm (shortcut "de_DE" needs to be defined in mynta.qrc)
     if (translator.load(lang_territory, ":/translations/"))
         QApplication::installTranslator(&translator);
 }
@@ -177,7 +177,7 @@ void DebugMessageHandler(QtMsgType type, const QMessageLogContext& context, cons
 }
 #endif
 
-/** Class encapsulating Raven Core startup and shutdown.
+/** Class encapsulating Mynta Core startup and shutdown.
  * Allows running startup and shutdown in a different thread from the UI thread.
  */
 class MyntaCore: public QObject
@@ -208,7 +208,7 @@ private:
     void handleRunawayException(const std::exception *e);
 };
 
-/** Main Raven application object */
+/** Main Mynta application object */
 class MyntaApplication: public QApplication
 {
     Q_OBJECT
@@ -365,7 +365,7 @@ void MyntaCore::shutdown()
 }
 
 static int qt_argc = 1;
-static const char* qt_argv = "raven-qt";
+static const char* qt_argv = "mynta-qt";
 
 MyntaApplication::MyntaApplication():
     QApplication(qt_argc, const_cast<char **>(&qt_argv)),

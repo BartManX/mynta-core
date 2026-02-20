@@ -647,7 +647,7 @@ void static MyntaMiner(const CChainParams& chainparams)
 {
     LogPrintf("MyntaMiner -- started\n");
     SetThreadPriority(THREAD_PRIORITY_LOWEST);
-    RenameThread("raven-miner");
+    RenameThread("mynta-miner");
 
     unsigned int nExtraNonce = 0;
 

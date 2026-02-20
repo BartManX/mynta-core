@@ -327,7 +327,9 @@ static bool CheckInputsHash(const CTransaction& tx, const uint256& expectedInput
     return true;
 }
 
-bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                   const CDeterministicMNList* pExtraList,
+                   const CCoinsViewCache* pCoinsView)
 {
     if (tx.nType != static_cast<uint16_t>(TxType::TRANSACTION_PROVIDER_REGISTER)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-protx-type");
@@ -410,54 +412,55 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
     }
 
     // ============================================================
-    // CRITICAL FIX: Validate collateral amount
+    // Validate collateral amount
+    //
+    // When called from ConnectBlock, pCoinsView points to the
+    // block-local CCoinsViewCache that already contains the outputs
+    // created by earlier transactions in the same block.  This is
+    // critical: the global pcoinsTip is only flushed AFTER the block
+    // is fully connected, so using it here would miss same-block
+    // collateral outputs.
+    //
+    // When called from mempool acceptance (pCoinsView == nullptr),
+    // we fall back to the global pcoinsTip.
     // ============================================================
     {
-        // Use consensus parameters from chainparams
         const auto& consensusParams = GetParams().GetConsensus();
-        
-        // Access the UTXO set to verify collateral
+
         LOCK(cs_main);
-        if (pcoinsTip) {
-            const Coin& collateralCoin = pcoinsTip->AccessCoin(proTx.collateralOutpoint);
-            
-            // Check that the collateral UTXO exists
-            if (collateralCoin.IsSpent()) {
-                return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-not-found",
-                                false, "Collateral UTXO does not exist or is already spent");
-            }
-            
-            // Check that the collateral amount is exactly correct
-            if (collateralCoin.out.nValue != consensusParams.nMasternodeCollateral) {
-                return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-amount",
-                                false, strprintf("Collateral amount must be exactly %d MYNTA, got %d",
-                                                consensusParams.nMasternodeCollateral / COIN,
-                                                collateralCoin.out.nValue / COIN));
-            }
-            
-            // ============================================================
-            // FIX: Verify collateral has sufficient confirmations
-            // ============================================================
-            {
-                // Get the height at which the collateral was created
-                int collateralHeight = collateralCoin.nHeight;
-                int currentHeight = pindexPrev ? pindexPrev->nHeight + 1 : 0;
-                int confirmations = currentHeight - collateralHeight;
-                
-                if (confirmations < consensusParams.nMasternodeCollateralConfirmations) {
-                    return state.DoS(10, false, REJECT_INVALID, "bad-protx-collateral-immature",
-                                    false, strprintf("Collateral needs %d confirmations, has %d",
-                                                    consensusParams.nMasternodeCollateralConfirmations, confirmations));
-                }
-                
-                LogPrint(BCLog::MASTERNODE, "CheckProRegTx: Collateral validated - %s has %d MYNTA with %d confirmations\n",
-                          proTx.collateralOutpoint.ToString(), collateralCoin.out.nValue / COIN, confirmations);
-            }
-        } else {
-            // If pcoinsTip is not available, we can't validate collateral
-            // This should not happen in normal operation, but fail safely
+        const CCoinsViewCache* coins = pCoinsView ? pCoinsView : pcoinsTip.get();
+        if (!coins) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-utxo-unavailable",
                             false, "UTXO set not available for collateral validation");
+        }
+
+        const Coin& collateralCoin = coins->AccessCoin(proTx.collateralOutpoint);
+
+        if (collateralCoin.IsSpent()) {
+            return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-not-found",
+                            false, "Collateral UTXO does not exist or is already spent");
+        }
+
+        if (collateralCoin.out.nValue != consensusParams.nMasternodeCollateral) {
+            return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-amount",
+                            false, strprintf("Collateral amount must be exactly %d MYNTA, got %d",
+                                            consensusParams.nMasternodeCollateral / COIN,
+                                            collateralCoin.out.nValue / COIN));
+        }
+
+        {
+            int collateralHeight = collateralCoin.nHeight;
+            int currentHeight = pindexPrev ? pindexPrev->nHeight + 1 : 0;
+            int confirmations = currentHeight - collateralHeight;
+
+            if (confirmations < consensusParams.nMasternodeCollateralConfirmations) {
+                return state.DoS(10, false, REJECT_INVALID, "bad-protx-collateral-immature",
+                                false, strprintf("Collateral needs %d confirmations, has %d",
+                                                consensusParams.nMasternodeCollateralConfirmations, confirmations));
+            }
+
+            LogPrint(BCLog::MASTERNODE, "CheckProRegTx: Collateral validated - %s has %d MYNTA with %d confirmations\n",
+                      proTx.collateralOutpoint.ToString(), collateralCoin.out.nValue / COIN, confirmations);
         }
     }
     
@@ -470,36 +473,19 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
     if (pindexPrev && deterministicMNManager) {
         auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
         if (mnList) {
-            // Check for duplicate service address
             if (mnList->HasUniqueProperty(mnList->GetUniquePropertyHash(proTx.addr))) {
                 return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr");
             }
-            
-            // Check for duplicate owner key
             if (mnList->HasUniqueProperty(mnList->GetUniquePropertyHash(proTx.keyIDOwner))) {
                 return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-owner-key");
             }
-            
-            // Check for duplicate collateral
             if (mnList->GetMNByCollateral(proTx.collateralOutpoint)) {
                 return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-collateral");
             }
-            
-            // ============================================================
-            // CRITICAL FIX: Check for duplicate voting key
-            // Prevents an attacker from controlling multiple masternode votes
-            // with a single voting key
-            // ============================================================
             if (mnList->HasUniqueProperty(mnList->GetVotingKeyHash(proTx.keyIDVoting))) {
                 return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-voting-key",
                                 false, "Voting key is already in use by another masternode");
             }
-            
-            // ============================================================
-            // CRITICAL FIX: Check for duplicate operator key
-            // Prevents an attacker from controlling multiple masternodes
-            // with a single operator key
-            // ============================================================
             if (mnList->HasUniqueProperty(mnList->GetOperatorKeyHash(proTx.vchOperatorPubKey))) {
                 return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-operator-key",
                                 false, "Operator key is already in use by another masternode");
@@ -507,10 +493,39 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
         }
     }
 
+    // Check against the intra-block accumulated list.
+    // This catches two ProRegTx in the SAME block that would conflict
+    // with each other (same addr, same collateral, same keys), which
+    // the on-chain list above cannot detect because it only reflects
+    // the state as of the PREVIOUS block.
+    if (pExtraList) {
+        if (pExtraList->HasUniqueProperty(pExtraList->GetUniquePropertyHash(proTx.addr))) {
+            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
+                            false, "Service address conflicts with another registration in the same block");
+        }
+        if (pExtraList->HasUniqueProperty(pExtraList->GetUniquePropertyHash(proTx.keyIDOwner))) {
+            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-owner-key-intrablock",
+                            false, "Owner key conflicts with another registration in the same block");
+        }
+        if (pExtraList->GetMNByCollateral(proTx.collateralOutpoint)) {
+            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-collateral-intrablock",
+                            false, "Collateral conflicts with another registration in the same block");
+        }
+        if (pExtraList->HasUniqueProperty(pExtraList->GetVotingKeyHash(proTx.keyIDVoting))) {
+            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-voting-key-intrablock",
+                            false, "Voting key conflicts with another registration in the same block");
+        }
+        if (pExtraList->HasUniqueProperty(pExtraList->GetOperatorKeyHash(proTx.vchOperatorPubKey))) {
+            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-operator-key-intrablock",
+                            false, "Operator key conflicts with another registration in the same block");
+        }
+    }
+
     return true;
 }
 
-bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                      const CDeterministicMNList* pExtraList)
 {
     if (tx.nType != static_cast<uint16_t>(TxType::TRANSACTION_PROVIDER_UPDATE_SERVICE)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-protx-type");
@@ -556,6 +571,15 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
             }
         }
 
+        // Check intra-block conflicts
+        if (pExtraList) {
+            auto existingMN = pExtraList->GetMNByService(proTx.addr);
+            if (existingMN && existingMN->proTxHash != proTx.proTxHash) {
+                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
+                                false, "Service address conflicts with another update in the same block");
+            }
+        }
+
         // ============================================================
         // CRITICAL FIX: Actually verify BLS signature
         // ============================================================
@@ -590,7 +614,8 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
     return true;
 }
 
-bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                     const CDeterministicMNList* pExtraList)
 {
     if (tx.nType != static_cast<uint16_t>(TxType::TRANSACTION_PROVIDER_UPDATE_REGISTRAR)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-protx-type");
@@ -685,6 +710,22 @@ bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
                 
                 LogPrint(BCLog::MASTERNODE, "CheckProUpRegTx: Operator key change with PoP validated for %s\n",
                          proTx.proTxHash.ToString().substr(0, 16));
+            }
+        }
+
+        // Check intra-block key conflicts
+        if (pExtraList) {
+            if (!proTx.keyIDVoting.IsNull() && proTx.keyIDVoting != mn->state.keyIDVoting) {
+                if (pExtraList->HasUniqueProperty(pExtraList->GetVotingKeyHash(proTx.keyIDVoting))) {
+                    return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-voting-key-intrablock",
+                                    false, "New voting key conflicts with another update in the same block");
+                }
+            }
+            if (!proTx.vchOperatorPubKey.empty() && proTx.vchOperatorPubKey != mn->state.vchOperatorPubKey) {
+                if (pExtraList->HasUniqueProperty(pExtraList->GetOperatorKeyHash(proTx.vchOperatorPubKey))) {
+                    return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-operator-key-intrablock",
+                                    false, "New operator key conflicts with another update in the same block");
+                }
             }
         }
     }
@@ -945,19 +986,21 @@ bool CheckQuorumCommitmentTx(const CTransaction& tx, const CBlockIndex* pindexPr
     return true;
 }
 
-bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state)
+bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValidationState& state,
+                    const CDeterministicMNList* pExtraList,
+                    const CCoinsViewCache* pCoinsView)
 {
     if (!IsTxTypeSpecial(tx)) {
-        return true; // Normal transaction, nothing to check
+        return true;
     }
 
     switch (GetTxType(tx)) {
         case TxType::TRANSACTION_PROVIDER_REGISTER:
-            return CheckProRegTx(tx, pindexPrev, state);
+            return CheckProRegTx(tx, pindexPrev, state, pExtraList, pCoinsView);
         case TxType::TRANSACTION_PROVIDER_UPDATE_SERVICE:
-            return CheckProUpServTx(tx, pindexPrev, state);
+            return CheckProUpServTx(tx, pindexPrev, state, pExtraList);
         case TxType::TRANSACTION_PROVIDER_UPDATE_REGISTRAR:
-            return CheckProUpRegTx(tx, pindexPrev, state);
+            return CheckProUpRegTx(tx, pindexPrev, state, pExtraList);
         case TxType::TRANSACTION_PROVIDER_UPDATE_REVOKE:
             return CheckProUpRevTx(tx, pindexPrev, state);
         case TxType::TRANSACTION_QUORUM_COMMITMENT:
@@ -967,17 +1010,85 @@ bool CheckSpecialTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVali
     }
 }
 
-bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CValidationState& state, bool fJustCheck)
+bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CValidationState& state,
+                              bool fJustCheck, const CCoinsViewCache* pCoinsView)
 {
-    // Validate all special transactions in the block
+    // Maintain a running list of MN registrations/updates seen so far in THIS
+    // block.  Each special tx is validated against both the on-chain list
+    // (pindex->pprev) AND this intra-block list.  After validation the tx's
+    // effects are added to intraBlockList so the next tx in the block will
+    // see them.  This prevents two conflicting ProRegTx in the same block
+    // from both passing validation.
+    CDeterministicMNList intraBlockList(pindex->GetBlockHash(), pindex->nHeight);
+
     for (size_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = *block.vtx[i];
-        if (!CheckSpecialTx(tx, pindex->pprev, state)) {
+        if (!CheckSpecialTx(tx, pindex->pprev, state, &intraBlockList, pCoinsView)) {
             return false;
+        }
+
+        // Accumulate effects of this tx into the intra-block list so
+        // subsequent txs in the same block can detect conflicts.
+        if (IsTxTypeSpecial(tx)) {
+            TxType txType = GetTxType(tx);
+            switch (txType) {
+                case TxType::TRANSACTION_PROVIDER_REGISTER: {
+                    CProRegTx proTx;
+                    if (GetTxPayload(tx, proTx)) {
+                        auto newMN = std::make_shared<CDeterministicMN>();
+                        newMN->proTxHash = tx.GetHash();
+                        newMN->collateralOutpoint = proTx.collateralOutpoint;
+                        newMN->nOperatorReward = proTx.nOperatorReward;
+                        newMN->state.addr = proTx.addr;
+                        newMN->state.keyIDOwner = proTx.keyIDOwner;
+                        newMN->state.vchOperatorPubKey = proTx.vchOperatorPubKey;
+                        newMN->state.keyIDVoting = proTx.keyIDVoting;
+                        newMN->state.scriptPayout = proTx.scriptPayout;
+                        newMN->state.nRegisteredHeight = pindex->nHeight;
+                        newMN->internalId = intraBlockList.GetTotalRegisteredCount();
+                        intraBlockList.IncrementTotalRegisteredCount();
+                        intraBlockList = intraBlockList.AddMN(newMN);
+                    }
+                    break;
+                }
+                case TxType::TRANSACTION_PROVIDER_UPDATE_SERVICE: {
+                    CProUpServTx proTx;
+                    if (GetTxPayload(tx, proTx)) {
+                        auto mn = intraBlockList.GetMN(proTx.proTxHash);
+                        if (mn) {
+                            CDeterministicMNState newState = mn->state;
+                            newState.addr = proTx.addr;
+                            intraBlockList = intraBlockList.UpdateMN(proTx.proTxHash, newState);
+                        }
+                    }
+                    break;
+                }
+                case TxType::TRANSACTION_PROVIDER_UPDATE_REGISTRAR: {
+                    CProUpRegTx proTx;
+                    if (GetTxPayload(tx, proTx)) {
+                        auto mn = intraBlockList.GetMN(proTx.proTxHash);
+                        if (mn) {
+                            CDeterministicMNState newState = mn->state;
+                            if (!proTx.vchOperatorPubKey.empty()) {
+                                newState.vchOperatorPubKey = proTx.vchOperatorPubKey;
+                            }
+                            if (!proTx.keyIDVoting.IsNull()) {
+                                newState.keyIDVoting = proTx.keyIDVoting;
+                            }
+                            if (!proTx.scriptPayout.empty()) {
+                                newState.scriptPayout = proTx.scriptPayout;
+                            }
+                            intraBlockList = intraBlockList.UpdateMN(proTx.proTxHash, newState);
+                        }
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
         }
     }
 
-    // If not just checking, apply the transactions to the masternode list
     if (!fJustCheck && deterministicMNManager) {
         if (!deterministicMNManager->ProcessBlock(block, pindex, state, fJustCheck)) {
             return false;

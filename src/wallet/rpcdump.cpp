@@ -561,7 +561,7 @@ UniValue dumpprivkey(const JSONRPCRequest& request)
             "\nReveals the private key corresponding to 'address'.\n"
             "Then the importprivkey can be used with this output\n"
             "\nArguments:\n"
-            "1. \"address\"   (string, required) The raven address for the private key\n"
+            "1. \"address\"   (string, required) The Mynta address for the private key\n"
             "\nResult:\n"
             "\"key\"                (string) The private key\n"
             "\nExamples:\n"
@@ -603,7 +603,7 @@ UniValue dumpwallet(const JSONRPCRequest& request)
             "dumpwallet \"filename\"\n"
             "\nDumps all wallet keys in a human-readable format to a server-side file. This does not allow overwriting existing files.\n"
             "\nArguments:\n"
-            "1. \"filename\"    (string, required) The filename with path (either absolute or relative to ravend)\n"
+            "1. \"filename\"    (string, required) The filename with path (either absolute or relative to myntad)\n"
             "\nResult:\n"
             "{                           (json object)\n"
             "  \"filename\" : {        (string) The filename with full absolute path\n"
@@ -649,7 +649,7 @@ UniValue dumpwallet(const JSONRPCRequest& request)
     std::sort(vKeyBirth.begin(), vKeyBirth.end());
 
     // produce output
-    file << strprintf("# Wallet dump created by Raven %s\n", CLIENT_BUILD);
+    file << strprintf("# Wallet dump created by Mynta %s\n", CLIENT_BUILD);
     file << strprintf("# * Created on %s\n", EncodeDumpTime(GetTime()));
     file << strprintf("# * Best block at time of backup was %i (%s),\n", chainActive.Height(), chainActive.Tip()->GetBlockHash().ToString());
     file << strprintf("#   mined on %s\n", EncodeDumpTime(chainActive.Tip()->GetBlockTime()));
@@ -786,7 +786,7 @@ UniValue getmasterkeyinfo(const JSONRPCRequest& request)
                 CExtKey masterKey;
                 masterKey.SetSeed(seed.begin(), seed.size());;
 
-                // Get the Raven Ext Key from the master key
+                // Get the Mynta Ext Key from the master key
                 CMyntaExtKey b58extkey;
                 b58extkey.SetKey(masterKey);
 
@@ -794,7 +794,7 @@ UniValue getmasterkeyinfo(const JSONRPCRequest& request)
                 CExtPubKey pubkey;
                 pubkey = masterKey.Neuter();
 
-                // Get the Raven Ext Key from the public key
+                // Get the Mynta Ext Key from the public key
                 CMyntaExtPubKey b58extpubkey;
                 b58extpubkey.SetKey(pubkey);
 
@@ -811,11 +811,11 @@ UniValue getmasterkeyinfo(const JSONRPCRequest& request)
                 CExtPubKey account_extended_public_key;
                 account_extended_public_key = accountKey.Neuter();
 
-                // Create the Raven Account Ext Private Key
+                // Create the Mynta Account Ext Private Key
                 CMyntaExtKey b58accountextprivatekey;
                 b58accountextprivatekey.SetKey(accountKey);
 
-                // Create the Raven Account Ext Public Key
+                // Create the Mynta Account Ext Public Key
                 CMyntaExtPubKey b58actextpubkey;
                 b58actextpubkey.SetKey(account_extended_public_key);
 
@@ -841,7 +841,7 @@ UniValue getmasterkeyinfo(const JSONRPCRequest& request)
             CExtKey masterKey;
             masterKey.SetSeed(vchSeed.data(), vchSeed.size());
 
-            // Get the Raven Ext Key from the master key
+            // Get the Mynta Ext Key from the master key
             CMyntaExtKey b58extkey;
             b58extkey.SetKey(masterKey);
 
@@ -849,7 +849,7 @@ UniValue getmasterkeyinfo(const JSONRPCRequest& request)
             CExtPubKey pubkey;
             pubkey = masterKey.Neuter();
 
-            // Get the Raven Ext Key from the public key
+            // Get the Mynta Ext Key from the public key
             CMyntaExtPubKey b58extpubkey;
             b58extpubkey.SetKey(pubkey);
 
@@ -874,11 +874,11 @@ UniValue getmasterkeyinfo(const JSONRPCRequest& request)
             CExtPubKey account_extended_public_key;
             account_extended_public_key = accountKey.Neuter();
 
-            // Create the Raven Account Ext Private Key
+            // Create the Mynta Account Ext Private Key
             CMyntaExtKey b58accountextprivatekey;
             b58accountextprivatekey.SetKey(accountKey);
 
-            // Create the Raven Account Ext Public Key
+            // Create the Mynta Account Ext Public Key
             CMyntaExtPubKey b58actextpubkey;
             b58actextpubkey.SetKey(account_extended_public_key);
 
@@ -1348,7 +1348,7 @@ UniValue importmulti(const JSONRPCRequest& mainRequest)
                                       "block from time %d, which is after or within %d seconds of key creation, and "
                                       "could contain transactions pertaining to the key. As a result, transactions "
                                       "and coins using this key may not appear in the wallet. This error could be "
-                                      "caused by pruning or data corruption (see ravend log for details) and could "
+                                      "caused by pruning or data corruption (see myntad log for details) and could "
                                       "be dealt with by downloading and rescanning the relevant blocks (see -reindex "
                                       "and -rescan options).",
                                 GetImportTimestamp(request, now), scannedTime - TIMESTAMP_WINDOW - 1, TIMESTAMP_WINDOW)));

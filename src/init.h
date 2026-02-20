@@ -71,8 +71,8 @@ void PrepareShutdown();
 /** The help message mode determines what help message to show */
 enum HelpMessageMode
 {
-    HMM_RAVEND,
-    HMM_RAVEN_QT
+    HMM_MYNTAD,
+    HMM_MYNTA_QT
 };
 
 /** Help for options shared between UI and daemon (for -help) */
