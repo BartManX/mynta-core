@@ -1046,14 +1046,15 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
     // effects are added to intraBlockList so the next tx in the block will
     // see them.  This prevents two conflicting ProRegTx in the same block
     // from both passing validation.
-    CDeterministicMNList intraBlockList(pindex->GetBlockHash(), pindex->nHeight);
+    uint256 blockHash = pindex->phashBlock ? pindex->GetBlockHash() : block.GetHash();
+    CDeterministicMNList intraBlockList(blockHash, pindex->nHeight);
 
     int nSpecialTxCount = 0;
     for (size_t j = 0; j < block.vtx.size(); j++) {
         if (IsTxTypeSpecial(*block.vtx[j])) nSpecialTxCount++;
     }
     LogPrint(BCLog::MASTERNODE, "ProcessSpecialTxsInBlock: height=%d hash=%s txCount=%zu specialTxCount=%d fJustCheck=%d\n",
-             pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16),
+             pindex->nHeight, blockHash.ToString().substr(0, 16),
              block.vtx.size(), nSpecialTxCount, fJustCheck);
 
     for (size_t i = 0; i < block.vtx.size(); i++) {
@@ -1162,7 +1163,8 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
 bool UndoSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex)
 {
     LogPrint(BCLog::MASTERNODE, "UndoSpecialTxsInBlock: height=%d hash=%s\n",
-             pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16));
+             pindex->nHeight,
+             pindex->phashBlock ? pindex->GetBlockHash().ToString().substr(0, 16) : "unknown");
     if (deterministicMNManager) {
         if (!deterministicMNManager->UndoBlock(block, pindex)) {
             LogPrintf("UndoSpecialTxsInBlock: UndoBlock FAILED at height=%d\n", pindex->nHeight);

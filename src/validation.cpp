@@ -2570,10 +2570,12 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     // because nMasternodeCollateralConfirmations requires prior-block maturity.
     // =========================================================================
     LogPrint(BCLog::MASTERNODE, "ConnectBlock: height=%d hash=%s vtx=%zu fJustCheck=%d — entering ProcessSpecialTxsInBlock\n",
-             pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16), block.vtx.size(), fJustCheck);
+             pindex->nHeight,
+             pindex->phashBlock ? pindex->GetBlockHash().ToString().substr(0, 16) : "dummy",
+             block.vtx.size(), fJustCheck);
     if (!ProcessSpecialTxsInBlock(block, pindex, state, fJustCheck, &view)) {
-        LogPrintf("ConnectBlock: ProcessSpecialTxsInBlock FAILED at height=%d hash=%s reason=%s\n",
-                  pindex->nHeight, pindex->GetBlockHash().ToString(), FormatStateMessage(state));
+        LogPrintf("ConnectBlock: ProcessSpecialTxsInBlock FAILED at height=%d reason=%s\n",
+                  pindex->nHeight, FormatStateMessage(state));
         return error("ConnectBlock(): ProcessSpecialTxsInBlock failed (pre-spend validation)");
     }
     LogPrint(BCLog::MASTERNODE, "ConnectBlock: ProcessSpecialTxsInBlock OK at height=%d\n", pindex->nHeight);
