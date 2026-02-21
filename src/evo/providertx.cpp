@@ -520,31 +520,34 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
         }
     }
 
-    // Check against the intra-block accumulated list.
-    // This catches two ProRegTx in the SAME block that would conflict
-    // with each other (same addr, same collateral, same keys), which
-    // the on-chain list above cannot detect because it only reflects
-    // the state as of the PREVIOUS block.
-    if (pExtraList) {
-        if (pExtraList->HasUniqueProperty(pExtraList->GetUniquePropertyHash(proTx.addr))) {
-            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
-                            false, "Service address conflicts with another registration in the same block");
-        }
-        if (pExtraList->HasUniqueProperty(pExtraList->GetUniquePropertyHash(proTx.keyIDOwner))) {
-            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-owner-key-intrablock",
-                            false, "Owner key conflicts with another registration in the same block");
-        }
-        if (pExtraList->GetMNByCollateral(proTx.collateralOutpoint)) {
-            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-collateral-intrablock",
-                            false, "Collateral conflicts with another registration in the same block");
-        }
-        if (pExtraList->HasUniqueProperty(pExtraList->GetVotingKeyHash(proTx.keyIDVoting))) {
-            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-voting-key-intrablock",
-                            false, "Voting key conflicts with another registration in the same block");
-        }
-        if (pExtraList->HasUniqueProperty(pExtraList->GetOperatorKeyHash(proTx.vchOperatorPubKey))) {
-            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-operator-key-intrablock",
-                            false, "Operator key conflicts with another registration in the same block");
+    // Intra-block duplicate detection: catches two ProRegTx in the SAME block
+    // that would conflict (same addr, collateral, or keys).
+    // Only enforced after nTieredMNActivationHeight to maintain consensus with
+    // blocks accepted by v1.2.x which did not have intra-block checks.
+    if (pExtraList && pindexPrev) {
+        int nBlockHeight = pindexPrev->nHeight + 1;
+        const auto& consensusParams = GetParams().GetConsensus();
+        if (nBlockHeight >= consensusParams.nTieredMNActivationHeight) {
+            if (pExtraList->HasUniqueProperty(pExtraList->GetUniquePropertyHash(proTx.addr))) {
+                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
+                                false, "Service address conflicts with another registration in the same block");
+            }
+            if (pExtraList->HasUniqueProperty(pExtraList->GetUniquePropertyHash(proTx.keyIDOwner))) {
+                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-owner-key-intrablock",
+                                false, "Owner key conflicts with another registration in the same block");
+            }
+            if (pExtraList->GetMNByCollateral(proTx.collateralOutpoint)) {
+                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-collateral-intrablock",
+                                false, "Collateral conflicts with another registration in the same block");
+            }
+            if (pExtraList->HasUniqueProperty(pExtraList->GetVotingKeyHash(proTx.keyIDVoting))) {
+                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-voting-key-intrablock",
+                                false, "Voting key conflicts with another registration in the same block");
+            }
+            if (pExtraList->HasUniqueProperty(pExtraList->GetOperatorKeyHash(proTx.vchOperatorPubKey))) {
+                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-operator-key-intrablock",
+                                false, "Operator key conflicts with another registration in the same block");
+            }
         }
     }
 
@@ -598,12 +601,16 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
             }
         }
 
-        // Check intra-block conflicts
-        if (pExtraList) {
-            auto existingMN = pExtraList->GetMNByService(proTx.addr);
-            if (existingMN && existingMN->proTxHash != proTx.proTxHash) {
-                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
-                                false, "Service address conflicts with another update in the same block");
+        // Intra-block conflict detection (only after activation to match v1.2.x consensus)
+        if (pExtraList && pindexPrev) {
+            int nBlockHeight = pindexPrev->nHeight + 1;
+            const auto& cp = GetParams().GetConsensus();
+            if (nBlockHeight >= cp.nTieredMNActivationHeight) {
+                auto existingMN = pExtraList->GetMNByService(proTx.addr);
+                if (existingMN && existingMN->proTxHash != proTx.proTxHash) {
+                    return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
+                                    false, "Service address conflicts with another update in the same block");
+                }
             }
         }
 
@@ -740,18 +747,22 @@ bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
             }
         }
 
-        // Check intra-block key conflicts
-        if (pExtraList) {
-            if (!proTx.keyIDVoting.IsNull() && proTx.keyIDVoting != mn->state.keyIDVoting) {
-                if (pExtraList->HasUniqueProperty(pExtraList->GetVotingKeyHash(proTx.keyIDVoting))) {
-                    return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-voting-key-intrablock",
-                                    false, "New voting key conflicts with another update in the same block");
+        // Intra-block key conflict detection (only after activation to match v1.2.x consensus)
+        if (pExtraList && pindexPrev) {
+            int nBlockHeight = pindexPrev->nHeight + 1;
+            const auto& cp = GetParams().GetConsensus();
+            if (nBlockHeight >= cp.nTieredMNActivationHeight) {
+                if (!proTx.keyIDVoting.IsNull() && proTx.keyIDVoting != mn->state.keyIDVoting) {
+                    if (pExtraList->HasUniqueProperty(pExtraList->GetVotingKeyHash(proTx.keyIDVoting))) {
+                        return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-voting-key-intrablock",
+                                        false, "New voting key conflicts with another update in the same block");
+                    }
                 }
-            }
-            if (!proTx.vchOperatorPubKey.empty() && proTx.vchOperatorPubKey != mn->state.vchOperatorPubKey) {
-                if (pExtraList->HasUniqueProperty(pExtraList->GetOperatorKeyHash(proTx.vchOperatorPubKey))) {
-                    return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-operator-key-intrablock",
-                                    false, "New operator key conflicts with another update in the same block");
+                if (!proTx.vchOperatorPubKey.empty() && proTx.vchOperatorPubKey != mn->state.vchOperatorPubKey) {
+                    if (pExtraList->HasUniqueProperty(pExtraList->GetOperatorKeyHash(proTx.vchOperatorPubKey))) {
+                        return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-operator-key-intrablock",
+                                        false, "New operator key conflicts with another update in the same block");
+                    }
                 }
             }
         }
