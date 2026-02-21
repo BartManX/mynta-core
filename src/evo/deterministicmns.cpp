@@ -22,6 +22,8 @@
 
 std::unique_ptr<CDeterministicMNManager> deterministicMNManager;
 
+const int CDeterministicMNManager::CURRENT_DB_VERSION;
+
 // Database keys
 static const std::string DB_LIST_SNAPSHOT = "dmn_S";
 static const std::string DB_LIST_DIFF = "dmn_D";
