@@ -559,17 +559,16 @@ static bool AcceptToMemoryPoolWorker(const CChainParams& chainparams, CTxMemPool
     // They must pass CheckSpecialTx() validation before acceptance
     bool isSpecialTx = (tx.nVersion >= 3 && tx.nType != 0);
     if (isSpecialTx) {
-        // Validate the special transaction
-        // CheckSpecialTx returns false with specific error for:
-        // - Unknown nType values ("bad-tx-type-unknown")
-        // - Invalid ProRegTx ("bad-protx-*")
-        // - Invalid ProUpServTx, ProUpRegTx, ProUpRevTx
+        LogPrint(BCLog::MASTERNODE, "AcceptToMemoryPool: special tx %s type=%d tipHeight=%d\n",
+                 hash.ToString().substr(0, 16), tx.nType,
+                 chainActive.Tip() ? chainActive.Tip()->nHeight : -1);
         if (!CheckSpecialTx(tx, chainActive.Tip(), state)) {
-            // state is filled with specific error by CheckSpecialTx
+            LogPrint(BCLog::MASTERNODE, "AcceptToMemoryPool: special tx %s REJECTED: %s\n",
+                     hash.ToString().substr(0, 16), FormatStateMessage(state));
             return false;
         }
-        LogPrint(BCLog::MEMPOOL, "Special transaction %s (type %d) passed validation\n", 
-                 hash.ToString(), tx.nType);
+        LogPrint(BCLog::MASTERNODE, "AcceptToMemoryPool: special tx %s type=%d ACCEPTED\n",
+                 hash.ToString().substr(0, 16), tx.nType);
     } else {
         // Normal transaction - apply full standardness checks
         std::string reason;
@@ -2570,9 +2569,14 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     // and never writes to it.  Same-block collateral creation is impossible
     // because nMasternodeCollateralConfirmations requires prior-block maturity.
     // =========================================================================
+    LogPrint(BCLog::MASTERNODE, "ConnectBlock: height=%d hash=%s vtx=%zu fJustCheck=%d — entering ProcessSpecialTxsInBlock\n",
+             pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16), block.vtx.size(), fJustCheck);
     if (!ProcessSpecialTxsInBlock(block, pindex, state, fJustCheck, &view)) {
+        LogPrintf("ConnectBlock: ProcessSpecialTxsInBlock FAILED at height=%d hash=%s reason=%s\n",
+                  pindex->nHeight, pindex->GetBlockHash().ToString(), FormatStateMessage(state));
         return error("ConnectBlock(): ProcessSpecialTxsInBlock failed (pre-spend validation)");
     }
+    LogPrint(BCLog::MASTERNODE, "ConnectBlock: ProcessSpecialTxsInBlock OK at height=%d\n", pindex->nHeight);
 
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
@@ -3265,9 +3269,14 @@ bool static DisconnectTip(CValidationState& state, const CChainParams& chainpara
         if (DisconnectBlock(block, pindexDelete, view, &assetCache) != DISCONNECT_OK)
             return error("DisconnectTip(): DisconnectBlock %s failed", pindexDelete->GetBlockHash().ToString());
 
+        LogPrint(BCLog::MASTERNODE, "DisconnectTip: undoing special txs at height=%d hash=%s\n",
+                 pindexDelete->nHeight, pindexDelete->GetBlockHash().ToString().substr(0, 16));
         if (!UndoSpecialTxsInBlock(block, pindexDelete)) {
+            LogPrintf("DisconnectTip: UndoSpecialTxsInBlock FAILED at height=%d hash=%s\n",
+                      pindexDelete->nHeight, pindexDelete->GetBlockHash().ToString());
             return error("DisconnectTip(): UndoSpecialTxsInBlock %s failed", pindexDelete->GetBlockHash().ToString());
         }
+        LogPrint(BCLog::MASTERNODE, "DisconnectTip: UndoSpecialTxsInBlock OK at height=%d\n", pindexDelete->nHeight);
 
         bool flushed = view.Flush();
         assert(flushed);
@@ -3470,6 +3479,8 @@ bool static ConnectTip(CValidationState& state, const CChainParams& chainparams,
     LogPrint(BCLog::BENCH, "  - Writing chainstate: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime5 - nTime4) * MILLI, nTimeChainState * MICRO, nTimeChainState * MILLI / nBlocksTotal);
     // Remove conflicting transactions from the mempool.;
     mempool.removeForBlock(blockConnecting.vtx, pindexNew->nHeight, assetDataFromBlock);
+    LogPrint(BCLog::MASTERNODE, "ConnectTip: removing stale special txs from mempool after height=%d\n",
+             pindexNew->nHeight);
     mempool.removeStaleSpecialTx(pcoinsTip);
     disconnectpool.removeForBlock(blockConnecting.vtx);
     // Update chainActive & related variables.
@@ -4407,11 +4418,14 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
     // SECURITY: Use centralized IsMasternodePaymentEnforced() to ensure
     // consistent activation logic across the entire codebase.
     // ============================================================================
+    LogPrint(BCLog::MASTERNODE, "ContextualCheckBlock: height=%d enforced=%d hasMNMgr=%d hasPrev=%d\n",
+             nHeight, IsMasternodePaymentEnforced(nHeight),
+             deterministicMNManager != nullptr, pindexPrev != nullptr);
     if (IsMasternodePaymentEnforced(nHeight) && deterministicMNManager && pindexPrev) {
-        // Get expected masternode payee using the state at pindexPrev
-        // This is critical for reorg safety: we must use the list state that was
-        // valid BEFORE this block, not whatever the current tip happens to be
         CDeterministicMNCPtr expectedPayee = deterministicMNManager->GetMNPayee(pindexPrev);
+        LogPrint(BCLog::MASTERNODE, "ContextualCheckBlock: height=%d prevHash=%s prevHeight=%d expectedPayee=%s\n",
+                 nHeight, pindexPrev->GetBlockHash().ToString().substr(0, 16), pindexPrev->nHeight,
+                 expectedPayee ? expectedPayee->proTxHash.ToString().substr(0, 16) : "NONE");
         
         if (expectedPayee) {
             // Verify the masternode is still valid (not banned, not revoked)
@@ -4422,12 +4436,16 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
                 // This indicates a bug in GetMNPayee - log but continue with validation
             }
             
-            // Calculate expected payment based on block subsidy only
-            // Fees go entirely to the miner, ensuring consistent MN payments
             CAmount blockSubsidy = GetBlockSubsidy(nHeight, consensusParams);
             CAmount expectedMNPayment = blockSubsidy * consensusParams.nMasternodeRewardPercent / 100;
-            
-            // Find masternode payment in coinbase outputs
+
+            LogPrint(BCLog::MASTERNODE, "ContextualCheckBlock: height=%d subsidy=%s mnRewardPct=%d expectedPayment=%s "
+                     "payeeScript=%s tier=%s\n",
+                     nHeight, FormatMoney(blockSubsidy), consensusParams.nMasternodeRewardPercent,
+                     FormatMoney(expectedMNPayment),
+                     HexStr(expectedPayee->state.scriptPayout.begin(), expectedPayee->state.scriptPayout.end()).substr(0, 20),
+                     GetTierName(expectedPayee->state.nTier));
+
             bool foundMNPayment = false;
             const CTransaction& coinbaseTx = *block.vtx[0];
             
@@ -4454,7 +4472,6 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
             }
             
             if (!foundMNPayment) {
-                // Provide detailed error for debugging
                 std::string detail;
                 if (foundScript) {
                     detail = strprintf("payment amount too low (%s < %s)",
@@ -4462,7 +4479,21 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
                 } else {
                     detail = "no payment to correct script found";
                 }
-                
+
+                LogPrintf("ContextualCheckBlock REJECT: height=%d %s\n", nHeight, detail);
+                LogPrintf("  Expected payee: %s tier=%s script=%s\n",
+                          expectedPayee->proTxHash.ToString(),
+                          GetTierName(expectedPayee->state.nTier),
+                          HexStr(expectedPayee->state.scriptPayout.begin(), expectedPayee->state.scriptPayout.end()));
+                LogPrintf("  Expected amount: >= %s\n", FormatMoney(expectedMNPayment));
+                LogPrintf("  Coinbase outputs (%zu):\n", coinbaseTx.vout.size());
+                for (size_t idx = 0; idx < coinbaseTx.vout.size(); idx++) {
+                    LogPrintf("    vout[%zu]: value=%s script=%s\n", idx,
+                              FormatMoney(coinbaseTx.vout[idx].nValue),
+                              HexStr(coinbaseTx.vout[idx].scriptPubKey.begin(),
+                                     coinbaseTx.vout[idx].scriptPubKey.end()));
+                }
+
                 return state.DoS(100, false, REJECT_INVALID, "bad-cb-mn-payment", false,
                     strprintf("invalid masternode payment: %s (expected >= %s to MN %s)",
                               detail,

@@ -331,6 +331,11 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
                    const CDeterministicMNList* pExtraList,
                    const CCoinsViewCache* pCoinsView)
 {
+    LogPrint(BCLog::MASTERNODE, "CheckProRegTx: txid=%s prevHeight=%d hasCoinsView=%d\n",
+             tx.GetHash().ToString().substr(0, 16),
+             pindexPrev ? pindexPrev->nHeight : -1,
+             pCoinsView != nullptr);
+
     if (tx.nType != static_cast<uint16_t>(TxType::TRANSACTION_PROVIDER_REGISTER)) {
         return state.DoS(100, false, REJECT_INVALID, "bad-protx-type");
     }
@@ -1043,6 +1048,14 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
     // from both passing validation.
     CDeterministicMNList intraBlockList(pindex->GetBlockHash(), pindex->nHeight);
 
+    int nSpecialTxCount = 0;
+    for (size_t j = 0; j < block.vtx.size(); j++) {
+        if (IsTxTypeSpecial(*block.vtx[j])) nSpecialTxCount++;
+    }
+    LogPrint(BCLog::MASTERNODE, "ProcessSpecialTxsInBlock: height=%d hash=%s txCount=%zu specialTxCount=%d fJustCheck=%d\n",
+             pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16),
+             block.vtx.size(), nSpecialTxCount, fJustCheck);
+
     for (size_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = *block.vtx[i];
 
@@ -1087,6 +1100,11 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
                         }
                         newMN->internalId = intraBlockList.GetTotalRegisteredCount();
                         intraBlockList = intraBlockList.AddMN(newMN);
+                        LogPrint(BCLog::MASTERNODE, "ProcessSpecialTxsInBlock: registered MN %s tier=%s collateral=%s height=%d internalId=%llu\n",
+                                 newMN->proTxHash.ToString().substr(0, 16),
+                                 GetTierName(newMN->state.nTier),
+                                 proTx.collateralOutpoint.ToString(),
+                                 pindex->nHeight, newMN->internalId);
                     }
                     break;
                 }
@@ -1129,9 +1147,13 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
     }
 
     if (!fJustCheck && deterministicMNManager) {
+        LogPrint(BCLog::MASTERNODE, "ProcessSpecialTxsInBlock: calling ProcessBlock at height=%d\n", pindex->nHeight);
         if (!deterministicMNManager->ProcessBlock(block, pindex, state, fJustCheck)) {
+            LogPrintf("ProcessSpecialTxsInBlock: ProcessBlock FAILED at height=%d reason=%s\n",
+                      pindex->nHeight, FormatStateMessage(state));
             return false;
         }
+        LogPrint(BCLog::MASTERNODE, "ProcessSpecialTxsInBlock: ProcessBlock OK at height=%d\n", pindex->nHeight);
     }
 
     return true;
@@ -1139,11 +1161,14 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
 
 bool UndoSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex)
 {
-    // Undo masternode list changes
+    LogPrint(BCLog::MASTERNODE, "UndoSpecialTxsInBlock: height=%d hash=%s\n",
+             pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16));
     if (deterministicMNManager) {
         if (!deterministicMNManager->UndoBlock(block, pindex)) {
+            LogPrintf("UndoSpecialTxsInBlock: UndoBlock FAILED at height=%d\n", pindex->nHeight);
             return false;
         }
+        LogPrint(BCLog::MASTERNODE, "UndoSpecialTxsInBlock: UndoBlock OK at height=%d\n", pindex->nHeight);
     }
     return true;
 }

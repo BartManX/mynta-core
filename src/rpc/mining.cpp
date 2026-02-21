@@ -24,6 +24,7 @@
 #include "rpc/server.h"
 #include "txmempool.h"
 #include "util.h"
+#include "utilmoneystr.h"
 #include "utilstrencodings.h"
 #include "validationinterface.h"
 #include "warnings.h"
@@ -760,11 +761,9 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
         result.push_back(Pair("masternode_payments_enforced", bMasternodePaymentsEnforced));
         result.push_back(Pair("masternode_activation_height", consensusParams.nMasternodeActivationHeight));
         
-        // Include MN payment info when masternodes are active (even during grace period)
-        // This allows pools to prepare and optionally include payments early
         if (bMasternodePaymentsStarted && deterministicMNManager) {
-            // Get the masternode that should be paid using proper method signature
-            // CRITICAL: Use pindexPrev as the reference point for deterministic payee selection
+            LogPrint(BCLog::MASTERNODE, "getblocktemplate: selecting MN payee for height=%d prevHash=%s enforced=%d\n",
+                     nHeight, pindexPrev->GetBlockHash().ToString().substr(0, 16), bMasternodePaymentsEnforced);
             CDeterministicMNCPtr payee = deterministicMNManager->GetMNPayee(pindexPrev);
             
             if (payee) {
@@ -790,9 +789,12 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
                 }
                 
                 result.push_back(Pair("masternode", mnObj));
+                LogPrint(BCLog::MASTERNODE, "getblocktemplate: MN payee=%s tier=%s amount=%s for height=%d\n",
+                         payee->proTxHash.ToString().substr(0, 16), GetTierName(payee->state.nTier),
+                         FormatMoney(nMasternodePayment), nHeight);
             } else {
-                // No valid masternodes registered yet - inform the pool
                 result.push_back(Pair("masternode", "no_valid_masternodes"));
+                LogPrint(BCLog::MASTERNODE, "getblocktemplate: no valid MN payee for height=%d\n", nHeight);
             }
         }
     }
@@ -1109,10 +1111,31 @@ UniValue submitblock(const JSONRPCRequest& request)
         }
     }
 
+    LogPrint(BCLog::MASTERNODE, "submitblock: hash=%s height=%d prevHash=%s vtx=%zu coinbaseOuts=%zu\n",
+             block.GetHash().ToString().substr(0, 16), block.nHeight,
+             block.hashPrevBlock.ToString().substr(0, 16),
+             block.vtx.size(), block.vtx[0]->vout.size());
+    for (size_t idx = 0; idx < block.vtx[0]->vout.size(); idx++) {
+        LogPrint(BCLog::MASTERNODE, "submitblock: coinbase vout[%zu] value=%s script=%s\n",
+                 idx, FormatMoney(block.vtx[0]->vout[idx].nValue),
+                 HexStr(block.vtx[0]->vout[idx].scriptPubKey.begin(),
+                        block.vtx[0]->vout[idx].scriptPubKey.end()).substr(0, 40));
+    }
+
     submitblock_StateCatcher sc(block.GetHash());
     RegisterValidationInterface(&sc);
     bool fAccepted = ProcessNewBlock(GetParams(), blockptr, true, nullptr);
     UnregisterValidationInterface(&sc);
+
+    if (fAccepted) {
+        LogPrint(BCLog::MASTERNODE, "submitblock: ACCEPTED hash=%s height=%d\n",
+                 block.GetHash().ToString().substr(0, 16), block.nHeight);
+    } else {
+        LogPrint(BCLog::MASTERNODE, "submitblock: REJECTED hash=%s height=%d found=%d state=%s\n",
+                 block.GetHash().ToString().substr(0, 16), block.nHeight, sc.found,
+                 sc.found ? FormatStateMessage(sc.state) : "not-found");
+    }
+
     if (fBlockPresent) {
         if (fAccepted && !sc.found) {
             return "duplicate-inconclusive";

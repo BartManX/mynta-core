@@ -339,16 +339,16 @@ std::vector<CDeterministicMNCPtr> CDeterministicMNList::GetValidMNsForPayment(in
 
 CDeterministicMNCPtr CDeterministicMNList::GetMNPayee(const uint256& blockHashForPayment, int currentHeight) const
 {
-    // Get all valid masternodes with sufficient confirmations
     std::vector<CDeterministicMNCPtr> validMNs = GetValidMNsForPayment(currentHeight);
     if (validMNs.empty()) {
-        LogPrint(BCLog::MASTERNODE, "GetMNPayee: No valid masternodes eligible for payment at height %d\n", currentHeight);
+        LogPrint(BCLog::MASTERNODE, "GetMNPayee(list): No valid MNs eligible at height %d (total=%zu)\n",
+                 currentHeight, GetAllMNsCount());
         return nullptr;
     }
 
-    // Calculate scores and find the one with lowest score (highest priority)
-    // The score incorporates payment history so masternodes that haven't
-    // been paid recently are more likely to be selected
+    LogPrint(BCLog::MASTERNODE, "GetMNPayee(list): scoring %zu eligible MNs at height=%d entropy=%s\n",
+             validMNs.size(), currentHeight, blockHashForPayment.ToString().substr(0, 16));
+
     CDeterministicMNCPtr winner = nullptr;
     arith_uint256 lowestScore = arith_uint256();
     bool first = true;
@@ -364,8 +364,9 @@ CDeterministicMNCPtr CDeterministicMNList::GetMNPayee(const uint256& blockHashFo
     }
 
     if (winner) {
-        LogPrint(BCLog::MASTERNODE, "GetMNPayee: Selected MN %s for payment at height %d\n",
-                 winner->proTxHash.ToString().substr(0, 16), currentHeight);
+        LogPrint(BCLog::MASTERNODE, "GetMNPayee(list): winner=%s tier=%s lastPaid=%d score=%s height=%d\n",
+                 winner->proTxHash.ToString().substr(0, 16), GetTierName(winner->state.nTier),
+                 winner->state.nLastPaidHeight, lowestScore.GetHex().substr(0, 16), currentHeight);
     }
 
     return winner;
@@ -528,7 +529,6 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
 {
     LOCK(cs);
 
-    // Get the previous list
     CDeterministicMNListCPtr prevList;
     if (pindex->pprev) {
         prevList = GetListForBlock(pindex->pprev);
@@ -537,7 +537,9 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
         prevList = std::make_shared<CDeterministicMNList>();
     }
 
-    // Build the new list by cloning prevList's data into a list tagged with this block
+    LogPrint(BCLog::MASTERNODE, "ProcessBlock: height=%d prevMNs=%zu prevRegistered=%llu\n",
+             pindex->nHeight, prevList->GetAllMNsCount(), prevList->GetTotalRegisteredCount());
+
     CDeterministicMNList newList(pindex->GetBlockHash(), pindex->nHeight);
     newList.SetTotalRegisteredCount(prevList->GetTotalRegisteredCount());
     for (const auto& pair : prevList->GetMnMap()) {
@@ -588,13 +590,11 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
     for (size_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = *block.vtx[i];
         
-        // Debug: Log transaction info
-        LogPrint(BCLog::MASTERNODE, "ProcessBlock: tx %s version=%d nType=%d payload_size=%zu\n",
-                 tx.GetHash().ToString().substr(0, 16), tx.nVersion, tx.nType, tx.vExtraPayload.size());
-        
         if (!IsTxTypeSpecial(tx)) {
             continue;
         }
+        LogPrint(BCLog::MASTERNODE, "ProcessBlock: special tx %s type=%d at height=%d\n",
+                 tx.GetHash().ToString().substr(0, 16), tx.nType, pindex->nHeight);
 
         TxType txType = GetTxType(tx);
         
@@ -790,16 +790,15 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
     }
 
     if (!fJustCheck) {
-        // Store the new list
         auto newListPtr = std::make_shared<CDeterministicMNList>(newList);
         mnListsCache[pindex->GetBlockHash()] = newListPtr;
         tipList = newListPtr;
-        
-        // Persist to database
         SaveListToDb(newListPtr);
-        
-        // Cleanup old cache entries
         CleanupCache();
+
+        LogPrint(BCLog::MASTERNODE, "ProcessBlock: height=%d COMMITTED — totalMNs=%zu validMNs=%zu registered=%llu cacheSize=%zu\n",
+                 pindex->nHeight, newList.GetAllMNsCount(), newList.GetValidMNsCount(),
+                 newList.GetTotalRegisteredCount(), mnListsCache.size());
     }
 
     return true;
@@ -809,14 +808,18 @@ bool CDeterministicMNManager::UndoBlock(const CBlock& block, const CBlockIndex* 
 {
     LOCK(cs);
 
-    // Remove the list for this block from cache
+    LogPrint(BCLog::MASTERNODE, "UndoBlock: reverting height=%d hash=%s cacheSize=%zu\n",
+             pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16), mnListsCache.size());
+
     mnListsCache.erase(pindex->GetBlockHash());
 
-    // Set tip to previous block's list
     if (pindex->pprev) {
         tipList = GetListForBlock(pindex->pprev);
+        LogPrint(BCLog::MASTERNODE, "UndoBlock: tip now at height=%d MNs=%zu\n",
+                 pindex->pprev->nHeight, tipList ? tipList->GetAllMNsCount() : 0);
     } else {
         tipList = std::make_shared<CDeterministicMNList>();
+        LogPrint(BCLog::MASTERNODE, "UndoBlock: tip reset to genesis (empty list)\n");
     }
 
     return true;
@@ -884,12 +887,26 @@ CDeterministicMNCPtr CDeterministicMNManager::GetMNPayee(const CBlockIndex* pind
     if (!pindex) return nullptr;
     
     auto list = const_cast<CDeterministicMNManager*>(this)->GetListForBlock(pindex);
-    if (!list) return nullptr;
-    
-    // CRITICAL: Pass the NEXT block's height (pindex->nHeight + 1)
-    // This is the block we're building/validating, not the previous block
-    // The confirmation check must validate against the NEW block height
-    return list->GetMNPayee(pindex->GetBlockHash(), pindex->nHeight + 1);
+    if (!list) {
+        LogPrint(BCLog::MASTERNODE, "GetMNPayee: no list for pindex height=%d hash=%s\n",
+                 pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16));
+        return nullptr;
+    }
+
+    int nextHeight = pindex->nHeight + 1;
+    LogPrint(BCLog::MASTERNODE, "GetMNPayee: listHeight=%d listMNs=%zu validMNs=%zu scoring for nextHeight=%d entropy=%s\n",
+             list->GetHeight(), list->GetAllMNsCount(), list->GetValidMNsCount(),
+             nextHeight, pindex->GetBlockHash().ToString().substr(0, 16));
+
+    auto payee = list->GetMNPayee(pindex->GetBlockHash(), nextHeight);
+    if (payee) {
+        LogPrint(BCLog::MASTERNODE, "GetMNPayee: selected %s tier=%s lastPaid=%d for height=%d\n",
+                 payee->proTxHash.ToString().substr(0, 16), GetTierName(payee->state.nTier),
+                 payee->state.nLastPaidHeight, nextHeight);
+    } else {
+        LogPrint(BCLog::MASTERNODE, "GetMNPayee: NO payee found for height=%d\n", nextHeight);
+    }
+    return payee;
 }
 
 void CDeterministicMNManager::UpdatedBlockTip(const CBlockIndex* pindexNew, const CBlockIndex* pindexFork, bool fInitialDownload)
