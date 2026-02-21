@@ -42,15 +42,17 @@ bool IsMasternodePaymentEnforced(int nHeight)
 {
     const auto& consensusParams = GetParams().GetConsensus();
     
-    // Payments not enforced before activation
-    if (nHeight < consensusParams.nMasternodeActivationHeight) {
+    // Payments not enforced before tiered activation height.
+    // All blocks before nTieredMNActivationHeight were mined under v1.2.x
+    // rules which did not enforce deterministic MN payments. Enforcing
+    // payments on those historical blocks causes consensus failures because
+    // the EvoDB rebuilt from scratch may differ from the state at mining time.
+    if (nHeight < consensusParams.nTieredMNActivationHeight) {
         return false;
     }
     
-    // Grace period: allow network to bootstrap
-    // Payments are enforced after activation + grace period
     int gracePeriod = GetMasternodePaymentGracePeriod();
-    return nHeight >= (consensusParams.nMasternodeActivationHeight + gracePeriod);
+    return nHeight >= (consensusParams.nTieredMNActivationHeight + gracePeriod);
 }
 
 int GetMasternodeActivationHeight()
