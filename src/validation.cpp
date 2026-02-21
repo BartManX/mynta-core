@@ -2553,6 +2553,27 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
 
     std::set<CMessage> setMessages;
     std::vector<std::pair<std::string, CNullAssetTxData>> myNullAssetData;
+
+    // =========================================================================
+    // SPECIAL TRANSACTION VALIDATION — MUST RUN BEFORE UpdateCoins
+    //
+    // ProRegTx collateral validation requires the collateral UTXO to exist
+    // in the view.  UpdateCoins marks inputs as spent, so if the ProRegTx
+    // (or any other tx in the block) consumes the collateral as an input,
+    // the coin will appear spent by the time ProcessSpecialTxsInBlock runs.
+    //
+    // By validating special transactions here, against the pre-spend view,
+    // collateral UTXOs are guaranteed to be present.  This is deterministic
+    // and identical across all nodes regardless of flush timing.
+    //
+    // Safety: ProcessSpecialTxsInBlock only reads the UTXO view (AccessCoin)
+    // and never writes to it.  Same-block collateral creation is impossible
+    // because nMasternodeCollateralConfirmations requires prior-block maturity.
+    // =========================================================================
+    if (!ProcessSpecialTxsInBlock(block, pindex, state, fJustCheck, &view)) {
+        return error("ConnectBlock(): ProcessSpecialTxsInBlock failed (pre-spend validation)");
+    }
+
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = *(block.vtx[i]);
@@ -2846,11 +2867,9 @@ static bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockInd
     if (fJustCheck)
         return true;
 
-    // Process special transactions (DIP2/DIP3 masternode registrations, updates, etc.)
-    // Pass the block-local UTXO view so collateral validation sees same-block outputs.
-    if (!ProcessSpecialTxsInBlock(block, pindex, state, false, &view)) {
-        return error("ConnectBlock(): ProcessSpecialTxsInBlock failed");
-    }
+    // NOTE: ProcessSpecialTxsInBlock was moved BEFORE the UpdateCoins loop
+    // (see above) so that ProRegTx collateral validation sees the pre-spend
+    // UTXO state.  Do NOT re-add it here.
 
     // Write undo information to disk
     if (pindex->GetUndoPos().IsNull() || !pindex->IsValid(BLOCK_VALID_SCRIPTS))
@@ -3245,6 +3264,11 @@ bool static DisconnectTip(CValidationState& state, const CChainParams& chainpara
         assert(view.GetBestBlock() == pindexDelete->GetBlockHash());
         if (DisconnectBlock(block, pindexDelete, view, &assetCache) != DISCONNECT_OK)
             return error("DisconnectTip(): DisconnectBlock %s failed", pindexDelete->GetBlockHash().ToString());
+
+        if (!UndoSpecialTxsInBlock(block, pindexDelete)) {
+            return error("DisconnectTip(): UndoSpecialTxsInBlock %s failed", pindexDelete->GetBlockHash().ToString());
+        }
+
         bool flushed = view.Flush();
         assert(flushed);
 

@@ -50,6 +50,9 @@ public:
     int nPoSeBanHeight{-1};
     uint16_t nRevocationReason{0};
 
+    // Masternode tier: 1=Standard, 2=Super, 3=Ultra
+    uint8_t nTier{1};
+
     // Keys and addresses
     CKeyID keyIDOwner;
     std::vector<unsigned char> vchOperatorPubKey;
@@ -75,6 +78,15 @@ public:
         READWRITE(addr);
         READWRITE(scriptPayout);
         READWRITE(scriptOperatorPayout);
+        if (ser_action.ForRead()) {
+            try {
+                READWRITE(nTier);
+            } catch (const std::ios_base::failure&) {
+                nTier = 1;
+            }
+        } else {
+            READWRITE(nTier);
+        }
     }
 
     // Check if masternode is banned
@@ -184,6 +196,7 @@ public:
     size_t GetValidMNsCount() const;
     uint64_t GetTotalRegisteredCount() const { return nTotalRegisteredCount; }
     void IncrementTotalRegisteredCount() { nTotalRegisteredCount++; }
+    void SetTotalRegisteredCount(uint64_t n) { nTotalRegisteredCount = n; }
     const MnMap& GetMnMap() const { return mnMap; }
 
     // Lookup functions
@@ -215,6 +228,7 @@ public:
 
     // Modification (returns new list, original is immutable)
     CDeterministicMNList AddMN(const CDeterministicMNCPtr& mn) const;
+    void AddMNInPlace(const CDeterministicMNCPtr& mn);
     CDeterministicMNList UpdateMN(const uint256& proTxHash, const CDeterministicMNState& newState) const;
     CDeterministicMNList RemoveMN(const uint256& proTxHash) const;
 
@@ -256,6 +270,10 @@ private:
 
     // Maximum cache size
     static const size_t MAX_CACHE_SIZE = 100;
+
+    // DB schema version — increment when serialization format changes.
+    // On mismatch, Init() wipes EvoDB and forces a full resync.
+    static const int CURRENT_DB_VERSION = 2;
 
 public:
     explicit CDeterministicMNManager(CEvoDB& _evoDb);
@@ -355,6 +373,33 @@ int GetMasternodeActivationHeight();
  * @return Number of blocks after activation before enforcement
  */
 int GetMasternodePaymentGracePeriod();
+
+// ============================================================================
+// Masternode Tier Helpers
+// ============================================================================
+
+/**
+ * Determine the masternode tier from a collateral amount at a given height.
+ * Before nTieredMNActivationHeight, only Tier 1 is valid.
+ * Returns 0 if the amount does not match any valid tier.
+ */
+uint8_t GetMasternodeTier(CAmount collateralAmount, int nHeight);
+
+/**
+ * Get the payout selection weight for a tier.
+ * Tier 1 = 1, Tier 2 = 10, Tier 3 = 100.
+ */
+int GetTierWeight(uint8_t nTier);
+
+/**
+ * Get the human-readable name for a tier.
+ */
+std::string GetTierName(uint8_t nTier);
+
+/**
+ * Check whether a collateral amount is valid at a given block height.
+ */
+bool IsValidCollateralAmount(CAmount amount, int nHeight);
 
 #endif // MYNTA_EVO_DETERMINISTICMNS_H
 

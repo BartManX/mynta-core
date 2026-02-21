@@ -29,6 +29,8 @@ struct MasternodeEntry {
     int poseBanHeight;
     double operatorReward;
     bool isMyMasternode;      // True if wallet owns this MN
+    QString tier;             // "standard", "super", "ultra"
+    qint64 collateralAmount;  // Collateral in satoshis
 };
 
 class MasternodeLessThan
@@ -57,12 +59,13 @@ public:
 
     enum ColumnIndex {
         Status = 0,
-        ProTxHash = 1,
-        Service = 2,
-        PayoutAddress = 3,
-        RegisteredHeight = 4,
-        LastPaidHeight = 5,
-        PoSePenalty = 6
+        Tier = 1,
+        ProTxHash = 2,
+        Service = 3,
+        PayoutAddress = 4,
+        RegisteredHeight = 5,
+        LastPaidHeight = 6,
+        PoSePenalty = 7
     };
 
     // Filter modes

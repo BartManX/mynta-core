@@ -101,8 +101,17 @@ struct Params {
     // Deterministic Masternode (DIP3) Consensus Parameters
     // =======================================================================
     
-    /** Masternode collateral amount in satoshis */
+    /** Masternode collateral amount in satoshis (Tier 1 - Standard) */
     CAmount nMasternodeCollateral;
+    
+    /** Masternode collateral amount for Tier 2 (Super Node) in satoshis */
+    CAmount nMasternodeCollateralTier2;
+    
+    /** Masternode collateral amount for Tier 3 (Ultra Node) in satoshis */
+    CAmount nMasternodeCollateralTier3;
+    
+    /** Block height at which tiered masternodes (Tier 2/3) become valid */
+    int nTieredMNActivationHeight;
     
     /** Required confirmations for collateral */
     int nMasternodeCollateralConfirmations;

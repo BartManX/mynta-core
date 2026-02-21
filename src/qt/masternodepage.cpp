@@ -20,6 +20,9 @@
 
 #include <univalue.h>
 
+#include <set>
+#include <vector>
+
 #include <QSortFilterProxyModel>
 #include <QTableView>
 #include <QHeaderView>
@@ -383,16 +386,34 @@ void MasternodePage::loadAvailableCollaterals()
     
     ui->collateralComboBox->clear();
     
-    // Get masternode collateral amount from chain params
-    CAmount collateralAmount = Params().GetConsensus().nMasternodeCollateral;
-    
+    const auto& cp = Params().GetConsensus();
+
+    // Build set of valid collateral amounts based on current block height
+    int currentHeight = 0;
     try {
-        // Get list of unspent outputs that could be collateral
+        JSONRPCRequest hReq;
+        hReq.strMethod = "getblockcount";
+        hReq.params = UniValue(UniValue::VARR);
+        currentHeight = tableRPC.execute(hReq).get_int();
+    } catch (...) {}
+
+    std::vector<std::pair<CAmount, QString>> validTiers;
+    validTiers.push_back({cp.nMasternodeCollateral, tr("Standard")});
+    if (currentHeight >= cp.nTieredMNActivationHeight) {
+        validTiers.push_back({cp.nMasternodeCollateralTier2, tr("Super")});
+        validTiers.push_back({cp.nMasternodeCollateralTier3, tr("Ultra")});
+    }
+
+    std::set<CAmount> validAmounts;
+    for (const auto& t : validTiers)
+        validAmounts.insert(t.first);
+
+    try {
         JSONRPCRequest req;
         req.strMethod = "listunspent";
         UniValue params(UniValue::VARR);
-        params.push_back(1);  // minconf
-        params.push_back(9999999); // maxconf
+        params.push_back(1);
+        params.push_back(9999999);
         req.params = params;
         
         UniValue result = tableRPC.execute(req);
@@ -401,13 +422,19 @@ void MasternodePage::loadAvailableCollaterals()
             const UniValue &utxo = result[i];
             CAmount amount = AmountFromValue(utxo["amount"]);
             
-            // Check if this UTXO is exactly the collateral amount
-            if (amount == collateralAmount) {
+            if (validAmounts.count(amount)) {
                 QString txid = QString::fromStdString(utxo["txid"].get_str());
                 int vout = utxo["vout"].get_int();
                 QString address = QString::fromStdString(utxo["address"].get_str());
-                
-                QString displayText = QString("%1:%2 (%3 MYNTA) - %4")
+
+                // Determine tier name for display
+                QString tierLabel;
+                for (const auto& t : validTiers) {
+                    if (t.first == amount) { tierLabel = t.second; break; }
+                }
+
+                QString displayText = QString("[%1] %2:%3 (%4 MYNTA) - %5")
+                    .arg(tierLabel)
                     .arg(txid.left(16))
                     .arg(vout)
                     .arg(amount / COIN)
@@ -420,8 +447,12 @@ void MasternodePage::loadAvailableCollaterals()
         }
         
         if (ui->collateralComboBox->count() == 0) {
-            ui->collateralComboBox->addItem(tr("No valid collateral UTXOs found (need exactly %1 MYNTA)")
-                .arg(collateralAmount / COIN));
+            QString amounts;
+            for (size_t i = 0; i < validTiers.size(); i++) {
+                if (i > 0) amounts += ", ";
+                amounts += QString("%1 MYNTA (%2)").arg(validTiers[i].first / COIN).arg(validTiers[i].second);
+            }
+            ui->collateralComboBox->addItem(tr("No valid collateral UTXOs found (need %1)").arg(amounts));
         }
         
     } catch (const std::exception &e) {

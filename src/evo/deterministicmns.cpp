@@ -69,6 +69,44 @@ int GetMasternodePaymentGracePeriod()
 }
 
 // ============================================================================
+// Masternode Tier Helpers
+// ============================================================================
+
+uint8_t GetMasternodeTier(CAmount collateralAmount, int nHeight)
+{
+    const auto& cp = GetParams().GetConsensus();
+    if (nHeight >= cp.nTieredMNActivationHeight) {
+        if (collateralAmount == cp.nMasternodeCollateralTier3) return 3;
+        if (collateralAmount == cp.nMasternodeCollateralTier2) return 2;
+    }
+    if (collateralAmount == cp.nMasternodeCollateral) return 1;
+    return 0;
+}
+
+int GetTierWeight(uint8_t nTier)
+{
+    switch (nTier) {
+        case 2:  return 10;
+        case 3:  return 100;
+        default: return 1;
+    }
+}
+
+std::string GetTierName(uint8_t nTier)
+{
+    switch (nTier) {
+        case 2:  return "super";
+        case 3:  return "ultra";
+        default: return "standard";
+    }
+}
+
+bool IsValidCollateralAmount(CAmount amount, int nHeight)
+{
+    return GetMasternodeTier(amount, nHeight) != 0;
+}
+
+// ============================================================================
 // CDeterministicMNState Implementation
 // ============================================================================
 
@@ -89,6 +127,7 @@ bool CDeterministicMNState::operator==(const CDeterministicMNState& other) const
            nPoSeRevivedHeight == other.nPoSeRevivedHeight &&
            nPoSeBanHeight == other.nPoSeBanHeight &&
            nRevocationReason == other.nRevocationReason &&
+           nTier == other.nTier &&
            keyIDOwner == other.keyIDOwner &&
            vchOperatorPubKey == other.vchOperatorPubKey &&
            keyIDVoting == other.keyIDVoting &&
@@ -105,6 +144,7 @@ std::string CDeterministicMNState::ToString() const
        << ", lastPaidHeight=" << nLastPaidHeight
        << ", PoSePenalty=" << nPoSePenalty
        << ", PoSeBanHeight=" << nPoSeBanHeight
+       << ", tier=" << GetTierName(nTier)
        << ", addr=" << addr.ToString()
        << ")";
     return ss.str();
@@ -116,29 +156,33 @@ std::string CDeterministicMNState::ToString() const
 
 arith_uint256 CDeterministicMN::CalcScore(const uint256& blockHash, int currentHeight) const
 {
-    // Score calculation for payment ordering
-    // Lower score = higher priority for payment
-    // 
-    // CRITICAL FIX: Include payment history to ensure fair rotation
-    // Masternodes that haven't been paid recently get priority
-    // by having more blocks since payment factored into their score
-    
-    // Calculate blocks since last payment
-    // If never paid (nLastPaidHeight == 0), use registration height
+    // Score calculation for payment ordering.
+    // Lower score = higher priority for payment.
+    //
+    // Payment history is included so MNs that haven't been paid recently
+    // are more likely to be selected.
+    //
+    // Tier weighting: the raw hash score is divided by the tier weight
+    // (1 / 10 / 100).  Higher-tier nodes get a lower effective score,
+    // making them proportionally more likely to win each round.
+    // This uses arith_uint256 integer division — fully deterministic.
+
     int lastPaid = state.nLastPaidHeight > 0 ? state.nLastPaidHeight : state.nRegisteredHeight;
-    int blocksSincePayment = currentHeight - lastPaid;
-    
-    // Ensure non-negative (can happen during initial sync)
-    if (blocksSincePayment < 0) {
-        blocksSincePayment = 0;
-    }
-    
+    int blocksSincePayment = std::max(0, currentHeight - lastPaid);
+
     CHashWriter hw(SER_GETHASH, PROTOCOL_VERSION);
     hw << proTxHash;
     hw << blockHash;
-    hw << blocksSincePayment;  // Include payment history in score
-    
-    return UintToArith256(hw.GetHash());
+    hw << blocksSincePayment;
+
+    arith_uint256 rawScore = UintToArith256(hw.GetHash());
+
+    int weight = GetTierWeight(state.nTier);
+    if (weight > 1) {
+        rawScore /= weight;
+    }
+
+    return rawScore;
 }
 
 std::string CDeterministicMN::ToString() const
@@ -347,6 +391,16 @@ CDeterministicMNList CDeterministicMNList::AddMN(const CDeterministicMNCPtr& mn)
     return result;
 }
 
+void CDeterministicMNList::AddMNInPlace(const CDeterministicMNCPtr& mn)
+{
+    mnMap[mn->proTxHash] = mn;
+    mnUniquePropertyMap[GetUniquePropertyHash(mn->collateralOutpoint)] = mn->proTxHash;
+    mnUniquePropertyMap[GetUniquePropertyHash(mn->state.addr)] = mn->proTxHash;
+    mnUniquePropertyMap[GetUniquePropertyHash(mn->state.keyIDOwner)] = mn->proTxHash;
+    mnUniquePropertyMap[GetVotingKeyHash(mn->state.keyIDVoting)] = mn->proTxHash;
+    mnUniquePropertyMap[GetOperatorKeyHash(mn->state.vchOperatorPubKey)] = mn->proTxHash;
+}
+
 CDeterministicMNList CDeterministicMNList::UpdateMN(const uint256& proTxHash, const CDeterministicMNState& newState) const
 {
     auto mn = GetMN(proTxHash);
@@ -425,10 +479,46 @@ CDeterministicMNManager::CDeterministicMNManager(CEvoDB& _evoDb)
 {
 }
 
+static const std::string DB_MN_VERSION = "dmn_ver";
+
 bool CDeterministicMNManager::Init()
 {
     LOCK(cs);
-    // Initialize with empty list at genesis
+
+    int storedVersion = 0;
+    evoDb.Read(DB_MN_VERSION, storedVersion);
+
+    if (storedVersion < CURRENT_DB_VERSION) {
+        LogPrintf("CDeterministicMNManager: DB version %d < %d, erasing stale EvoDB snapshots for resync\n",
+                  storedVersion, CURRENT_DB_VERSION);
+        mnListsCache.clear();
+
+        {
+            CDBWrapper& rawDb = evoDb.GetRawDB();
+            std::unique_ptr<CDBIterator> pcursor(rawDb.NewIterator());
+            auto prefix = std::make_pair(DB_LIST_SNAPSHOT, uint256());
+            pcursor->Seek(prefix);
+
+            std::vector<std::pair<std::string, uint256>> keysToErase;
+            while (pcursor->Valid()) {
+                std::pair<std::string, uint256> key;
+                if (!pcursor->GetKey(key) || key.first != DB_LIST_SNAPSHOT) {
+                    break;
+                }
+                keysToErase.push_back(key);
+                pcursor->Next();
+            }
+
+            for (const auto& key : keysToErase) {
+                evoDb.Erase(key);
+            }
+            LogPrintf("CDeterministicMNManager: Erased %d stale MN list snapshots from EvoDB\n",
+                      keysToErase.size());
+        }
+
+        evoDb.Write(DB_MN_VERSION, CURRENT_DB_VERSION);
+    }
+
     tipList = std::make_shared<CDeterministicMNList>();
     return true;
 }
@@ -447,13 +537,11 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
         prevList = std::make_shared<CDeterministicMNList>();
     }
 
-    // Build the new list by processing transactions
-    CDeterministicMNList newList = *prevList;
-    newList = CDeterministicMNList(pindex->GetBlockHash(), pindex->nHeight);
-    
-    // Copy existing masternodes
+    // Build the new list by cloning prevList's data into a list tagged with this block
+    CDeterministicMNList newList(pindex->GetBlockHash(), pindex->nHeight);
+    newList.SetTotalRegisteredCount(prevList->GetTotalRegisteredCount());
     for (const auto& pair : prevList->GetMnMap()) {
-        newList = newList.AddMN(pair.second);
+        newList.AddMNInPlace(pair.second);
     }
 
     // ============================================================
@@ -529,12 +617,17 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
                 newMN->state.addr = proTx.addr;
                 newMN->state.scriptPayout = proTx.scriptPayout;
                 newMN->internalId = newList.GetTotalRegisteredCount();
-                newList.IncrementTotalRegisteredCount();
+
+                {
+                    AssertLockHeld(cs_main);
+                    const Coin& collCoin = pcoinsTip->AccessCoin(proTx.collateralOutpoint);
+                    newMN->state.nTier = GetMasternodeTier(collCoin.out.nValue, pindex->nHeight);
+                }
 
                 newList = newList.AddMN(newMN);
                 
-                LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- New MN registered: %s\n", 
-                         __func__, newMN->ToString());
+                LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- New MN registered: %s (tier=%s)\n", 
+                         __func__, newMN->ToString(), GetTierName(newMN->state.nTier));
                 break;
             }
             

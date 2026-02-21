@@ -35,7 +35,18 @@ static UniValue MNToJson(const CDeterministicMNCPtr& mn)
     obj.pushKV("collateralHash", mn->collateralOutpoint.hash.ToString());
     obj.pushKV("collateralIndex", (int)mn->collateralOutpoint.n);
     obj.pushKV("operatorReward", mn->nOperatorReward / 100.0);
-    
+
+    // Tier information
+    obj.pushKV("tier", GetTierName(mn->state.nTier));
+    obj.pushKV("tierWeight", GetTierWeight(mn->state.nTier));
+    {
+        const auto& cp = GetParams().GetConsensus();
+        CAmount collateralAmount = cp.nMasternodeCollateral;
+        if (mn->state.nTier == 2) collateralAmount = cp.nMasternodeCollateralTier2;
+        if (mn->state.nTier == 3) collateralAmount = cp.nMasternodeCollateralTier3;
+        obj.pushKV("collateralAmount", collateralAmount);
+    }
+
     // State
     UniValue stateObj(UniValue::VOBJ);
     stateObj.pushKV("registeredHeight", mn->state.nRegisteredHeight);
@@ -150,11 +161,16 @@ UniValue masternode_count(const JSONRPCRequest& request)
     if (request.fHelp || request.params.size() > 0)
         throw std::runtime_error(
             "masternode count\n"
-            "\nGet masternode count values.\n"
+            "\nGet masternode count values with per-tier breakdown.\n"
             "\nResult:\n"
             "{\n"
-            "  \"total\": n,      (numeric) Total masternodes\n"
-            "  \"enabled\": n,    (numeric) Enabled masternodes\n"
+            "  \"total\": n,          (numeric) Total masternodes\n"
+            "  \"enabled\": n,        (numeric) Enabled masternodes\n"
+            "  \"tiers\": {           (object)  Per-tier breakdown\n"
+            "    \"standard\": { \"total\": n, \"enabled\": n },\n"
+            "    \"super\":    { \"total\": n, \"enabled\": n },\n"
+            "    \"ultra\":    { \"total\": n, \"enabled\": n }\n"
+            "  }\n"
             "}\n"
             "\nExamples:\n"
             + HelpExampleCli("masternode", "count")
@@ -167,10 +183,36 @@ UniValue masternode_count(const JSONRPCRequest& request)
 
     auto mnList = deterministicMNManager->GetListAtChainTip();
 
+    int tier1 = 0, tier2 = 0, tier3 = 0;
+    int tier1Enabled = 0, tier2Enabled = 0, tier3Enabled = 0;
+    mnList->ForEachMN(false, [&](const CDeterministicMNCPtr& mn) {
+        bool valid = mn->IsValid();
+        switch (mn->state.nTier) {
+            case 2: tier2++; if (valid) tier2Enabled++; break;
+            case 3: tier3++; if (valid) tier3Enabled++; break;
+            default: tier1++; if (valid) tier1Enabled++; break;
+        }
+    });
+
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("total", (int)mnList->GetAllMNsCount());
     obj.pushKV("enabled", (int)mnList->GetValidMNsCount());
-    
+
+    UniValue tiers(UniValue::VOBJ);
+    UniValue t1(UniValue::VOBJ);
+    t1.pushKV("total", tier1);
+    t1.pushKV("enabled", tier1Enabled);
+    tiers.pushKV("standard", t1);
+    UniValue t2(UniValue::VOBJ);
+    t2.pushKV("total", tier2);
+    t2.pushKV("enabled", tier2Enabled);
+    tiers.pushKV("super", t2);
+    UniValue t3(UniValue::VOBJ);
+    t3.pushKV("total", tier3);
+    t3.pushKV("enabled", tier3Enabled);
+    tiers.pushKV("ultra", t3);
+    obj.pushKV("tiers", tiers);
+
     return obj;
 }
 
@@ -224,7 +266,16 @@ UniValue masternode_status(const JSONRPCRequest& request)
     obj.pushKV("masternodes_active", bMasternodesActive);
     obj.pushKV("payments_enforced", bPaymentsEnforced);
     obj.pushKV("grace_period_blocks", GetMasternodePaymentGracePeriod());
-    
+
+    // Tiered masternode activation
+    obj.pushKV("tiered_mn_activation_height", consensusParams.nTieredMNActivationHeight);
+    bool bTiersActive = nNextHeight >= consensusParams.nTieredMNActivationHeight;
+    obj.pushKV("tiered_masternodes_active", bTiersActive);
+    if (!bTiersActive) {
+        int blocksUntilTiers = consensusParams.nTieredMNActivationHeight - nNextHeight;
+        obj.pushKV("blocks_until_tiered_activation", blocksUntilTiers);
+    }
+
     // Masternode counts
     if (deterministicMNManager) {
         auto mnList = deterministicMNManager->GetListAtChainTip();

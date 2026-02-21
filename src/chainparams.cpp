@@ -424,7 +424,10 @@ public:
         // =======================================================================
         // Deterministic Masternode (DIP3) Parameters - MAINNET
         // =======================================================================
-        consensus.nMasternodeCollateral = 100000 * COIN;      // 100,000 MYNTA
+        consensus.nMasternodeCollateral = 100000 * COIN;      // 100,000 MYNTA (Tier 1 - Standard)
+        consensus.nMasternodeCollateralTier2 = 1000000 * COIN;  // 1,000,000 MYNTA (Tier 2 - Super)
+        consensus.nMasternodeCollateralTier3 = 10000000 * COIN; // 10,000,000 MYNTA (Tier 3 - Ultra)
+        consensus.nTieredMNActivationHeight = 130000;         // Tier 2/3 valid after block 130000
         consensus.nMasternodeCollateralConfirmations = 15;    // ~15 minutes
         consensus.nMasternodeActivationHeight = 50000;        // MNs active after block 50000 (~35 days from launch)
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs
@@ -638,7 +641,10 @@ public:
         // Deterministic Masternode (DIP3) Parameters - TESTNET
         // Lower values for easier testing
         // =======================================================================
-        consensus.nMasternodeCollateral = 1000 * COIN;        // 1,000 MYNTA (lower for testing)
+        consensus.nMasternodeCollateral = 1000 * COIN;        // 1,000 MYNTA (Tier 1 - Standard, lower for testing)
+        consensus.nMasternodeCollateralTier2 = 10000 * COIN;   // 10,000 MYNTA (Tier 2 - Super)
+        consensus.nMasternodeCollateralTier3 = 100000 * COIN;  // 100,000 MYNTA (Tier 3 - Ultra)
+        consensus.nTieredMNActivationHeight = 200;             // Tier 2/3 valid after block 200 (low for testing)
         consensus.nMasternodeCollateralConfirmations = 2;     // 2 confirmations (fast testing)
         consensus.nMasternodeActivationHeight = 100;          // MNs active after block 100
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs
@@ -843,7 +849,10 @@ public:
         // Deterministic Masternode (DIP3) Parameters - REGTEST
         // Minimal values for rapid unit testing
         // =======================================================================
-        consensus.nMasternodeCollateral = 100 * COIN;         // 100 MYNTA (minimal for tests)
+        consensus.nMasternodeCollateral = 100 * COIN;         // 100 MYNTA (Tier 1 - Standard, minimal for tests)
+        consensus.nMasternodeCollateralTier2 = 1000 * COIN;    // 1,000 MYNTA (Tier 2 - Super)
+        consensus.nMasternodeCollateralTier3 = 10000 * COIN;   // 10,000 MYNTA (Tier 3 - Ultra)
+        consensus.nTieredMNActivationHeight = 50;              // Tier 2/3 valid after block 50 (very low for tests)
         consensus.nMasternodeCollateralConfirmations = 1;     // 1 confirmation (instant)
         consensus.nMasternodeActivationHeight = 1;            // MNs active from block 1
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs

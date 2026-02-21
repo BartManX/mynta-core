@@ -27,6 +27,9 @@ bool MasternodeLessThan::operator()(const MasternodeEntry &left, const Masternod
     case MasternodeModel::Status:
         result = left.status.compare(right.status);
         break;
+    case MasternodeModel::Tier:
+        result = left.tier.compare(right.tier);
+        break;
     case MasternodeModel::ProTxHash:
         result = left.proTxHash.compare(right.proTxHash);
         break;
@@ -66,7 +69,7 @@ MasternodeModel::MasternodeModel(ClientModel *_clientModel, WalletModel *_wallet
     myMasternodeCount(0),
     currentBlockHeight(0)
 {
-    columns << tr("Status") << tr("ProTxHash") << tr("IP:Port") << tr("Payout Address") 
+    columns << tr("Status") << tr("Tier") << tr("ProTxHash") << tr("IP:Port") << tr("Payout Address") 
             << tr("Registered") << tr("Blocks until Payment") << tr("PoSe");
     
     refreshTimer = new QTimer(this);
@@ -106,6 +109,11 @@ QVariant MasternodeModel::data(const QModelIndex &index, int role) const
         switch (index.column()) {
         case Status:
             return mn.status;
+        case Tier: {
+            QString display = mn.tier;
+            display[0] = display[0].toUpper();
+            return display;
+        }
         case ProTxHash:
             return mn.proTxHash.left(16) + "...";  // Truncate for display
         case Service:
@@ -143,6 +151,14 @@ QVariant MasternodeModel::data(const QModelIndex &index, int role) const
                 return QBrush(QColor("#ef4444"));  // red-500
             else
                 return QBrush(QColor("#f59e0b"));  // amber-500
+        }
+        if (index.column() == Tier) {
+            if (mn.tier == "ultra")
+                return QBrush(QColor("#8B5CF6"));  // purple
+            else if (mn.tier == "super")
+                return QBrush(QColor("#DAA520"));  // gold
+            else
+                return QBrush(QColor("#94a3b8"));  // slate-400
         }
         // All other columns: use a light readable color on dark backgrounds
         return QBrush(QColor("#e2e8f0"));  // slate-200
@@ -342,7 +358,18 @@ void MasternodeModel::refresh()
             entry.collateralIndex = mnObj["collateralIndex"].get_int();
             entry.status = QString::fromStdString(mnObj["status"].get_str());
             entry.operatorReward = mnObj["operatorReward"].get_real();
-            
+
+            if (mnObj.exists("tier")) {
+                entry.tier = QString::fromStdString(mnObj["tier"].get_str());
+            } else {
+                entry.tier = "standard";
+            }
+            if (mnObj.exists("collateralAmount")) {
+                entry.collateralAmount = mnObj["collateralAmount"].get_int64();
+            } else {
+                entry.collateralAmount = 0;
+            }
+
             const UniValue &stateObj = mnObj["state"];
             entry.registeredHeight = stateObj["registeredHeight"].get_int();
             entry.lastPaidHeight = stateObj["lastPaidHeight"].get_int();

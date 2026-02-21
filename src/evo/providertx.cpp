@@ -414,15 +414,16 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
     // ============================================================
     // Validate collateral amount
     //
-    // When called from ConnectBlock, pCoinsView points to the
-    // block-local CCoinsViewCache.  By the time ProcessSpecialTxsInBlock
-    // runs, UpdateCoins has already consumed all tx inputs, so if the
-    // ProRegTx spends its own collateral as an input (self-referencing
-    // pattern), the coin will appear spent in pCoinsView.  In that case
-    // we fall back to pcoinsTip which still has the pre-block state.
+    // When called from ConnectBlock, pCoinsView is the block-local
+    // CCoinsViewCache.  ProcessSpecialTxsInBlock now runs BEFORE
+    // UpdateCoins, so the collateral UTXO is guaranteed to be
+    // unspent in the view at this point.
     //
     // When called from mempool acceptance (pCoinsView == nullptr),
     // we use pcoinsTip directly.
+    //
+    // NO fallback-to-pcoinsTip: that pattern is consensus-unsafe
+    // because pcoinsTip flush timing varies across nodes.
     // ============================================================
     {
         const auto& consensusParams = GetParams().GetConsensus();
@@ -436,53 +437,53 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
 
         const Coin& collateralCoin = coins->AccessCoin(proTx.collateralOutpoint);
 
-        const Coin* pCollateral = &collateralCoin;
-        Coin fallbackCoin;
-
-        if (collateralCoin.IsSpent() && pCoinsView && pcoinsTip) {
-            bool spentBySelf = false;
-            for (const auto& txin : tx.vin) {
-                if (txin.prevout == proTx.collateralOutpoint) {
-                    spentBySelf = true;
-                    break;
-                }
-            }
-            if (spentBySelf) {
-                fallbackCoin = pcoinsTip->AccessCoin(proTx.collateralOutpoint);
-                if (!fallbackCoin.IsSpent()) {
-                    pCollateral = &fallbackCoin;
-                    LogPrint(BCLog::MASTERNODE, "CheckProRegTx: collateral %s spent by own input, using pcoinsTip fallback\n",
-                             proTx.collateralOutpoint.ToString());
-                }
-            }
-        }
-
-        if (pCollateral->IsSpent()) {
+        if (collateralCoin.IsSpent()) {
+            LogPrint(BCLog::MASTERNODE,
+                "CheckProRegTx FAIL: txid=%s collateral=%s coin_spent=true block_height=%d\n",
+                tx.GetHash().ToString(), proTx.collateralOutpoint.ToString(),
+                pindexPrev ? pindexPrev->nHeight + 1 : -1);
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-not-found",
                             false, "Collateral UTXO does not exist or is already spent");
         }
 
-        if (pCollateral->out.nValue != consensusParams.nMasternodeCollateral) {
-            return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-amount",
-                            false, strprintf("Collateral amount must be exactly %d MYNTA, got %d",
-                                            consensusParams.nMasternodeCollateral / COIN,
-                                            pCollateral->out.nValue / COIN));
-        }
-
-        {
-            int collateralHeight = pCollateral->nHeight;
-            int currentHeight = pindexPrev ? pindexPrev->nHeight + 1 : 0;
-            int confirmations = currentHeight - collateralHeight;
-
-            if (confirmations < consensusParams.nMasternodeCollateralConfirmations) {
-                return state.DoS(10, false, REJECT_INVALID, "bad-protx-collateral-immature",
-                                false, strprintf("Collateral needs %d confirmations, has %d",
-                                                consensusParams.nMasternodeCollateralConfirmations, confirmations));
+        int nextBlockHeight = pindexPrev ? pindexPrev->nHeight + 1 : 0;
+        if (!IsValidCollateralAmount(collateralCoin.out.nValue, nextBlockHeight)) {
+            std::string validAmounts = strprintf("%d MYNTA",
+                consensusParams.nMasternodeCollateral / COIN);
+            if (nextBlockHeight >= consensusParams.nTieredMNActivationHeight) {
+                validAmounts += strprintf(", %d MYNTA, or %d MYNTA",
+                    consensusParams.nMasternodeCollateralTier2 / COIN,
+                    consensusParams.nMasternodeCollateralTier3 / COIN);
             }
-
-            LogPrint(BCLog::MASTERNODE, "CheckProRegTx: Collateral validated - %s has %d MYNTA with %d confirmations\n",
-                      proTx.collateralOutpoint.ToString(), pCollateral->out.nValue / COIN, confirmations);
+            LogPrint(BCLog::MASTERNODE,
+                "CheckProRegTx FAIL: txid=%s collateral=%s value=%d valid=[%s] height=%d\n",
+                tx.GetHash().ToString(), proTx.collateralOutpoint.ToString(),
+                collateralCoin.out.nValue / COIN, validAmounts, nextBlockHeight);
+            return state.DoS(100, false, REJECT_INVALID, "bad-protx-collateral-amount",
+                            false, strprintf("Collateral must be exactly %s, got %d MYNTA",
+                                            validAmounts, collateralCoin.out.nValue / COIN));
         }
+
+        int collateralHeight = collateralCoin.nHeight;
+        int currentHeight = pindexPrev ? pindexPrev->nHeight + 1 : 0;
+        int confirmations = currentHeight - collateralHeight;
+
+        if (confirmations < consensusParams.nMasternodeCollateralConfirmations) {
+            LogPrint(BCLog::MASTERNODE,
+                "CheckProRegTx FAIL: txid=%s collateral=%s confirmations=%d required=%d\n",
+                tx.GetHash().ToString(), proTx.collateralOutpoint.ToString(),
+                confirmations, consensusParams.nMasternodeCollateralConfirmations);
+            return state.DoS(10, false, REJECT_INVALID, "bad-protx-collateral-immature",
+                            false, strprintf("Collateral needs %d confirmations, has %d",
+                                            consensusParams.nMasternodeCollateralConfirmations, confirmations));
+        }
+
+        uint8_t detectedTier = GetMasternodeTier(collateralCoin.out.nValue, currentHeight);
+        LogPrint(BCLog::MASTERNODE,
+            "CheckProRegTx OK: txid=%s collateral=%s value=%d confirmations=%d height=%d tier=%s\n",
+            tx.GetHash().ToString(), proTx.collateralOutpoint.ToString(),
+            collateralCoin.out.nValue / COIN, confirmations, currentHeight,
+            GetTierName(detectedTier));
     }
     
     // Check signature by owner key
@@ -1044,7 +1045,18 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
 
     for (size_t i = 0; i < block.vtx.size(); i++) {
         const CTransaction& tx = *block.vtx[i];
+
+        if (IsTxTypeSpecial(tx)) {
+            LogPrint(BCLog::MASTERNODE,
+                "ProcessSpecialTxsInBlock: tx_index=%zu txid=%s type=%d height=%d\n",
+                i, tx.GetHash().ToString(), static_cast<int>(GetTxType(tx)), pindex->nHeight);
+        }
+
         if (!CheckSpecialTx(tx, pindex->pprev, state, &intraBlockList, pCoinsView)) {
+            LogPrint(BCLog::MASTERNODE,
+                "ProcessSpecialTxsInBlock FAIL: tx_index=%zu txid=%s type=%d reason=%s height=%d\n",
+                i, tx.GetHash().ToString(), static_cast<int>(GetTxType(tx)),
+                FormatStateMessage(state), pindex->nHeight);
             return false;
         }
 
@@ -1066,8 +1078,14 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
                         newMN->state.keyIDVoting = proTx.keyIDVoting;
                         newMN->state.scriptPayout = proTx.scriptPayout;
                         newMN->state.nRegisteredHeight = pindex->nHeight;
+                        {
+                            const CCoinsViewCache* coins = pCoinsView ? pCoinsView : pcoinsTip;
+                            if (coins) {
+                                const Coin& collCoin = coins->AccessCoin(proTx.collateralOutpoint);
+                                newMN->state.nTier = GetMasternodeTier(collCoin.out.nValue, pindex->nHeight);
+                            }
+                        }
                         newMN->internalId = intraBlockList.GetTotalRegisteredCount();
-                        intraBlockList.IncrementTotalRegisteredCount();
                         intraBlockList = intraBlockList.AddMN(newMN);
                     }
                     break;
