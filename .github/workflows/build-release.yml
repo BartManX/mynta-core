@@ -136,8 +136,9 @@ jobs:
         env:
           MYNTA_VERSION: ${{ steps.version.outputs.version }}
         run: |
+          DEB_VERSION="${MYNTA_VERSION#v}"
           DISTNAME="mynta-${MYNTA_VERSION}"
-          DEB_DIR="mynta_${MYNTA_VERSION}_amd64"
+          DEB_DIR="mynta_${DEB_VERSION}_amd64"
           
           mkdir -p ${DEB_DIR}/DEBIAN
           mkdir -p ${DEB_DIR}/usr/bin
@@ -171,7 +172,7 @@ jobs:
           # Create control file
           cat > ${DEB_DIR}/DEBIAN/control << EOF
           Package: mynta
-          Version: ${MYNTA_VERSION}
+          Version: ${DEB_VERSION}
           Section: utils
           Priority: optional
           Architecture: amd64
@@ -187,7 +188,7 @@ jobs:
           
           # Build DEB
           dpkg-deb --build ${DEB_DIR}
-          mv ${DEB_DIR}.deb release/mynta_${MYNTA_VERSION}_amd64.deb
+          mv ${DEB_DIR}.deb release/mynta_${DEB_VERSION}_amd64.deb
 
       - name: Generate checksums
         run: |
