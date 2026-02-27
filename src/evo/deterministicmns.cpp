@@ -23,6 +23,7 @@
 std::unique_ptr<CDeterministicMNManager> deterministicMNManager;
 
 const int CDeterministicMNManager::CURRENT_DB_VERSION;
+const size_t CDeterministicMNManager::MAX_CACHE_SIZE;
 
 // Database keys
 static const std::string DB_LIST_SNAPSHOT = "dmn_S";
