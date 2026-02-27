@@ -314,6 +314,68 @@ UniValue masternode_status(const JSONRPCRequest& request)
     return obj;
 }
 
+UniValue masternode_migration_status(const JSONRPCRequest& request)
+{
+    if (request.fHelp || request.params.size() > 0)
+        throw std::runtime_error(
+            "masternode migration_status\n"
+            "\nGet the status of the MN v2 migration.\n"
+            "\nResult:\n"
+            "{\n"
+            "  \"current_height\": n,           (numeric) Current blockchain height\n"
+            "  \"migration_height\": n,         (numeric) Block height at which the v2 migration occurs\n"
+            "  \"blocks_until_migration\": n,   (numeric) Blocks remaining (-1 if already migrated)\n"
+            "  \"migration_complete\": bool,    (boolean) Whether the migration has already occurred\n"
+            "  \"total_masternodes\": n,        (numeric) Current total masternodes in list\n"
+            "  \"valid_masternodes\": n,        (numeric) Current valid/enabled masternodes\n"
+            "  \"grace_period_blocks\": n,      (numeric) Grace period after migration before payment enforcement\n"
+            "  \"payments_enforced\": bool,     (boolean) Whether MN payments are currently enforced\n"
+            "}\n"
+            "\nExamples:\n"
+            + HelpExampleCli("masternode", "migration_status")
+            + HelpExampleRpc("masternode", "migration_status")
+        );
+
+    const auto& consensusParams = GetParams().GetConsensus();
+    UniValue result(UniValue::VOBJ);
+
+    LOCK(cs_main);
+    int nHeight = chainActive.Height();
+
+    int nMigrationHeight = consensusParams.nMNv2MigrationHeight;
+    bool fMigrated = (nHeight >= nMigrationHeight);
+    int nBlocksUntil = fMigrated ? -1 : (nMigrationHeight - nHeight);
+
+    result.push_back(Pair("current_height", nHeight));
+    result.push_back(Pair("migration_height", nMigrationHeight));
+    result.push_back(Pair("blocks_until_migration", nBlocksUntil));
+    result.push_back(Pair("migration_complete", fMigrated));
+
+    size_t nTotal = 0;
+    size_t nValid = 0;
+    if (deterministicMNManager) {
+        auto tipList = deterministicMNManager->GetListAtChainTip();
+        if (tipList) {
+            nTotal = tipList->GetAllMNsCount();
+            nValid = tipList->GetValidMNsCount();
+        }
+    }
+    result.push_back(Pair("total_masternodes", (int64_t)nTotal));
+    result.push_back(Pair("valid_masternodes", (int64_t)nValid));
+    result.push_back(Pair("grace_period_blocks", GetMasternodePaymentGracePeriod()));
+    result.push_back(Pair("payments_enforced", IsMasternodePaymentEnforced(nHeight)));
+
+    if (fMigrated) {
+        result.push_back(Pair("note", "All pre-v2 masternodes were invalidated at the migration height. "
+                                      "Operators must re-register with a new ProRegTx."));
+    } else {
+        result.push_back(Pair("note", strprintf("At block %d, all existing masternodes will be invalidated. "
+                                                "Operators must re-register after that height.", nMigrationHeight)));
+    }
+
+    return result;
+}
+
 UniValue masternode_winner(const JSONRPCRequest& request)
 {
     if (request.fHelp || request.params.size() > 1)
@@ -423,12 +485,12 @@ UniValue protx_register(const JSONRPCRequest& request)
 
     // Parse arguments
     uint256 collateralHash = ParseHashV(request.params[0], "collateralHash");
-    int collateralIndex = request.params[1].get_int();
+    int collateralIndex = request.params[1].isNum() ? request.params[1].get_int() : atoi(request.params[1].get_str().c_str());
     std::string strIpPort = request.params[2].get_str();
     std::string strOwnerAddress = request.params[3].get_str();
     std::string strOperatorPubKey = request.params[4].get_str();
     std::string strVotingAddress = request.params[5].get_str();
-    double operatorReward = request.params[6].get_real();
+    double operatorReward = request.params[6].isNum() ? request.params[6].get_real() : atof(request.params[6].get_str().c_str());
     std::string strPayoutAddress = request.params[7].get_str();
 
     // Validate operator reward
@@ -1062,7 +1124,7 @@ UniValue protx_revoke(const JSONRPCRequest& request)
     std::string strOperatorKey = request.params[1].get_str();
     uint16_t nReason = 0;
     if (request.params.size() >= 3) {
-        nReason = (uint16_t)request.params[2].get_int();
+        nReason = request.params[2].isNum() ? (uint16_t)request.params[2].get_int() : (uint16_t)atoi(request.params[2].get_str().c_str());
         if (nReason > CProUpRevTx::REASON_CHANGE_OF_KEYS) {
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid reason (0-3)");
         }
@@ -1194,8 +1256,8 @@ UniValue protx_diff(const JSONRPCRequest& request)
             + HelpExampleCli("protx", "diff 1000 2000")
         );
 
-    int baseHeight = request.params[0].get_int();
-    int blockHeight = request.params[1].get_int();
+    int baseHeight = request.params[0].isNum() ? request.params[0].get_int() : atoi(request.params[0].get_str().c_str());
+    int blockHeight = request.params[1].isNum() ? request.params[1].get_int() : atoi(request.params[1].get_str().c_str());
 
     if (!deterministicMNManager) {
         throw JSONRPCError(RPC_INTERNAL_ERROR, "Masternode manager not initialized");
@@ -1264,10 +1326,11 @@ UniValue masternode(const JSONRPCRequest& request)
             "\nArguments:\n"
             "1. \"command\"        (string, required) The command to execute\n"
             "\nAvailable commands:\n"
-            "  count        - Get masternode count\n"
-            "  list         - Get list of masternodes\n"
-            "  status       - Get masternode activation status and payment info\n"
-            "  winner       - Get next masternode winner(s)\n"
+            "  count             - Get masternode count\n"
+            "  list              - Get list of masternodes\n"
+            "  status            - Get masternode activation status and payment info\n"
+            "  winner            - Get next masternode winner(s)\n"
+            "  migration_status  - Get MN v2 migration status\n"
         );
     }
 
@@ -1286,6 +1349,8 @@ UniValue masternode(const JSONRPCRequest& request)
         return masternode_status(newRequest);
     } else if (strCommand == "winner") {
         return masternode_winner(newRequest);
+    } else if (strCommand == "migration_status") {
+        return masternode_migration_status(newRequest);
     }
 
     throw JSONRPCError(RPC_INVALID_PARAMETER, "Unknown masternode command: " + strCommand);

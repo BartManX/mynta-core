@@ -4503,11 +4503,13 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
                               expectedPayee->proTxHash.ToString().substr(0, 16)));
             }
             
-            // Optionally validate operator reward if present
-            // Operator payout is from the MN reward, not additional
+            // Enforce operator reward split after tiered MN activation
             if (expectedPayee->nOperatorReward > 0 && !expectedPayee->state.scriptOperatorPayout.empty()) {
                 CAmount operatorPayment = expectedMNPayment * expectedPayee->nOperatorReward / 10000;
                 if (operatorPayment > 0) {
+                    const auto& cp = GetParams().GetConsensus();
+                    bool bEnforce = (nHeight >= cp.nTieredMNActivationHeight);
+                    
                     bool foundOperatorPayment = false;
                     for (const CTxOut& out : coinbaseTx.vout) {
                         if (out.scriptPubKey == expectedPayee->state.scriptOperatorPayout && 
@@ -4516,10 +4518,14 @@ static bool ContextualCheckBlock(const CBlock& block, CValidationState& state, c
                             break;
                         }
                     }
-                    // Log if operator payment is missing, but don't reject
-                    // (this maintains backwards compatibility with older blocks)
                     if (!foundOperatorPayment) {
-                        LogPrint(BCLog::MASTERNODE, "ContextualCheckBlock: Missing operator payment of %s\n",
+                        if (bEnforce) {
+                            return state.DoS(100, false, REJECT_INVALID, "bad-cb-mn-operator-payment", false,
+                                strprintf("missing operator payment of %s to MN %s",
+                                          FormatMoney(operatorPayment),
+                                          expectedPayee->proTxHash.ToString().substr(0, 16)));
+                        }
+                        LogPrint(BCLog::MASTERNODE, "ContextualCheckBlock: Missing operator payment of %s (pre-enforcement)\n",
                                  FormatMoney(operatorPayment));
                     }
                 }

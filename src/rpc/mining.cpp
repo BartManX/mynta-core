@@ -761,6 +761,14 @@ UniValue getblocktemplate(const JSONRPCRequest& request)
         result.push_back(Pair("masternode_payments_enforced", bMasternodePaymentsEnforced));
         result.push_back(Pair("masternode_activation_height", consensusParams.nMasternodeActivationHeight));
         
+        // Warn pools if the node is still syncing - MN list may be incomplete
+        if (bMasternodePaymentsEnforced && IsInitialBlockDownload()) {
+            result.push_back(Pair("masternode_sync_warning",
+                "Node is still syncing; masternode list may be incomplete. "
+                "Blocks produced now risk rejection if the MN payment is wrong."));
+            LogPrintf("WARNING: getblocktemplate called during IBD with MN payments enforced at height %d\n", nHeight);
+        }
+        
         if (bMasternodePaymentsStarted && deterministicMNManager) {
             LogPrint(BCLog::MASTERNODE, "getblocktemplate: selecting MN payee for height=%d prevHash=%s enforced=%d\n",
                      nHeight, pindexPrev->GetBlockHash().ToString().substr(0, 16), bMasternodePaymentsEnforced);

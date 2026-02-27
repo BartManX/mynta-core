@@ -224,17 +224,29 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     // This follows Dash Core behavior and ensures consistent, predictable MN payments
     CAmount nMasternodePayment = 0;
     CScript masternodePayoutScript;
+    CAmount nOperatorPayment = 0;
+    CScript operatorPayoutScript;
     bool bMasternodePayment = false;
+    bool bOperatorPayment = false;
     
-    // Use centralized activation check for consistency with validation
-    // This ensures miner creates blocks that will pass validation
-    if (IsMasternodeActivationHeight(nHeight) && deterministicMNManager) {
-        // Get the masternode that should be paid
+    // Use the SAME activation check as the validator (IsMasternodePaymentEnforced)
+    // so the miner only includes MN payments when the validator will enforce them.
+    if (IsMasternodePaymentEnforced(nHeight) && deterministicMNManager) {
         CDeterministicMNCPtr payee = deterministicMNManager->GetMNPayee(pindexPrev);
         if (payee) {
-            // Payment based on subsidy only (not fees)
-            // MN gets consensusParams.nMasternodeRewardPercent % of block subsidy
-            nMasternodePayment = nBlockSubsidy * consensusParams.nMasternodeRewardPercent / 100;
+            CAmount nTotalMNPayment = nBlockSubsidy * consensusParams.nMasternodeRewardPercent / 100;
+            
+            // Split between operator and owner if operator reward is configured
+            if (payee->nOperatorReward > 0 && !payee->state.scriptOperatorPayout.empty()) {
+                nOperatorPayment = nTotalMNPayment * payee->nOperatorReward / 10000;
+                if (nOperatorPayment > 0) {
+                    operatorPayoutScript = payee->state.scriptOperatorPayout;
+                    bOperatorPayment = true;
+                }
+            }
+            
+            // Owner gets the remainder
+            nMasternodePayment = nTotalMNPayment - nOperatorPayment;
             masternodePayoutScript = payee->state.scriptPayout;
             bMasternodePayment = true;
             
@@ -243,8 +255,9 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
             if (ExtractDestination(masternodePayoutScript, payoutDest)) {
                 payoutAddr = EncodeDestination(payoutDest);
             }
-            LogPrint(BCLog::MASTERNODE, "CreateNewBlock: Masternode payment to %s (%s), amount: %s\n",
-                     payee->proTxHash.ToString().substr(0, 16), payoutAddr, FormatMoney(nMasternodePayment));
+            LogPrint(BCLog::MASTERNODE, "CreateNewBlock: MN payment to %s (%s), owner: %s, operator: %s\n",
+                     payee->proTxHash.ToString().substr(0, 16), payoutAddr,
+                     FormatMoney(nMasternodePayment), FormatMoney(nOperatorPayment));
         }
     }
     
@@ -261,18 +274,31 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     // Blocks without correct dev allocation are rejected at consensus.
     // =========================================================================
     
-    // Calculate miner's share: subsidy - dev allocation - masternode payment + all fees
-    CAmount nMinerReward = nBlockSubsidy - nDevAllocation - nMasternodePayment + nFees;
+    // Calculate miner's share: subsidy - dev allocation - masternode payment - operator payment + all fees
+    CAmount nMinerReward = nBlockSubsidy - nDevAllocation - nMasternodePayment - nOperatorPayment + nFees;
     
     if (bMasternodePayment) {
-        // Three outputs: miner, dev, masternode
-        coinbaseTx.vout.resize(3);
-        coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
-        coinbaseTx.vout[0].nValue = nMinerReward;
-        coinbaseTx.vout[1].scriptPubKey = devScript;
-        coinbaseTx.vout[1].nValue = nDevAllocation;
-        coinbaseTx.vout[2].scriptPubKey = masternodePayoutScript;
-        coinbaseTx.vout[2].nValue = nMasternodePayment;
+        if (bOperatorPayment) {
+            // Four outputs: miner, dev, MN owner, MN operator
+            coinbaseTx.vout.resize(4);
+            coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
+            coinbaseTx.vout[0].nValue = nMinerReward;
+            coinbaseTx.vout[1].scriptPubKey = devScript;
+            coinbaseTx.vout[1].nValue = nDevAllocation;
+            coinbaseTx.vout[2].scriptPubKey = masternodePayoutScript;
+            coinbaseTx.vout[2].nValue = nMasternodePayment;
+            coinbaseTx.vout[3].scriptPubKey = operatorPayoutScript;
+            coinbaseTx.vout[3].nValue = nOperatorPayment;
+        } else {
+            // Three outputs: miner, dev, masternode
+            coinbaseTx.vout.resize(3);
+            coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
+            coinbaseTx.vout[0].nValue = nMinerReward;
+            coinbaseTx.vout[1].scriptPubKey = devScript;
+            coinbaseTx.vout[1].nValue = nDevAllocation;
+            coinbaseTx.vout[2].scriptPubKey = masternodePayoutScript;
+            coinbaseTx.vout[2].nValue = nMasternodePayment;
+        }
     } else {
         // Two outputs: miner, dev (no masternode payment yet)
         coinbaseTx.vout.resize(2);

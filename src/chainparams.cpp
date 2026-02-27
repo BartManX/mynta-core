@@ -428,10 +428,11 @@ public:
         consensus.nMasternodeCollateralTier2 = 1000000 * COIN;  // 1,000,000 MYNTA (Tier 2 - Super)
         consensus.nMasternodeCollateralTier3 = 10000000 * COIN; // 10,000,000 MYNTA (Tier 3 - Ultra)
         consensus.nTieredMNActivationHeight = 130000;         // Tier 2/3 valid after block 130000
+        consensus.nMNv2MigrationHeight = 130000;              // Wipe pre-v2 MN list at block 130000
         consensus.nMasternodeCollateralConfirmations = 15;    // ~15 minutes
         consensus.nMasternodeActivationHeight = 50000;        // MNs active after block 50000 (~35 days from launch)
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs
-        consensus.nPoSePenaltyIncrement = 66;                 // Penalty per missed session
+        consensus.nPoSePenaltyIncrement = 10;                 // Penalty per missed session (10 misses = ban, matching Dash)
         consensus.nPoSeBanThreshold = 100;                    // Ban at 100 penalty points
         consensus.nPoSeRevivalHeight = 720;                   // ~12 hours for revival
         
@@ -644,11 +645,12 @@ public:
         consensus.nMasternodeCollateral = 1000 * COIN;        // 1,000 MYNTA (Tier 1 - Standard, lower for testing)
         consensus.nMasternodeCollateralTier2 = 10000 * COIN;   // 10,000 MYNTA (Tier 2 - Super)
         consensus.nMasternodeCollateralTier3 = 100000 * COIN;  // 100,000 MYNTA (Tier 3 - Ultra)
-        consensus.nTieredMNActivationHeight = 200;             // Tier 2/3 valid after block 200 (low for testing)
+        consensus.nTieredMNActivationHeight = 6750;             // Tier 2/3 valid after block 6750
+        consensus.nMNv2MigrationHeight = 6750;                // Wipe pre-v2 MN list at block 6750
         consensus.nMasternodeCollateralConfirmations = 2;     // 2 confirmations (fast testing)
         consensus.nMasternodeActivationHeight = 100;          // MNs active after block 100
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs
-        consensus.nPoSePenaltyIncrement = 66;                 // Penalty per missed session
+        consensus.nPoSePenaltyIncrement = 10;                 // Penalty per missed session (10 misses = ban, matching Dash)
         consensus.nPoSeBanThreshold = 100;                    // Ban at 100 penalty points
         consensus.nPoSeRevivalHeight = 720;                   // ~12 hours for revival
         
@@ -853,12 +855,15 @@ public:
         consensus.nMasternodeCollateralTier2 = 1000 * COIN;    // 1,000 MYNTA (Tier 2 - Super)
         consensus.nMasternodeCollateralTier3 = 10000 * COIN;   // 10,000 MYNTA (Tier 3 - Ultra)
         consensus.nTieredMNActivationHeight = 50;              // Tier 2/3 valid after block 50 (very low for tests)
+        consensus.nMNv2MigrationHeight = 50;                  // Wipe pre-v2 MN list at block 50
         consensus.nMasternodeCollateralConfirmations = 1;     // 1 confirmation (instant)
         consensus.nMasternodeActivationHeight = 1;            // MNs active from block 1
         consensus.nMasternodeRewardPercent = 45;              // 45% of block reward to MNs
-        consensus.nPoSePenaltyIncrement = 66;                 // Penalty per missed session
+        consensus.nPoSePenaltyIncrement = 10;                 // Penalty per missed session (10 misses = ban, matching Dash)
         consensus.nPoSeBanThreshold = 100;                    // Ban at 100 penalty points
         consensus.nPoSeRevivalHeight = 24;                    // Quick revival for testing
+        consensus.nProUpServCooldown = 2;                     // 2 blocks cooldown for testing
+        consensus.nProUpRegCooldown = 2;                      // 2 blocks cooldown for testing
         
         // LLMQ Parameters - REGTEST
         consensus.nLLMQMinSize = 3;                           // Minimal quorum for tests

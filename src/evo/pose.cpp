@@ -118,11 +118,9 @@ void CPoSeManager::ProcessQuorumSession(
         }
     }
     
-    // Persist tip height
-    evoDb.Write(DB_POSE_HEIGHT, lastProcessedHeight);
-    
-    // Flush changes to database
-    Flush();
+    // NOTE: Do NOT persist here. PoSe state is committed atomically with the
+    // block via the evoDb transaction in CDeterministicMNManager::ProcessBlock.
+    // Writing here would cause double-penalties after a crash-before-commit.
     
     LogPrint(BCLog::MASTERNODE, "CPoSeManager: Processed quorum session at height %d "
              "- %zu participants, %zu expected, %zu missed\n",
@@ -203,23 +201,19 @@ CDeterministicMNList CPoSeManager::CheckAndPunish(
 {
     LOCK(cs);
     
-    CDeterministicMNList result = mnList;
+    // Collect all state updates first, then apply in a single batch copy
+    std::vector<std::pair<uint256, CDeterministicMNState>> updates;
     
-    // Apply accumulated penalties to masternodes
     for (const auto& [proTxHash, state] : stateMap) {
         int penalty = state.penaltyScore;
         
-        auto mn = result.GetMN(proTxHash);
+        auto mn = mnList.GetMN(proTxHash);
         if (!mn) continue;
-        
-        // Skip already banned masternodes
         if (mn->state.IsBanned()) continue;
         
-        // Update penalty in state
         CDeterministicMNState newState = mn->state;
         newState.nPoSePenalty = penalty;
         
-        // Check if penalty exceeds threshold
         if (penalty >= banThreshold) {
             newState.nPoSeBanHeight = currentHeight;
             LogPrint(BCLog::MASTERNODE, "CPoSeManager: PoSe-banning MN %s "
@@ -227,10 +221,10 @@ CDeterministicMNList CPoSeManager::CheckAndPunish(
                      proTxHash.ToString().substr(0, 16), penalty, banThreshold, currentHeight);
         }
         
-        result = result.UpdateMN(proTxHash, newState);
+        updates.emplace_back(proTxHash, newState);
     }
     
-    return result;
+    return mnList.BatchUpdateMNStates(updates);
 }
 
 void CPoSeManager::ResetPenalty(const uint256& proTxHash)

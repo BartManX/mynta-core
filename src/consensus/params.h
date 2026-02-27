@@ -131,6 +131,17 @@ struct Params {
     /** Blocks until a banned masternode can be revived */
     int nPoSeRevivalHeight;
     
+    /** Minimum blocks between ProUpServTx updates for the same MN */
+    int nProUpServCooldown{10};
+    
+    /** Minimum blocks between ProUpRegTx updates for the same MN */
+    int nProUpRegCooldown{10};
+    
+    /** Block height at which the MN v2 migration occurs.
+     *  At this height, the entire MN list is wiped and all operators must
+     *  re-register.  Defaults to nTieredMNActivationHeight on all networks. */
+    int nMNv2MigrationHeight{0};
+    
     // =======================================================================
     // LLMQ (Long-Living Masternode Quorum) Parameters
     // =======================================================================

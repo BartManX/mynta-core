@@ -132,6 +132,8 @@ bool CDeterministicMNState::operator==(const CDeterministicMNState& other) const
            nPoSeBanHeight == other.nPoSeBanHeight &&
            nRevocationReason == other.nRevocationReason &&
            nTier == other.nTier &&
+           nLastServiceUpdateHeight == other.nLastServiceUpdateHeight &&
+           nLastRegistrarUpdateHeight == other.nLastRegistrarUpdateHeight &&
            keyIDOwner == other.keyIDOwner &&
            vchOperatorPubKey == other.vchOperatorPubKey &&
            keyIDVoting == other.keyIDVoting &&
@@ -228,30 +230,30 @@ CDeterministicMNCPtr CDeterministicMNList::GetMN(const uint256& proTxHash) const
 
 CDeterministicMNCPtr CDeterministicMNList::GetMNByOperatorKey(const std::vector<unsigned char>& vchPubKey) const
 {
-    for (const auto& pair : mnMap) {
-        if (pair.second->state.vchOperatorPubKey == vchPubKey) {
-            return pair.second;
-        }
+    uint256 propHash = GetOperatorKeyHash(vchPubKey);
+    auto it = mnUniquePropertyMap.find(propHash);
+    if (it != mnUniquePropertyMap.end()) {
+        return GetMN(it->second);
     }
     return nullptr;
 }
 
 CDeterministicMNCPtr CDeterministicMNList::GetMNByCollateral(const COutPoint& collateralOutpoint) const
 {
-    for (const auto& pair : mnMap) {
-        if (pair.second->collateralOutpoint == collateralOutpoint) {
-            return pair.second;
-        }
+    uint256 propHash = GetUniquePropertyHash(collateralOutpoint);
+    auto it = mnUniquePropertyMap.find(propHash);
+    if (it != mnUniquePropertyMap.end()) {
+        return GetMN(it->second);
     }
     return nullptr;
 }
 
 CDeterministicMNCPtr CDeterministicMNList::GetMNByService(const CService& addr) const
 {
-    for (const auto& pair : mnMap) {
-        if (pair.second->state.addr == addr) {
-            return pair.second;
-        }
+    uint256 propHash = GetUniquePropertyHash(addr);
+    auto it = mnUniquePropertyMap.find(propHash);
+    if (it != mnUniquePropertyMap.end()) {
+        return GetMN(it->second);
     }
     return nullptr;
 }
@@ -323,10 +325,14 @@ std::vector<CDeterministicMNCPtr> CDeterministicMNList::GetValidMNsForPayment(in
         if (!pair.second->IsValid()) {
             continue;
         }
-        
-        // CRITICAL FIX: Require confirmations before eligible for payment
-        // A masternode must have sufficient confirmations on its registration
-        // to prevent consensus issues with newly registered masternodes
+
+        // Reject MNs with invalid tier (nTier==0 means the collateral
+        // didn't match any valid tier at registration time).
+        if (pair.second->state.nTier == 0) {
+            continue;
+        }
+
+        // Require confirmations before eligible for payment.
         int confirmations = currentHeight - pair.second->state.nRegisteredHeight;
         if (confirmations < consensusParams.nMasternodeCollateralConfirmations) {
             LogPrint(BCLog::MASTERNODE, "GetValidMNsForPayment: MN %s not mature yet (%d/%d confirmations)\n",
@@ -335,7 +341,7 @@ std::vector<CDeterministicMNCPtr> CDeterministicMNList::GetValidMNsForPayment(in
                      consensusParams.nMasternodeCollateralConfirmations);
             continue;
         }
-        
+
         result.push_back(pair.second);
     }
     return result;
@@ -359,8 +365,9 @@ CDeterministicMNCPtr CDeterministicMNList::GetMNPayee(const uint256& blockHashFo
 
     for (const auto& mn : validMNs) {
         arith_uint256 score = mn->CalcScore(blockHashForPayment, currentHeight);
-        
-        if (first || score < lowestScore) {
+
+        if (first || score < lowestScore ||
+            (score == lowestScore && UintToArith256(mn->proTxHash) < UintToArith256(winner->proTxHash))) {
             winner = mn;
             lowestScore = score;
             first = false;
@@ -410,7 +417,9 @@ CDeterministicMNList CDeterministicMNList::UpdateMN(const uint256& proTxHash, co
 {
     auto mn = GetMN(proTxHash);
     if (!mn) {
-        return *this; // No change if MN not found
+        LogPrint(BCLog::MASTERNODE, "UpdateMN: MN %s not found in list at height %d, no-op\n",
+                 proTxHash.ToString().substr(0, 16), nHeight);
+        return *this;
     }
 
     CDeterministicMNList result(*this);
@@ -441,6 +450,43 @@ CDeterministicMNList CDeterministicMNList::UpdateMN(const uint256& proTxHash, co
     return result;
 }
 
+CDeterministicMNList CDeterministicMNList::BatchUpdateMNStates(
+    const std::vector<std::pair<uint256, CDeterministicMNState>>& updates) const
+{
+    if (updates.empty()) return *this;
+    
+    CDeterministicMNList result(*this);
+    
+    for (const auto& update : updates) {
+        const uint256& proTxHash = update.first;
+        const CDeterministicMNState& newState = update.second;
+        
+        auto it = result.mnMap.find(proTxHash);
+        if (it == result.mnMap.end()) continue;
+        
+        const auto& oldState = it->second->state;
+        
+        if (oldState.addr != newState.addr) {
+            result.mnUniquePropertyMap.erase(GetUniquePropertyHash(oldState.addr));
+            result.mnUniquePropertyMap[GetUniquePropertyHash(newState.addr)] = proTxHash;
+        }
+        if (oldState.keyIDVoting != newState.keyIDVoting) {
+            result.mnUniquePropertyMap.erase(GetVotingKeyHash(oldState.keyIDVoting));
+            result.mnUniquePropertyMap[GetVotingKeyHash(newState.keyIDVoting)] = proTxHash;
+        }
+        if (oldState.vchOperatorPubKey != newState.vchOperatorPubKey) {
+            result.mnUniquePropertyMap.erase(GetOperatorKeyHash(oldState.vchOperatorPubKey));
+            result.mnUniquePropertyMap[GetOperatorKeyHash(newState.vchOperatorPubKey)] = proTxHash;
+        }
+        
+        auto newMN = std::make_shared<CDeterministicMN>(*it->second);
+        newMN->state = newState;
+        result.mnMap[proTxHash] = newMN;
+    }
+    
+    return result;
+}
+
 CDeterministicMNList CDeterministicMNList::RemoveMN(const uint256& proTxHash) const
 {
     auto mn = GetMN(proTxHash);
@@ -459,6 +505,28 @@ CDeterministicMNList CDeterministicMNList::RemoveMN(const uint256& proTxHash) co
     // Also remove voting and operator keys
     result.mnUniquePropertyMap.erase(GetVotingKeyHash(mn->state.keyIDVoting));
     result.mnUniquePropertyMap.erase(GetOperatorKeyHash(mn->state.vchOperatorPubKey));
+    
+    return result;
+}
+
+CDeterministicMNList CDeterministicMNList::BatchRemoveMNs(const std::vector<uint256>& proTxHashes) const
+{
+    if (proTxHashes.empty()) return *this;
+    
+    CDeterministicMNList result(*this);
+    
+    for (const uint256& proTxHash : proTxHashes) {
+        auto it = result.mnMap.find(proTxHash);
+        if (it == result.mnMap.end()) continue;
+        
+        const auto& mn = it->second;
+        result.mnUniquePropertyMap.erase(GetUniquePropertyHash(mn->collateralOutpoint));
+        result.mnUniquePropertyMap.erase(GetUniquePropertyHash(mn->state.addr));
+        result.mnUniquePropertyMap.erase(GetUniquePropertyHash(mn->state.keyIDOwner));
+        result.mnUniquePropertyMap.erase(GetVotingKeyHash(mn->state.keyIDVoting));
+        result.mnUniquePropertyMap.erase(GetOperatorKeyHash(mn->state.vchOperatorPubKey));
+        result.mnMap.erase(proTxHash);
+    }
     
     return result;
 }
@@ -551,23 +619,38 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
     }
 
     // ============================================================
-    // CRITICAL FIX: Detect and remove masternodes with spent collateral
+    // MN v2 MIGRATION: At the migration height, wipe the entire MN
+    // list.  All pre-v2 masternodes are invalidated; operators must
+    // re-register with a new ProRegTx.  Collateral UTXOs are NOT
+    // burned — they can be referenced by a fresh ProRegTx.
     // ============================================================
-    {
-        // Check all transaction inputs to see if any spend masternode collateral
+    const auto& cp = GetParams().GetConsensus();
+    const bool fMigrationBlock = (pindex->nHeight == cp.nMNv2MigrationHeight);
+    if (fMigrationBlock) {
+        LogPrintf("CDeterministicMNManager: ========================================\n");
+        LogPrintf("CDeterministicMNManager: MN v2 MIGRATION at height %d\n", pindex->nHeight);
+        LogPrintf("CDeterministicMNManager: Invalidating %zu pre-v2 masternodes\n", newList.GetAllMNsCount());
+        LogPrintf("CDeterministicMNManager: Operators must re-register after this block\n");
+        LogPrintf("CDeterministicMNManager: ========================================\n");
+        newList = CDeterministicMNList(pindex->GetBlockHash(), pindex->nHeight);
+        newList.SetTotalRegisteredCount(0);
+    }
+
+    // ============================================================
+    // CRITICAL FIX: Detect and remove masternodes with spent collateral
+    // Skip on migration block — the list was just wiped.
+    // ============================================================
+    if (!fMigrationBlock) {
         std::vector<uint256> masternodesToRemove;
         
         for (size_t i = 0; i < block.vtx.size(); i++) {
             const CTransaction& tx = *block.vtx[i];
             
-            // Skip coinbase transactions (they have no real inputs)
             if (tx.IsCoinBase()) {
                 continue;
             }
             
-            // Check each input
             for (const CTxIn& txin : tx.vin) {
-                // See if this input spends a masternode's collateral
                 auto mn = newList.GetMNByCollateral(txin.prevout);
                 if (mn) {
                     LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- Collateral spent for MN %s "
@@ -582,12 +665,11 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
             }
         }
         
-        // Remove all masternodes whose collateral was spent
         for (const uint256& proTxHash : masternodesToRemove) {
-            newList = newList.RemoveMN(proTxHash);
             LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- Removed MN %s due to spent collateral\n",
                      __func__, proTxHash.ToString());
         }
+        newList = newList.BatchRemoveMNs(masternodesToRemove);
     }
 
     // Process each transaction in the block
@@ -648,6 +730,7 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
 
                 CDeterministicMNState newState = mn->state;
                 newState.addr = proTx.addr;
+                newState.nLastServiceUpdateHeight = pindex->nHeight;
                 if (!proTx.scriptOperatorPayout.empty()) {
                     newState.scriptOperatorPayout = proTx.scriptOperatorPayout;
                 }
@@ -671,6 +754,7 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
                 }
 
                 CDeterministicMNState newState = mn->state;
+                newState.nLastRegistrarUpdateHeight = pindex->nHeight;
                 if (!proTx.vchOperatorPubKey.empty()) {
                     newState.vchOperatorPubKey = proTx.vchOperatorPubKey;
                 }
@@ -681,8 +765,11 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
                     newState.scriptPayout = proTx.scriptPayout;
                 }
 
-                // Reset PoSe state when operator key changes
-                if (proTx.vchOperatorPubKey != mn->state.vchOperatorPubKey) {
+                // Reset PoSe state when operator key changes, but NOT if the
+                // MN was revoked — revocation is permanent and the owner
+                // should not be able to undo it by churning operator keys.
+                if (proTx.vchOperatorPubKey != mn->state.vchOperatorPubKey &&
+                    mn->state.nRevocationReason == 0) {
                     newState.nPoSePenalty = 0;
                     newState.nPoSeBanHeight = -1;
                     newState.nPoSeRevivedHeight = pindex->nHeight;
@@ -723,81 +810,153 @@ bool CDeterministicMNManager::ProcessBlock(const CBlock& block, const CBlockInde
     }
 
     // ============================================================
-    // CRITICAL FIX: Update nLastPaidHeight for the paid masternode
-    // This ensures fair payment rotation by tracking who was paid
+    // Post-ProTx checks: collateral-spent, tier verification, payee
+    // update, and PoSe processing.  All skipped on the migration
+    // block because the list was wiped — only fresh ProRegTx from
+    // this block exist, and there is no previous payee or PoSe state.
     // ============================================================
-    {
-        // Determine which masternode should have been paid in this block
-        // We use the previous list since we need the state before this block
-        // 
-        // CRITICAL: Must use the PREVIOUS block's hash as entropy, matching
-        // what getblocktemplate does when building the block. This ensures
-        // the winner calculation is consistent between block creation and validation.
-        if (prevList && prevList->GetValidMNsCount() > 0 && pindex->pprev) {
-            CDeterministicMNCPtr payee = prevList->GetMNPayee(pindex->pprev->GetBlockHash(), pindex->nHeight);
-            if (payee) {
-                // Update the paid masternode's last paid height
-                auto paidMN = newList.GetMN(payee->proTxHash);
-                if (paidMN) {
-                    CDeterministicMNState updatedState = paidMN->state;
-                    updatedState.nLastPaidHeight = pindex->nHeight;
-                    newList = newList.UpdateMN(payee->proTxHash, updatedState);
-                    
-                    LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- Updated nLastPaidHeight for MN %s to %d\n",
-                             __func__, payee->proTxHash.ToString().substr(0, 16), pindex->nHeight);
-                }
-            }
-        }
-    }
-    
-    // ============================================================
-    // Apply PoSe (Proof of Service) Penalties
-    // Check accumulated penalties and ban masternodes exceeding threshold
-    // ============================================================
-    {
-        const auto& consensusParams = GetParams().GetConsensus();
-        
-        if (poseManager) {
-            newList = poseManager->CheckAndPunish(
-                newList,
-                pindex->nHeight,
-                consensusParams.nPoSePenaltyIncrement,
-                consensusParams.nPoSeBanThreshold);
-        }
-        
-        // Also check for banned masternodes that can be revived
-        // A banned masternode can be revived after nPoSeRevivalHeight blocks
-        for (const auto& pair : newList.GetMnMap()) {
-            if (pair.second->state.IsBanned()) {
-                int banHeight = pair.second->state.nPoSeBanHeight;
-                int heightsSinceBan = pindex->nHeight - banHeight;
-                
-                if (heightsSinceBan >= consensusParams.nPoSeRevivalHeight) {
-                    // Masternode can be revived - reset PoSe state
-                    CDeterministicMNState revivedState = pair.second->state;
-                    revivedState.nPoSeBanHeight = -1;
-                    revivedState.nPoSePenalty = 0;
-                    revivedState.nPoSeRevivedHeight = pindex->nHeight;
-                    
-                    newList = newList.UpdateMN(pair.first, revivedState);
-                    
-                    // Reset penalty tracking in PoSe manager
-                    if (poseManager) {
-                        poseManager->ResetPenalty(pair.first);
+    if (!fMigrationBlock) {
+        // Second-pass collateral-spent check: catch MNs registered in
+        // this block whose collateral was ALSO spent in this block.
+        {
+            std::vector<uint256> lateRemovals;
+            for (size_t i = 0; i < block.vtx.size(); i++) {
+                const CTransaction& tx = *block.vtx[i];
+                if (tx.IsCoinBase()) continue;
+                for (const CTxIn& txin : tx.vin) {
+                    auto mn = newList.GetMNByCollateral(txin.prevout);
+                    if (mn) {
+                        lateRemovals.push_back(mn->proTxHash);
+                        LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- Late collateral-spent: MN %s "
+                                 "(collateral %s spent in tx %s)\n",
+                                 __func__, mn->proTxHash.ToString(),
+                                 txin.prevout.ToString(), tx.GetHash().ToString());
                     }
-                    
-                    LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- MN %s revived after %d blocks\n",
-                             __func__, pair.first.ToString().substr(0, 16), heightsSinceBan);
+                }
+            }
+            newList = newList.BatchRemoveMNs(lateRemovals);
+        }
+
+        // Verify collateral amounts still match stored tiers.
+        {
+            AssertLockHeld(cs_main);
+            std::vector<uint256> tierMismatches;
+            for (const auto& pair : newList.GetMnMap()) {
+                const Coin& collCoin = pcoinsTip->AccessCoin(pair.second->collateralOutpoint);
+                if (collCoin.IsSpent()) continue;
+                uint8_t expectedTier = GetMasternodeTier(collCoin.out.nValue, pindex->nHeight);
+                if (expectedTier == 0 || expectedTier != pair.second->state.nTier) {
+                    tierMismatches.push_back(pair.first);
+                    LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- Tier mismatch for MN %s: "
+                             "stored=%d expected=%d (collateral value changed after reorg)\n",
+                             __func__, pair.first.ToString().substr(0, 16),
+                             pair.second->state.nTier, expectedTier);
+                }
+            }
+            newList = newList.BatchRemoveMNs(tierMismatches);
+        }
+
+        // Update nLastPaidHeight for the paid masternode
+        {
+            if (prevList && prevList->GetValidMNsCount() > 0 && pindex->pprev) {
+                assert(pindex->pprev->GetBlockHash() == prevList->GetBlockHash());
+                CDeterministicMNCPtr payee = prevList->GetMNPayee(pindex->pprev->GetBlockHash(), pindex->nHeight);
+                if (payee) {
+                    auto paidMN = newList.GetMN(payee->proTxHash);
+                    if (paidMN) {
+                        CDeterministicMNState updatedState = paidMN->state;
+                        updatedState.nLastPaidHeight = pindex->nHeight;
+                        newList = newList.UpdateMN(payee->proTxHash, updatedState);
+                        
+                        LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- Updated nLastPaidHeight for MN %s to %d\n",
+                                 __func__, payee->proTxHash.ToString().substr(0, 16), pindex->nHeight);
+                    }
                 }
             }
         }
-    }
+        
+        // Apply PoSe (Proof of Service) Penalties
+        {
+            const auto& consensusParams = GetParams().GetConsensus();
+
+            if (poseManager) {
+                std::vector<uint256> affectedMNs;
+                for (const auto& penaltyPair : poseManager->GetAllPenalties()) {
+                    affectedMNs.push_back(penaltyPair.first);
+                }
+                for (const auto& pair : newList.GetMnMap()) {
+                    if (pair.second->state.IsBanned() &&
+                        pair.second->state.nRevocationReason == 0 &&
+                        (pindex->nHeight - pair.second->state.nPoSeBanHeight) >= consensusParams.nPoSeRevivalHeight) {
+                        affectedMNs.push_back(pair.first);
+                    }
+                }
+                if (!affectedMNs.empty()) {
+                    poseManager->PrepareUndo(pindex->nHeight, affectedMNs);
+                }
+
+                newList = poseManager->CheckAndPunish(
+                    newList,
+                    pindex->nHeight,
+                    consensusParams.nPoSePenaltyIncrement,
+                    consensusParams.nPoSeBanThreshold);
+            }
+            
+            // PoSe revival
+            std::vector<uint256> mnsToRevive;
+            for (const auto& pair : newList.GetMnMap()) {
+                if (!pair.second->state.IsBanned()) continue;
+                if (pair.second->state.nRevocationReason != 0) continue;
+
+                int heightsSinceBan = pindex->nHeight - pair.second->state.nPoSeBanHeight;
+                if (heightsSinceBan >= consensusParams.nPoSeRevivalHeight) {
+                    mnsToRevive.push_back(pair.first);
+                }
+            }
+
+            for (const uint256& proTxHash : mnsToRevive) {
+                auto mn = newList.GetMN(proTxHash);
+                if (!mn) continue;
+
+                CDeterministicMNState revivedState = mn->state;
+                revivedState.nPoSeBanHeight = -1;
+                revivedState.nPoSePenalty = 0;
+                revivedState.nPoSeRevivedHeight = pindex->nHeight;
+                revivedState.nLastPaidHeight = pindex->nHeight;
+
+                newList = newList.UpdateMN(proTxHash, revivedState);
+
+                if (poseManager) {
+                    poseManager->ResetPenalty(proTxHash);
+                }
+
+                LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager::%s -- MN %s revived after %d blocks (lastPaid reset)\n",
+                         __func__, proTxHash.ToString().substr(0, 16),
+                         pindex->nHeight - mn->state.nPoSeBanHeight);
+            }
+        }
+    } // !fMigrationBlock
 
     if (!fJustCheck) {
         auto newListPtr = std::make_shared<CDeterministicMNList>(newList);
+
+        // Wrap all EvoDB writes in a transaction so they are atomic.
+        // If the node crashes before CommitTransaction, no partial
+        // state is persisted, preventing EvoDB/block-index divergence.
+        evoDb.BeginTransaction();
+        try {
+            SaveListToDb(newListPtr);
+            if (poseManager) {
+                poseManager->Flush();
+            }
+            evoDb.CommitTransaction();
+        } catch (...) {
+            evoDb.RollbackTransaction();
+            return state.DoS(0, false, REJECT_INVALID, "evodb-write-failed");
+        }
+
         mnListsCache[pindex->GetBlockHash()] = newListPtr;
         tipList = newListPtr;
-        SaveListToDb(newListPtr);
         CleanupCache();
 
         LogPrint(BCLog::MASTERNODE, "ProcessBlock: height=%d COMMITTED — totalMNs=%zu validMNs=%zu registered=%llu cacheSize=%zu\n",
@@ -815,7 +974,10 @@ bool CDeterministicMNManager::UndoBlock(const CBlock& block, const CBlockIndex* 
     LogPrint(BCLog::MASTERNODE, "UndoBlock: reverting height=%d hash=%s cacheSize=%zu\n",
              pindex->nHeight, pindex->GetBlockHash().ToString().substr(0, 16), mnListsCache.size());
 
+    // Remove from cache AND delete the now-stale EvoDB snapshot so it
+    // cannot be loaded on restart after a reorg.
     mnListsCache.erase(pindex->GetBlockHash());
+    evoDb.Erase(std::make_pair(DB_LIST_SNAPSHOT, pindex->GetBlockHash()));
 
     if (pindex->pprev) {
         tipList = GetListForBlock(pindex->pprev);
@@ -837,6 +999,11 @@ CDeterministicMNListCPtr CDeterministicMNManager::GetListForBlock(const CBlockIn
         return std::make_shared<CDeterministicMNList>();
     }
 
+    // Before masternode activation, return an empty list — no MNs exist yet.
+    if (pindex->nHeight < GetMasternodeActivationHeight()) {
+        return std::make_shared<CDeterministicMNList>(pindex->GetBlockHash(), pindex->nHeight);
+    }
+
     // Check cache first
     auto it = mnListsCache.find(pindex->GetBlockHash());
     if (it != mnListsCache.end()) {
@@ -850,8 +1017,68 @@ CDeterministicMNListCPtr CDeterministicMNManager::GetListForBlock(const CBlockIn
         return list;
     }
 
-    // Build from scratch if not found (shouldn't happen in normal operation)
-    return std::make_shared<CDeterministicMNList>(pindex->GetBlockHash(), pindex->nHeight);
+    // Rebuild by walking back to the nearest available snapshot, then
+    // replaying blocks forward.  NEVER return an empty list for a height
+    // past activation — that silently disables MN payment enforcement.
+    LogPrintf("CDeterministicMNManager::%s -- cache/DB miss at height %d, rebuilding from nearest snapshot\n",
+              __func__, pindex->nHeight);
+
+    // Walk backwards to find the nearest ancestor with a cached or persisted list
+    std::vector<const CBlockIndex*> blocksToReplay;
+    const CBlockIndex* cursor = pindex;
+    CDeterministicMNListCPtr baseList;
+
+    while (cursor) {
+        auto cacheIt = mnListsCache.find(cursor->GetBlockHash());
+        if (cacheIt != mnListsCache.end()) {
+            baseList = cacheIt->second;
+            break;
+        }
+        auto dbList = LoadListFromDb(cursor->GetBlockHash());
+        if (dbList) {
+            baseList = dbList;
+            mnListsCache[cursor->GetBlockHash()] = dbList;
+            break;
+        }
+        blocksToReplay.push_back(cursor);
+        cursor = cursor->pprev;
+    }
+
+    if (!baseList) {
+        // Fell all the way back to genesis — start with an empty list
+        baseList = std::make_shared<CDeterministicMNList>();
+    }
+
+    // Replay blocks forward to reconstruct the list at pindex
+    std::reverse(blocksToReplay.begin(), blocksToReplay.end());
+    for (const CBlockIndex* replayIdx : blocksToReplay) {
+        CBlock replayBlock;
+        if (!ReadBlockFromDisk(replayBlock, replayIdx, GetParams().GetConsensus())) {
+            LogPrintf("CDeterministicMNManager::%s -- CRITICAL: failed to read block at height %d during rebuild\n",
+                      __func__, replayIdx->nHeight);
+            break;
+        }
+
+        CValidationState dummyState;
+        ProcessBlock(replayBlock, replayIdx, dummyState, false);
+
+        auto rebuilt = mnListsCache.find(replayIdx->GetBlockHash());
+        if (rebuilt != mnListsCache.end()) {
+            baseList = rebuilt->second;
+        }
+    }
+
+    // Final lookup — ProcessBlock should have populated the cache
+    auto finalIt = mnListsCache.find(pindex->GetBlockHash());
+    if (finalIt != mnListsCache.end()) {
+        return finalIt->second;
+    }
+
+    // If rebuild still failed, return the best we have and log a critical warning
+    LogPrintf("CDeterministicMNManager::%s -- WARNING: rebuild did not produce list for height %d, "
+              "returning base list at height %d with %zu MNs\n",
+              __func__, pindex->nHeight, baseList->GetHeight(), baseList->GetAllMNsCount());
+    return baseList;
 }
 
 CDeterministicMNListCPtr CDeterministicMNManager::GetListAtChainTip()
@@ -962,11 +1189,9 @@ void CDeterministicMNManager::CleanupCache()
             mnListsCache.erase(lowestHashToRemove);
             LogPrint(BCLog::MASTERNODE, "CDeterministicMNManager: Evicted cache entry at height %d\n", lowestHeight);
         } else {
-            // Safety: if we couldn't find a valid entry, just remove the first one
-            // This should not happen in normal operation
-            if (!mnListsCache.empty()) {
-                mnListsCache.erase(mnListsCache.begin());
-            }
+            // No valid entry found — this should never happen.
+            LogPrintf("CDeterministicMNManager::CleanupCache: WARNING — no valid cache entry for eviction, "
+                      "cache size %zu exceeds max %zu\n", mnListsCache.size(), MAX_CACHE_SIZE);
             break;
         }
     }

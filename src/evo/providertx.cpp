@@ -14,6 +14,7 @@
 #include "consensus/validation.h"
 #include "core_io.h"
 #include "hash.h"
+#include "script/script.h"
 #include "script/standard.h"
 #include "util.h"
 #include "validation.h"
@@ -376,6 +377,19 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
     if (proTx.vchOperatorPubKey.size() != 48) {
         return state.DoS(100, false, REJECT_INVALID, "bad-protx-operator-key-size");
     }
+
+    // Reject the BLS identity element (point at infinity / all-zeros key).
+    // Only enforced after v2 migration to avoid rejecting old ProRegTx during resync.
+    if (pindexPrev) {
+        const auto& cpBls = GetParams().GetConsensus();
+        if ((pindexPrev->nHeight + 1) >= cpBls.nMNv2MigrationHeight) {
+            CBLSPublicKey operatorKey;
+            if (!operatorKey.SetBytes(proTx.vchOperatorPubKey) || !operatorKey.IsValid()) {
+                return state.DoS(100, false, REJECT_INVALID, "bad-protx-operator-key-invalid",
+                                false, "Operator BLS public key is not a valid curve point");
+            }
+        }
+    }
     
     // ============================================================
     // CRITICAL: Verify Proof of Possession for operator key
@@ -387,10 +401,19 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
                         false, "Operator key Proof of Possession verification failed");
     }
 
-    // Check payout script is valid
+    // Check payout script is valid and within size limits
     if (!proTx.scriptPayout.IsPayToPublicKeyHash() && 
         !proTx.scriptPayout.IsPayToScriptHash()) {
         return state.DoS(100, false, REJECT_INVALID, "bad-protx-payout-script");
+    }
+    if (pindexPrev) {
+        const auto& cpScript = GetParams().GetConsensus();
+        if ((pindexPrev->nHeight + 1) >= cpScript.nMNv2MigrationHeight &&
+            proTx.scriptPayout.size() > MAX_SCRIPT_ELEMENT_SIZE) {
+            return state.DoS(100, false, REJECT_INVALID, "bad-protx-payout-script-size",
+                            false, strprintf("Payout script too large: %d bytes (max %d)",
+                                            proTx.scriptPayout.size(), MAX_SCRIPT_ELEMENT_SIZE));
+        }
     }
 
     // Check inputs hash for replay protection
@@ -585,20 +608,42 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
         return false;
     }
 
-    // Verify the masternode exists
+    // Verify the masternode exists using the list at pindexPrev, NOT tipList.
+    // During reorgs tipList may reference a different chain branch, causing
+    // BLS signature verification against the wrong operator key.
     if (pindexPrev && deterministicMNManager) {
-        auto mn = deterministicMNManager->GetMN(proTx.proTxHash);
+        auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
+        if (!mnList) {
+            return state.DoS(10, false, REJECT_INVALID, "bad-protx-no-mn-list");
+        }
+
+        auto mn = mnList->GetMN(proTx.proTxHash);
         if (!mn) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-hash");
         }
 
-        // Check for address conflict with other masternodes
-        auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
-        if (mnList) {
-            auto existingMN = mnList->GetMNByService(proTx.addr);
-            if (existingMN && existingMN->proTxHash != proTx.proTxHash) {
-                return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr");
+        // Enforce cooldown between ProUpServTx updates to prevent IP-change spam
+        {
+            const auto& cp = GetParams().GetConsensus();
+            int nextHeight = pindexPrev->nHeight + 1;
+            if (nextHeight >= cp.nTieredMNActivationHeight &&
+                mn->state.nLastServiceUpdateHeight > 0 &&
+                (nextHeight - mn->state.nLastServiceUpdateHeight) < cp.nProUpServCooldown) {
+                return state.DoS(10, false, REJECT_INVALID, "bad-protx-service-cooldown",
+                                false, strprintf("ProUpServTx cooldown: must wait %d blocks (last update at %d, current %d)",
+                                                cp.nProUpServCooldown, mn->state.nLastServiceUpdateHeight, nextHeight));
             }
+        }
+
+        // Check for address conflict with other masternodes
+        auto existingMN = mnList->GetMNByService(proTx.addr);
+        if (existingMN && existingMN->proTxHash != proTx.proTxHash) {
+            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr");
+        }
+
+        // Reject port 0 — unreachable MNs waste a registration slot
+        if (proTx.addr.GetPort() == 0) {
+            return state.DoS(10, false, REJECT_INVALID, "bad-protx-addr-port-zero");
         }
 
         // Intra-block conflict detection (only after activation to match v1.2.x consensus)
@@ -606,41 +651,35 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
             int nBlockHeight = pindexPrev->nHeight + 1;
             const auto& cp = GetParams().GetConsensus();
             if (nBlockHeight >= cp.nTieredMNActivationHeight) {
-                auto existingMN = pExtraList->GetMNByService(proTx.addr);
-                if (existingMN && existingMN->proTxHash != proTx.proTxHash) {
+                auto existingIntra = pExtraList->GetMNByService(proTx.addr);
+                if (existingIntra && existingIntra->proTxHash != proTx.proTxHash) {
                     return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
                                     false, "Service address conflicts with another update in the same block");
                 }
             }
         }
 
-        // ============================================================
-        // CRITICAL FIX: Actually verify BLS signature
-        // ============================================================
+        // Verify BLS signature using the operator key from pindexPrev list
         {
-            // Get the operator's BLS public key from the masternode record
             CBLSPublicKey operatorPubKey;
             if (!operatorPubKey.SetBytes(mn->state.vchOperatorPubKey)) {
                 return state.DoS(100, false, REJECT_INVALID, "bad-protx-operator-key-invalid",
                                 false, "Could not parse operator BLS public key");
             }
-            
-            // Parse the signature from the transaction
+
             CBLSSignature sig;
             if (!sig.SetBytes(proTx.vchSig)) {
                 return state.DoS(100, false, REJECT_INVALID, "bad-protx-sig-invalid",
                                 false, "Could not parse BLS signature");
             }
-            
-            // Get the message hash that was signed
+
             uint256 signHash = proTx.GetSignatureHash();
-            
-            // ACTUALLY VERIFY THE SIGNATURE with proper BLS domain separation
+
             if (!sig.VerifyWithDomain(operatorPubKey, signHash, BLSDomainTags::OPERATOR_KEY)) {
                 return state.DoS(100, false, REJECT_INVALID, "bad-protx-sig-verify-failed",
                                 false, "BLS signature verification failed");
             }
-            
+
             LogPrint(BCLog::MASTERNODE, "CheckProUpServTx: BLS signature verified for %s\n", proTx.proTxHash.ToString());
         }
     }
@@ -685,21 +724,37 @@ bool CheckProUpRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
         return false;
     }
 
-    // Verify the masternode exists and check signature
+    // Verify the masternode exists using the list at pindexPrev, NOT tipList.
     if (pindexPrev && deterministicMNManager) {
-        auto mn = deterministicMNManager->GetMN(proTx.proTxHash);
+        auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
+        if (!mnList) {
+            return state.DoS(10, false, REJECT_INVALID, "bad-protx-no-mn-list");
+        }
+
+        auto mn = mnList->GetMN(proTx.proTxHash);
         if (!mn) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-hash");
+        }
+
+        // Enforce cooldown between ProUpRegTx updates to prevent operator key churn
+        {
+            const auto& cp = GetParams().GetConsensus();
+            int nextHeight = pindexPrev->nHeight + 1;
+            if (nextHeight >= cp.nTieredMNActivationHeight &&
+                mn->state.nLastRegistrarUpdateHeight > 0 &&
+                (nextHeight - mn->state.nLastRegistrarUpdateHeight) < cp.nProUpRegCooldown) {
+                return state.DoS(10, false, REJECT_INVALID, "bad-protx-registrar-cooldown",
+                                false, strprintf("ProUpRegTx cooldown: must wait %d blocks (last update at %d, current %d)",
+                                                cp.nProUpRegCooldown, mn->state.nLastRegistrarUpdateHeight, nextHeight));
+            }
         }
 
         // Check signature by owner key
         if (!proTx.CheckSignature(mn->state.keyIDOwner)) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-sig");
         }
-        
-        // Get the masternode list for duplicate checks
-        auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
-        if (mnList) {
+
+        {
             // ============================================================
             // CRITICAL FIX: Check for duplicate voting key when changing
             // ============================================================
@@ -796,41 +851,45 @@ bool CheckProUpRevTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVal
         return false;
     }
 
-    // Verify the masternode exists
+    // Verify the masternode exists using the list at pindexPrev, NOT tipList.
     if (pindexPrev && deterministicMNManager) {
-        auto mn = deterministicMNManager->GetMN(proTx.proTxHash);
+        auto mnList = deterministicMNManager->GetListForBlock(pindexPrev);
+        if (!mnList) {
+            return state.DoS(10, false, REJECT_INVALID, "bad-protx-no-mn-list");
+        }
+
+        auto mn = mnList->GetMN(proTx.proTxHash);
         if (!mn) {
             return state.DoS(100, false, REJECT_INVALID, "bad-protx-hash");
         }
 
-        // ============================================================
-        // CRITICAL FIX: Actually verify BLS signature for revocation
-        // ============================================================
+        // Reject revocation of already-banned MNs (spam prevention)
+        if (mn->state.IsBanned()) {
+            return state.DoS(10, false, REJECT_INVALID, "bad-protx-already-banned");
+        }
+
+        // Verify BLS signature using the operator key from pindexPrev list
         {
-            // Get the operator's BLS public key
             CBLSPublicKey operatorPubKey;
             if (!operatorPubKey.SetBytes(mn->state.vchOperatorPubKey)) {
                 return state.DoS(100, false, REJECT_INVALID, "bad-protx-operator-key-invalid",
                                 false, "Could not parse operator BLS public key");
             }
-            
-            // Parse the signature
+
             CBLSSignature sig;
             if (!sig.SetBytes(proTx.vchSig)) {
                 return state.DoS(100, false, REJECT_INVALID, "bad-protx-sig-invalid",
                                 false, "Could not parse BLS signature");
             }
-            
-            // Get the message hash
+
             uint256 signHash = proTx.GetSignatureHash();
-            
-            // VERIFY with proper BLS domain separation
+
             if (!sig.VerifyWithDomain(operatorPubKey, signHash, BLSDomainTags::OPERATOR_KEY)) {
                 return state.DoS(100, false, REJECT_INVALID, "bad-protx-sig-verify-failed",
                                 false, "BLS signature verification failed for revocation");
             }
-            
-            LogPrint(BCLog::MASTERNODE, "CheckProUpRevTx: BLS signature verified for revocation of %s\n", 
+
+            LogPrint(BCLog::MASTERNODE, "CheckProUpRevTx: BLS signature verified for revocation of %s\n",
                       proTx.proTxHash.ToString());
         }
     }
@@ -1060,10 +1119,26 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
     uint256 blockHash = pindex->phashBlock ? pindex->GetBlockHash() : block.GetHash();
     CDeterministicMNList intraBlockList(blockHash, pindex->nHeight);
 
+    static const int MAX_SPECIAL_TXS_PER_BLOCK = 50;
+
     int nSpecialTxCount = 0;
     for (size_t j = 0; j < block.vtx.size(); j++) {
         if (IsTxTypeSpecial(*block.vtx[j])) nSpecialTxCount++;
     }
+
+    // Only enforce the per-block special tx limit after the v2 migration
+    // to avoid rejecting historical blocks during resync.
+    {
+        const auto& cpLimit = GetParams().GetConsensus();
+        if (pindex->nHeight >= cpLimit.nMNv2MigrationHeight) {
+            if (nSpecialTxCount > MAX_SPECIAL_TXS_PER_BLOCK) {
+                return state.DoS(100, false, REJECT_INVALID, "bad-blk-too-many-special-txs",
+                                false, strprintf("Block contains %d special txs (max %d)",
+                                                nSpecialTxCount, MAX_SPECIAL_TXS_PER_BLOCK));
+            }
+        }
+    }
+
     LogPrint(BCLog::MASTERNODE, "ProcessSpecialTxsInBlock: height=%d hash=%s txCount=%zu specialTxCount=%d fJustCheck=%d\n",
              pindex->nHeight, blockHash.ToString().substr(0, 16),
              block.vtx.size(), nSpecialTxCount, fJustCheck);
@@ -1152,6 +1227,19 @@ bool ProcessSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex, CV
                     }
                     break;
                 }
+                case TxType::TRANSACTION_PROVIDER_UPDATE_REVOKE: {
+                    CProUpRevTx proTx;
+                    if (GetTxPayload(tx, proTx)) {
+                        auto mn = intraBlockList.GetMN(proTx.proTxHash);
+                        if (mn) {
+                            CDeterministicMNState newState = mn->state;
+                            newState.nRevocationReason = proTx.nReason;
+                            newState.nPoSeBanHeight = pindex->nHeight;
+                            intraBlockList = intraBlockList.UpdateMN(proTx.proTxHash, newState);
+                        }
+                    }
+                    break;
+                }
                 default:
                     break;
             }
@@ -1176,6 +1264,13 @@ bool UndoSpecialTxsInBlock(const CBlock& block, const CBlockIndex* pindex)
     LogPrint(BCLog::MASTERNODE, "UndoSpecialTxsInBlock: height=%d hash=%s\n",
              pindex->nHeight,
              pindex->phashBlock ? pindex->GetBlockHash().ToString().substr(0, 16) : "unknown");
+
+    // Roll back PoSe state BEFORE rolling back the MN list so that
+    // penalty scores are consistent with the restored list.
+    if (poseManager) {
+        poseManager->UndoBlock(pindex->nHeight);
+    }
+
     if (deterministicMNManager) {
         if (!deterministicMNManager->UndoBlock(block, pindex)) {
             LogPrintf("UndoSpecialTxsInBlock: UndoBlock FAILED at height=%d\n", pindex->nHeight);

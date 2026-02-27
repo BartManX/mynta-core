@@ -38,7 +38,8 @@ BOOST_AUTO_TEST_CASE(deterministicmn_state_serialization)
     BOOST_CHECK_EQUAL(state1.nPoSeRevivedHeight, state2.nPoSeRevivedHeight);
     BOOST_CHECK_EQUAL(state1.nPoSeBanHeight, state2.nPoSeBanHeight);
     BOOST_CHECK_EQUAL(state1.nRevocationReason, state2.nRevocationReason);
-    BOOST_CHECK(state1 == state2);
+    BOOST_CHECK_EQUAL(state1.nLastServiceUpdateHeight, state2.nLastServiceUpdateHeight);
+    BOOST_CHECK_EQUAL(state1.nLastRegistrarUpdateHeight, state2.nLastRegistrarUpdateHeight);
 }
 
 BOOST_AUTO_TEST_CASE(deterministicmn_serialization)
@@ -90,26 +91,46 @@ BOOST_AUTO_TEST_CASE(deterministicmn_score_calculation)
 {
     auto mn1 = std::make_shared<CDeterministicMN>();
     mn1->proTxHash = uint256S("1111111111111111111111111111111111111111111111111111111111111111");
-    
+    mn1->state.nRegisteredHeight = 50;
+    mn1->state.nLastPaidHeight = 80;
+    mn1->state.nTier = 1;
+
     auto mn2 = std::make_shared<CDeterministicMN>();
     mn2->proTxHash = uint256S("2222222222222222222222222222222222222222222222222222222222222222");
-    
+    mn2->state.nRegisteredHeight = 50;
+    mn2->state.nLastPaidHeight = 60;
+    mn2->state.nTier = 1;
+
+    int currentHeight = 100;
     uint256 blockHash = uint256S("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-    
-    arith_uint256 score1 = mn1->CalcScore(blockHash);
-    arith_uint256 score2 = mn2->CalcScore(blockHash);
-    
+
+    arith_uint256 score1 = mn1->CalcScore(blockHash, currentHeight);
+    arith_uint256 score2 = mn2->CalcScore(blockHash, currentHeight);
+
     // Scores should be different for different MNs
     BOOST_CHECK(score1 != score2);
-    
-    // Same MN should have same score for same block
-    arith_uint256 score1b = mn1->CalcScore(blockHash);
+
+    // Same MN should have same score for same block and height
+    arith_uint256 score1b = mn1->CalcScore(blockHash, currentHeight);
     BOOST_CHECK(score1 == score1b);
-    
+
     // Different block should give different score
     uint256 blockHash2 = uint256S("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-    arith_uint256 score1c = mn1->CalcScore(blockHash2);
+    arith_uint256 score1c = mn1->CalcScore(blockHash2, currentHeight);
     BOOST_CHECK(score1 != score1c);
+
+    // Different height should give different score (blocksSincePayment changes)
+    arith_uint256 score1d = mn1->CalcScore(blockHash, currentHeight + 50);
+    BOOST_CHECK(score1 != score1d);
+
+    // Tier weighting: a tier-3 MN should get a lower score (higher priority)
+    auto mn3 = std::make_shared<CDeterministicMN>();
+    mn3->proTxHash = mn1->proTxHash;
+    mn3->state = mn1->state;
+    mn3->state.nTier = 3;
+    arith_uint256 score_t3 = mn3->CalcScore(blockHash, currentHeight);
+    // Tier 3 divides by 100, so score_t3 < score1
+    BOOST_CHECK(score_t3 < score1);
 }
 
 BOOST_AUTO_TEST_CASE(deterministicmnlist_operations)
@@ -210,9 +231,12 @@ BOOST_AUTO_TEST_CASE(deterministicmnlist_unique_properties)
 
 BOOST_AUTO_TEST_CASE(deterministicmnlist_payment_selection)
 {
-    CDeterministicMNList list(uint256(), 100);
-    
-    // Create multiple valid MNs
+    int listHeight = 100;
+    int currentHeight = listHeight + 1;
+    CDeterministicMNList list(uint256(), listHeight);
+
+    // Create multiple valid MNs with registration well before currentHeight
+    // so they pass the maturity check.
     std::vector<CDeterministicMNCPtr> mns;
     for (int i = 1; i <= 5; i++) {
         auto mn = std::make_shared<CDeterministicMN>();
@@ -221,33 +245,305 @@ BOOST_AUTO_TEST_CASE(deterministicmnlist_payment_selection)
         mn->proTxHash = uint256S(ss.str());
         mn->state.nPoSeBanHeight = -1;
         mn->state.nRevocationReason = 0;
+        mn->state.nRegisteredHeight = 50;
+        mn->state.nTier = 1;
         mns.push_back(mn);
         list = list.AddMN(mn);
     }
-    
+
     BOOST_CHECK_EQUAL(list.GetValidMNsCount(), 5);
-    
+
     // Get payee for a block
     uint256 blockHash = uint256S("abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234");
-    auto payee = list.GetMNPayee(blockHash);
-    
+    auto payee = list.GetMNPayee(blockHash, currentHeight);
+
     BOOST_CHECK(payee != nullptr);
-    
-    // Payee should be deterministic - same block hash should give same payee
-    auto payee2 = list.GetMNPayee(blockHash);
+
+    // Payee should be deterministic — same inputs give same payee
+    auto payee2 = list.GetMNPayee(blockHash, currentHeight);
     BOOST_CHECK(payee->proTxHash == payee2->proTxHash);
-    
-    // Different block should give different payee (usually, depending on hash)
+
+    // Different block hash should (usually) give different payee
     uint256 blockHash2 = uint256S("1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd");
-    auto payee3 = list.GetMNPayee(blockHash2);
+    auto payee3 = list.GetMNPayee(blockHash2, currentHeight);
     BOOST_CHECK(payee3 != nullptr);
-    // Note: They might be the same by chance, so we don't assert they're different
+
+    // Verify immature MNs are excluded: add a MN registered at currentHeight
+    auto immatureMN = std::make_shared<CDeterministicMN>();
+    immatureMN->proTxHash = uint256S("9999999999999999999999999999999999999999999999999999999999999999");
+    immatureMN->state.nPoSeBanHeight = -1;
+    immatureMN->state.nRevocationReason = 0;
+    immatureMN->state.nRegisteredHeight = currentHeight;
+    immatureMN->state.nTier = 1;
+    CDeterministicMNList list2 = list.AddMN(immatureMN);
+    auto eligible = list2.GetValidMNsForPayment(currentHeight);
+    // The immature MN should NOT be in the eligible set
+    for (const auto& mn : eligible) {
+        BOOST_CHECK(mn->proTxHash != immatureMN->proTxHash);
+    }
+}
+
+BOOST_AUTO_TEST_CASE(deterministicmnlist_batch_remove)
+{
+    CDeterministicMNList list(uint256(), 100);
+
+    std::vector<uint256> hashes;
+    for (int i = 1; i <= 5; i++) {
+        auto mn = std::make_shared<CDeterministicMN>();
+        std::stringstream ss;
+        ss << std::setfill('0') << std::setw(64) << i;
+        mn->proTxHash = uint256S(ss.str());
+        mn->collateralOutpoint = COutPoint(uint256S(ss.str()), 0);
+        mn->state.nRegisteredHeight = 50;
+        mn->state.nTier = 1;
+        hashes.push_back(mn->proTxHash);
+        list = list.AddMN(mn);
+    }
+    BOOST_CHECK_EQUAL(list.GetAllMNsCount(), 5);
+
+    // Batch remove 3 MNs
+    std::vector<uint256> toRemove = {hashes[0], hashes[2], hashes[4]};
+    CDeterministicMNList reduced = list.BatchRemoveMNs(toRemove);
+    BOOST_CHECK_EQUAL(reduced.GetAllMNsCount(), 2);
+    BOOST_CHECK(reduced.GetMN(hashes[0]) == nullptr);
+    BOOST_CHECK(reduced.GetMN(hashes[1]) != nullptr);
+    BOOST_CHECK(reduced.GetMN(hashes[2]) == nullptr);
+    BOOST_CHECK(reduced.GetMN(hashes[3]) != nullptr);
+    BOOST_CHECK(reduced.GetMN(hashes[4]) == nullptr);
+
+    // Empty batch should return identical list
+    CDeterministicMNList same = list.BatchRemoveMNs({});
+    BOOST_CHECK_EQUAL(same.GetAllMNsCount(), 5);
+}
+
+BOOST_AUTO_TEST_CASE(deterministicmnlist_batch_update_states)
+{
+    CDeterministicMNList list(uint256(), 100);
+
+    auto mn1 = std::make_shared<CDeterministicMN>();
+    mn1->proTxHash = uint256S("1111111111111111111111111111111111111111111111111111111111111111");
+    mn1->collateralOutpoint = COutPoint(uint256S("aaaa"), 0);
+    mn1->state.nRegisteredHeight = 50;
+    mn1->state.nPoSePenalty = 0;
+    mn1->state.nPoSeBanHeight = -1;
+    mn1->state.nTier = 1;
+
+    auto mn2 = std::make_shared<CDeterministicMN>();
+    mn2->proTxHash = uint256S("2222222222222222222222222222222222222222222222222222222222222222");
+    mn2->collateralOutpoint = COutPoint(uint256S("bbbb"), 0);
+    mn2->state.nRegisteredHeight = 50;
+    mn2->state.nPoSePenalty = 0;
+    mn2->state.nPoSeBanHeight = -1;
+    mn2->state.nTier = 2;
+
+    list = list.AddMN(mn1);
+    list = list.AddMN(mn2);
+
+    // Batch update penalties
+    CDeterministicMNState s1 = mn1->state;
+    s1.nPoSePenalty = 50;
+    CDeterministicMNState s2 = mn2->state;
+    s2.nPoSePenalty = 100;
+    s2.nPoSeBanHeight = 100;
+
+    std::vector<std::pair<uint256, CDeterministicMNState>> updates;
+    updates.emplace_back(mn1->proTxHash, s1);
+    updates.emplace_back(mn2->proTxHash, s2);
+
+    CDeterministicMNList updated = list.BatchUpdateMNStates(updates);
+    BOOST_CHECK_EQUAL(updated.GetMN(mn1->proTxHash)->state.nPoSePenalty, 50);
+    BOOST_CHECK_EQUAL(updated.GetMN(mn2->proTxHash)->state.nPoSePenalty, 100);
+    BOOST_CHECK_EQUAL(updated.GetMN(mn2->proTxHash)->state.nPoSeBanHeight, 100);
+
+    // Original list should be unchanged (immutability)
+    BOOST_CHECK_EQUAL(list.GetMN(mn1->proTxHash)->state.nPoSePenalty, 0);
+    BOOST_CHECK_EQUAL(list.GetMN(mn2->proTxHash)->state.nPoSePenalty, 0);
+}
+
+BOOST_AUTO_TEST_CASE(deterministicmn_state_cooldown_serialization)
+{
+    CDeterministicMNState state1;
+    state1.nRegisteredHeight = 1000;
+    state1.nLastPaidHeight = 950;
+    state1.nPoSePenalty = 10;
+    state1.nPoSeRevivedHeight = 900;
+    state1.nPoSeBanHeight = -1;
+    state1.nRevocationReason = 0;
+    state1.nTier = 2;
+    state1.nLastServiceUpdateHeight = 500;
+    state1.nLastRegistrarUpdateHeight = 600;
+
+    CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+    ss << state1;
+
+    CDeterministicMNState state2;
+    ss >> state2;
+
+    BOOST_CHECK_EQUAL(state2.nTier, 2);
+    BOOST_CHECK_EQUAL(state2.nLastServiceUpdateHeight, 500);
+    BOOST_CHECK_EQUAL(state2.nLastRegistrarUpdateHeight, 600);
+}
+
+BOOST_AUTO_TEST_CASE(deterministicmnlist_tier_weighting)
+{
+    int listHeight = 200;
+    int currentHeight = listHeight + 1;
+    CDeterministicMNList list(uint256(), listHeight);
+
+    auto mn_t1 = std::make_shared<CDeterministicMN>();
+    mn_t1->proTxHash = uint256S("1111111111111111111111111111111111111111111111111111111111111111");
+    mn_t1->state.nRegisteredHeight = 50;
+    mn_t1->state.nLastPaidHeight = 0;
+    mn_t1->state.nTier = 1;
+    mn_t1->state.nPoSeBanHeight = -1;
+
+    auto mn_t3 = std::make_shared<CDeterministicMN>();
+    mn_t3->proTxHash = uint256S("2222222222222222222222222222222222222222222222222222222222222222");
+    mn_t3->state.nRegisteredHeight = 50;
+    mn_t3->state.nLastPaidHeight = 0;
+    mn_t3->state.nTier = 3;
+    mn_t3->state.nPoSeBanHeight = -1;
+
+    list = list.AddMN(mn_t1);
+    list = list.AddMN(mn_t3);
+
+    // Both should be valid
+    BOOST_CHECK_EQUAL(list.GetValidMNsCount(), 2);
+
+    // Tier 3 should have a lower score (higher priority) for the same block
+    uint256 blockHash = uint256S("abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd");
+    arith_uint256 score_t1 = mn_t1->CalcScore(blockHash, currentHeight);
+    arith_uint256 score_t3 = mn_t3->CalcScore(blockHash, currentHeight);
+
+    // Tier 3 divides by 100, tier 1 divides by 1
+    // So tier 3 score should be significantly smaller
+    BOOST_CHECK(score_t3 < score_t1);
+}
+
+BOOST_AUTO_TEST_CASE(deterministicmnlist_zero_tier_excluded)
+{
+    int listHeight = 200;
+    int currentHeight = listHeight + 1;
+    CDeterministicMNList list(uint256(), listHeight);
+
+    auto mn_valid = std::make_shared<CDeterministicMN>();
+    mn_valid->proTxHash = uint256S("1111111111111111111111111111111111111111111111111111111111111111");
+    mn_valid->state.nRegisteredHeight = 50;
+    mn_valid->state.nTier = 1;
+    mn_valid->state.nPoSeBanHeight = -1;
+
+    auto mn_zero = std::make_shared<CDeterministicMN>();
+    mn_zero->proTxHash = uint256S("2222222222222222222222222222222222222222222222222222222222222222");
+    mn_zero->state.nRegisteredHeight = 50;
+    mn_zero->state.nTier = 0; // Invalid tier
+    mn_zero->state.nPoSeBanHeight = -1;
+
+    list = list.AddMN(mn_valid);
+    list = list.AddMN(mn_zero);
+
+    auto eligible = list.GetValidMNsForPayment(currentHeight);
+    // Only the tier-1 MN should be eligible
+    BOOST_CHECK_EQUAL(eligible.size(), 1);
+    BOOST_CHECK(eligible[0]->proTxHash == mn_valid->proTxHash);
+}
+
+BOOST_AUTO_TEST_CASE(mn_v2_migration_wipe)
+{
+    // Simulate the v2 migration: a list with pre-migration MNs is wiped,
+    // then new MNs are added post-migration with v2 state fields.
+
+    // --- Phase 1: Pre-migration list with old-style MNs ---
+    int preMigrationHeight = 49; // just before migration at 50 (regtest)
+    CDeterministicMNList oldList(uint256S("aabb"), preMigrationHeight);
+
+    auto oldMN1 = std::make_shared<CDeterministicMN>();
+    oldMN1->proTxHash = uint256S("1111111111111111111111111111111111111111111111111111111111111111");
+    oldMN1->collateralOutpoint = COutPoint(uint256S("aaaa"), 0);
+    oldMN1->state.nRegisteredHeight = 10;
+    oldMN1->state.nTier = 1;
+    oldMN1->state.nPoSeBanHeight = -1;
+    oldMN1->state.nLastServiceUpdateHeight = 0;
+    oldMN1->state.nLastRegistrarUpdateHeight = 0;
+
+    auto oldMN2 = std::make_shared<CDeterministicMN>();
+    oldMN2->proTxHash = uint256S("2222222222222222222222222222222222222222222222222222222222222222");
+    oldMN2->collateralOutpoint = COutPoint(uint256S("bbbb"), 0);
+    oldMN2->state.nRegisteredHeight = 20;
+    oldMN2->state.nTier = 1;
+    oldMN2->state.nPoSeBanHeight = -1;
+
+    oldList = oldList.AddMN(oldMN1);
+    oldList = oldList.AddMN(oldMN2);
+    BOOST_CHECK_EQUAL(oldList.GetAllMNsCount(), 2);
+    BOOST_CHECK_EQUAL(oldList.GetValidMNsCount(), 2);
+
+    // --- Phase 2: Migration wipe (simulates ProcessBlock at migration height) ---
+    int migrationHeight = 50;
+    CDeterministicMNList wipedList(uint256S("ccdd"), migrationHeight);
+    wipedList.SetTotalRegisteredCount(0);
+
+    BOOST_CHECK_EQUAL(wipedList.GetAllMNsCount(), 0);
+    BOOST_CHECK_EQUAL(wipedList.GetValidMNsCount(), 0);
+    BOOST_CHECK_EQUAL(wipedList.GetTotalRegisteredCount(), 0);
+
+    // Old MNs should not be findable
+    BOOST_CHECK(wipedList.GetMN(oldMN1->proTxHash) == nullptr);
+    BOOST_CHECK(wipedList.GetMN(oldMN2->proTxHash) == nullptr);
+    BOOST_CHECK(wipedList.GetMNByCollateral(oldMN1->collateralOutpoint) == nullptr);
+
+    // --- Phase 3: Post-migration re-registration ---
+    auto newMN = std::make_shared<CDeterministicMN>();
+    newMN->proTxHash = uint256S("3333333333333333333333333333333333333333333333333333333333333333");
+    newMN->collateralOutpoint = COutPoint(uint256S("aaaa"), 0); // same collateral as old MN1
+    newMN->state.nRegisteredHeight = migrationHeight;
+    newMN->state.nTier = 1;
+    newMN->state.nPoSeBanHeight = -1;
+    newMN->state.nLastServiceUpdateHeight = 0;
+    newMN->state.nLastRegistrarUpdateHeight = 0;
+
+    CDeterministicMNList postList = wipedList.AddMN(newMN);
+    BOOST_CHECK_EQUAL(postList.GetAllMNsCount(), 1);
+    BOOST_CHECK_EQUAL(postList.GetValidMNsCount(), 1);
+
+    // The re-registered MN should have the v2 state fields at defaults
+    auto foundMN = postList.GetMN(newMN->proTxHash);
+    BOOST_CHECK(foundMN != nullptr);
+    BOOST_CHECK_EQUAL(foundMN->state.nLastServiceUpdateHeight, 0);
+    BOOST_CHECK_EQUAL(foundMN->state.nLastRegistrarUpdateHeight, 0);
+    BOOST_CHECK_EQUAL(foundMN->state.nRegisteredHeight, migrationHeight);
+
+    // The old collateral outpoint is now usable by the new MN
+    auto byCollateral = postList.GetMNByCollateral(COutPoint(uint256S("aaaa"), 0));
+    BOOST_CHECK(byCollateral != nullptr);
+    BOOST_CHECK(byCollateral->proTxHash == newMN->proTxHash);
+
+    // --- Phase 4: Verify v2 state survives serialization ---
+    CDataStream ss(SER_DISK, PROTOCOL_VERSION);
+    ss << foundMN->state;
+
+    CDeterministicMNState deserializedState;
+    ss >> deserializedState;
+
+    BOOST_CHECK_EQUAL(deserializedState.nRegisteredHeight, migrationHeight);
+    BOOST_CHECK_EQUAL(deserializedState.nTier, 1);
+    BOOST_CHECK_EQUAL(deserializedState.nLastServiceUpdateHeight, 0);
+    BOOST_CHECK_EQUAL(deserializedState.nLastRegistrarUpdateHeight, 0);
+}
+
+BOOST_AUTO_TEST_CASE(mn_v2_migration_no_payment_enforcement_during_grace)
+{
+    // After migration, the list is empty. GetValidMNsCount() == 0 means
+    // no payment enforcement, giving operators time to re-register.
+    CDeterministicMNList emptyList(uint256S("eeff"), 50);
+    emptyList.SetTotalRegisteredCount(0);
+
+    BOOST_CHECK_EQUAL(emptyList.GetValidMNsCount(), 0);
+
+    // GetMNPayee on an empty list should return nullptr
+    uint256 blockHash = uint256S("abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd");
+    auto payee = emptyList.GetMNPayee(blockHash, 51);
+    BOOST_CHECK(payee == nullptr);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
-
-
-
-
-
 

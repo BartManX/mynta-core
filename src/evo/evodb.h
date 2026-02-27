@@ -44,6 +44,13 @@ public:
     bool HasTransaction() const { return hasTransaction; }
 
     // Template methods for reading/writing
+    //
+    // When a transaction is active, writes go to the batch and are not
+    // visible via the raw DB until CommitTransaction().  To avoid stale
+    // reads within a transaction scope, callers must ensure they do not
+    // write-then-read the same key inside a single transaction.  The
+    // CDBBatch API does not support read-through, so we document this
+    // constraint rather than silently returning stale data.
     template <typename K, typename V>
     bool Read(const K& key, V& value) const
     {

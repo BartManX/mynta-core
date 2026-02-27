@@ -53,6 +53,10 @@ public:
     // Masternode tier: 1=Standard, 2=Super, 3=Ultra
     uint8_t nTier{1};
 
+    // Cooldown tracking: last height at which a ProUpServTx/ProUpRegTx was applied
+    int nLastServiceUpdateHeight{0};
+    int nLastRegistrarUpdateHeight{0};
+
     // Keys and addresses
     CKeyID keyIDOwner;
     std::vector<unsigned char> vchOperatorPubKey;
@@ -78,15 +82,9 @@ public:
         READWRITE(addr);
         READWRITE(scriptPayout);
         READWRITE(scriptOperatorPayout);
-        if (ser_action.ForRead()) {
-            try {
-                READWRITE(nTier);
-            } catch (const std::ios_base::failure&) {
-                nTier = 1;
-            }
-        } else {
-            READWRITE(nTier);
-        }
+        READWRITE(nTier);
+        READWRITE(nLastServiceUpdateHeight);
+        READWRITE(nLastRegistrarUpdateHeight);
     }
 
     // Check if masternode is banned
@@ -230,7 +228,9 @@ public:
     CDeterministicMNList AddMN(const CDeterministicMNCPtr& mn) const;
     void AddMNInPlace(const CDeterministicMNCPtr& mn);
     CDeterministicMNList UpdateMN(const uint256& proTxHash, const CDeterministicMNState& newState) const;
+    CDeterministicMNList BatchUpdateMNStates(const std::vector<std::pair<uint256, CDeterministicMNState>>& updates) const;
     CDeterministicMNList RemoveMN(const uint256& proTxHash) const;
+    CDeterministicMNList BatchRemoveMNs(const std::vector<uint256>& proTxHashes) const;
 
     // Apply block updates
     CDeterministicMNList ApplyDiff(const CBlock& block, const CBlockIndex* pindex) const;
@@ -273,7 +273,10 @@ private:
 
     // DB schema version — increment when serialization format changes.
     // On mismatch, Init() wipes EvoDB and forces a full resync.
-    static const int CURRENT_DB_VERSION = 2;
+    // v2: initial DIP3 format
+    // v3: added nLastServiceUpdateHeight, nLastRegistrarUpdateHeight;
+    //     MN list wipe at nMNv2MigrationHeight
+    static const int CURRENT_DB_VERSION = 3;
 
 public:
     explicit CDeterministicMNManager(CEvoDB& _evoDb);
