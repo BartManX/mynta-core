@@ -388,18 +388,35 @@ CDeterministicMNList CDeterministicMNList::AddMN(const CDeterministicMNCPtr& mn)
 {
     CDeterministicMNList result(*this);
     result.mnMap[mn->proTxHash] = mn;
-    
-    // Add unique property entries for all unique identifiers
-    result.mnUniquePropertyMap[GetUniquePropertyHash(mn->collateralOutpoint)] = mn->proTxHash;
-    result.mnUniquePropertyMap[GetUniquePropertyHash(mn->state.addr)] = mn->proTxHash;
-    result.mnUniquePropertyMap[GetUniquePropertyHash(mn->state.keyIDOwner)] = mn->proTxHash;
-    
-    // CRITICAL FIX: Add voting key to unique property map
-    result.mnUniquePropertyMap[GetVotingKeyHash(mn->state.keyIDVoting)] = mn->proTxHash;
-    
-    // CRITICAL FIX: Add operator key to unique property map
-    result.mnUniquePropertyMap[GetOperatorKeyHash(mn->state.vchOperatorPubKey)] = mn->proTxHash;
-    
+
+    // Defense-in-depth: warn if a unique property already belongs to a different MN.
+    // Validation should prevent this, but silent overwrites would corrupt the index.
+    auto warnIfConflict = [&](const uint256& propHash, const char* label) {
+        auto it = result.mnUniquePropertyMap.find(propHash);
+        if (it != result.mnUniquePropertyMap.end() && it->second != mn->proTxHash) {
+            LogPrintf("WARNING: AddMN: %s collision — existing MN %s, new MN %s\n",
+                      label, it->second.ToString().substr(0, 16), mn->proTxHash.ToString().substr(0, 16));
+        }
+    };
+
+    uint256 addrHash = GetUniquePropertyHash(mn->state.addr);
+    uint256 collHash = GetUniquePropertyHash(mn->collateralOutpoint);
+    uint256 ownerHash = GetUniquePropertyHash(mn->state.keyIDOwner);
+    uint256 voteHash = GetVotingKeyHash(mn->state.keyIDVoting);
+    uint256 opHash = GetOperatorKeyHash(mn->state.vchOperatorPubKey);
+
+    warnIfConflict(addrHash, "service address");
+    warnIfConflict(collHash, "collateral");
+    warnIfConflict(ownerHash, "owner key");
+    warnIfConflict(voteHash, "voting key");
+    warnIfConflict(opHash, "operator key");
+
+    result.mnUniquePropertyMap[collHash] = mn->proTxHash;
+    result.mnUniquePropertyMap[addrHash] = mn->proTxHash;
+    result.mnUniquePropertyMap[ownerHash] = mn->proTxHash;
+    result.mnUniquePropertyMap[voteHash] = mn->proTxHash;
+    result.mnUniquePropertyMap[opHash] = mn->proTxHash;
+
     result.nTotalRegisteredCount++;
     return result;
 }
@@ -407,11 +424,32 @@ CDeterministicMNList CDeterministicMNList::AddMN(const CDeterministicMNCPtr& mn)
 void CDeterministicMNList::AddMNInPlace(const CDeterministicMNCPtr& mn)
 {
     mnMap[mn->proTxHash] = mn;
-    mnUniquePropertyMap[GetUniquePropertyHash(mn->collateralOutpoint)] = mn->proTxHash;
-    mnUniquePropertyMap[GetUniquePropertyHash(mn->state.addr)] = mn->proTxHash;
-    mnUniquePropertyMap[GetUniquePropertyHash(mn->state.keyIDOwner)] = mn->proTxHash;
-    mnUniquePropertyMap[GetVotingKeyHash(mn->state.keyIDVoting)] = mn->proTxHash;
-    mnUniquePropertyMap[GetOperatorKeyHash(mn->state.vchOperatorPubKey)] = mn->proTxHash;
+
+    auto warnIfConflict = [&](const uint256& propHash, const char* label) {
+        auto it = mnUniquePropertyMap.find(propHash);
+        if (it != mnUniquePropertyMap.end() && it->second != mn->proTxHash) {
+            LogPrintf("WARNING: AddMNInPlace: %s collision — existing MN %s, new MN %s\n",
+                      label, it->second.ToString().substr(0, 16), mn->proTxHash.ToString().substr(0, 16));
+        }
+    };
+
+    uint256 addrHash = GetUniquePropertyHash(mn->state.addr);
+    uint256 collHash = GetUniquePropertyHash(mn->collateralOutpoint);
+    uint256 ownerHash = GetUniquePropertyHash(mn->state.keyIDOwner);
+    uint256 voteHash = GetVotingKeyHash(mn->state.keyIDVoting);
+    uint256 opHash = GetOperatorKeyHash(mn->state.vchOperatorPubKey);
+
+    warnIfConflict(addrHash, "service address");
+    warnIfConflict(collHash, "collateral");
+    warnIfConflict(ownerHash, "owner key");
+    warnIfConflict(voteHash, "voting key");
+    warnIfConflict(opHash, "operator key");
+
+    mnUniquePropertyMap[collHash] = mn->proTxHash;
+    mnUniquePropertyMap[addrHash] = mn->proTxHash;
+    mnUniquePropertyMap[ownerHash] = mn->proTxHash;
+    mnUniquePropertyMap[voteHash] = mn->proTxHash;
+    mnUniquePropertyMap[opHash] = mn->proTxHash;
 }
 
 CDeterministicMNList CDeterministicMNList::UpdateMN(const uint256& proTxHash, const CDeterministicMNState& newState) const
@@ -424,30 +462,33 @@ CDeterministicMNList CDeterministicMNList::UpdateMN(const uint256& proTxHash, co
     }
 
     CDeterministicMNList result(*this);
-    
-    // Remove old address from unique map if changed
-    if (mn->state.addr != newState.addr) {
-        result.mnUniquePropertyMap.erase(GetUniquePropertyHash(mn->state.addr));
-        result.mnUniquePropertyMap[GetUniquePropertyHash(newState.addr)] = proTxHash;
-    }
-    
-    // Update voting key in unique map if changed
-    if (mn->state.keyIDVoting != newState.keyIDVoting) {
-        result.mnUniquePropertyMap.erase(GetVotingKeyHash(mn->state.keyIDVoting));
-        result.mnUniquePropertyMap[GetVotingKeyHash(newState.keyIDVoting)] = proTxHash;
-    }
-    
-    // Update operator key in unique map if changed
-    if (mn->state.vchOperatorPubKey != newState.vchOperatorPubKey) {
-        result.mnUniquePropertyMap.erase(GetOperatorKeyHash(mn->state.vchOperatorPubKey));
-        result.mnUniquePropertyMap[GetOperatorKeyHash(newState.vchOperatorPubKey)] = proTxHash;
-    }
-    
-    // Create updated MN entry
+
+    // Helper: update a unique property, with conflict detection.
+    // If the new value already belongs to a different MN, log and skip (no-op).
+    auto safeUpdateProp = [&](const uint256& oldHash, const uint256& newHash,
+                              const uint256& ownerProTx, const char* label) {
+        if (oldHash == newHash) return;
+        auto conflict = result.mnUniquePropertyMap.find(newHash);
+        if (conflict != result.mnUniquePropertyMap.end() && conflict->second != ownerProTx) {
+            LogPrintf("ERROR: UpdateMN: %s conflict — MN %s trying to claim property owned by MN %s\n",
+                      label, ownerProTx.ToString().substr(0, 16), conflict->second.ToString().substr(0, 16));
+            return;
+        }
+        result.mnUniquePropertyMap.erase(oldHash);
+        result.mnUniquePropertyMap[newHash] = ownerProTx;
+    };
+
+    safeUpdateProp(GetUniquePropertyHash(mn->state.addr), GetUniquePropertyHash(newState.addr),
+                   proTxHash, "service address");
+    safeUpdateProp(GetVotingKeyHash(mn->state.keyIDVoting), GetVotingKeyHash(newState.keyIDVoting),
+                   proTxHash, "voting key");
+    safeUpdateProp(GetOperatorKeyHash(mn->state.vchOperatorPubKey), GetOperatorKeyHash(newState.vchOperatorPubKey),
+                   proTxHash, "operator key");
+
     auto newMN = std::make_shared<CDeterministicMN>(*mn);
     newMN->state = newState;
     result.mnMap[proTxHash] = newMN;
-    
+
     return result;
 }
 
@@ -455,36 +496,39 @@ CDeterministicMNList CDeterministicMNList::BatchUpdateMNStates(
     const std::vector<std::pair<uint256, CDeterministicMNState>>& updates) const
 {
     if (updates.empty()) return *this;
-    
+
     CDeterministicMNList result(*this);
-    
+
     for (const auto& update : updates) {
         const uint256& proTxHash = update.first;
         const CDeterministicMNState& newState = update.second;
-        
+
         auto it = result.mnMap.find(proTxHash);
         if (it == result.mnMap.end()) continue;
-        
+
         const auto& oldState = it->second->state;
-        
-        if (oldState.addr != newState.addr) {
-            result.mnUniquePropertyMap.erase(GetUniquePropertyHash(oldState.addr));
-            result.mnUniquePropertyMap[GetUniquePropertyHash(newState.addr)] = proTxHash;
-        }
-        if (oldState.keyIDVoting != newState.keyIDVoting) {
-            result.mnUniquePropertyMap.erase(GetVotingKeyHash(oldState.keyIDVoting));
-            result.mnUniquePropertyMap[GetVotingKeyHash(newState.keyIDVoting)] = proTxHash;
-        }
-        if (oldState.vchOperatorPubKey != newState.vchOperatorPubKey) {
-            result.mnUniquePropertyMap.erase(GetOperatorKeyHash(oldState.vchOperatorPubKey));
-            result.mnUniquePropertyMap[GetOperatorKeyHash(newState.vchOperatorPubKey)] = proTxHash;
-        }
-        
+
+        auto safeUpdateProp = [&](const uint256& oldHash, const uint256& newHash, const char* label) {
+            if (oldHash == newHash) return;
+            auto conflict = result.mnUniquePropertyMap.find(newHash);
+            if (conflict != result.mnUniquePropertyMap.end() && conflict->second != proTxHash) {
+                LogPrintf("ERROR: BatchUpdateMNStates: %s conflict — MN %s vs MN %s\n",
+                          label, proTxHash.ToString().substr(0, 16), conflict->second.ToString().substr(0, 16));
+                return;
+            }
+            result.mnUniquePropertyMap.erase(oldHash);
+            result.mnUniquePropertyMap[newHash] = proTxHash;
+        };
+
+        safeUpdateProp(GetUniquePropertyHash(oldState.addr), GetUniquePropertyHash(newState.addr), "service address");
+        safeUpdateProp(GetVotingKeyHash(oldState.keyIDVoting), GetVotingKeyHash(newState.keyIDVoting), "voting key");
+        safeUpdateProp(GetOperatorKeyHash(oldState.vchOperatorPubKey), GetOperatorKeyHash(newState.vchOperatorPubKey), "operator key");
+
         auto newMN = std::make_shared<CDeterministicMN>(*it->second);
         newMN->state = newState;
         result.mnMap[proTxHash] = newMN;
     }
-    
+
     return result;
 }
 

@@ -370,8 +370,18 @@ bool CheckProRegTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CValid
         return state.DoS(10, false, REJECT_INVALID, "bad-protx-addr");
     }
     if (!GetParams().MineBlocksOnDemand() && !proTx.addr.IsRoutable()) {
-        // Only enforce routable addresses on mainnet/testnet, not regtest
         return state.DoS(10, false, REJECT_INVALID, "bad-protx-addr-not-routable");
+    }
+
+    // Reject port 0 after v2 migration (unreachable MNs waste a slot).
+    // Gated to avoid rejecting historical ProRegTx during resync.
+    if (pindexPrev) {
+        const auto& cpPort = GetParams().GetConsensus();
+        if ((pindexPrev->nHeight + 1) >= cpPort.nMNv2MigrationHeight) {
+            if (proTx.addr.GetPort() == 0) {
+                return state.DoS(10, false, REJECT_INVALID, "bad-protx-addr-port-zero");
+            }
+        }
     }
 
     // Check operator key size (48 bytes for BLS public key)
@@ -636,10 +646,17 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
             }
         }
 
-        // Check for address conflict with other masternodes
-        auto existingMN = mnList->GetMNByService(proTx.addr);
-        if (existingMN && existingMN->proTxHash != proTx.proTxHash) {
-            return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr");
+        // Check for address conflict with other masternodes.
+        // Use HasUniqueProperty as the primary check — it catches orphaned
+        // map entries that GetMNByService would miss (defense-in-depth).
+        {
+            uint256 addrHash = mnList->GetUniquePropertyHash(proTx.addr);
+            if (mnList->HasUniqueProperty(addrHash)) {
+                auto existingMN = mnList->GetMNByService(proTx.addr);
+                if (!existingMN || existingMN->proTxHash != proTx.proTxHash) {
+                    return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr");
+                }
+            }
         }
 
         // Reject port 0 — unreachable MNs waste a registration slot
@@ -652,10 +669,13 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
             int nBlockHeight = pindexPrev->nHeight + 1;
             const auto& cp = GetParams().GetConsensus();
             if (nBlockHeight >= cp.nTieredMNActivationHeight) {
-                auto existingIntra = pExtraList->GetMNByService(proTx.addr);
-                if (existingIntra && existingIntra->proTxHash != proTx.proTxHash) {
-                    return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
-                                    false, "Service address conflicts with another update in the same block");
+                uint256 addrHash = pExtraList->GetUniquePropertyHash(proTx.addr);
+                if (pExtraList->HasUniqueProperty(addrHash)) {
+                    auto existingIntra = pExtraList->GetMNByService(proTx.addr);
+                    if (!existingIntra || existingIntra->proTxHash != proTx.proTxHash) {
+                        return state.DoS(100, false, REJECT_DUPLICATE, "bad-protx-dup-addr-intrablock",
+                                        false, "Service address conflicts with another update in the same block");
+                    }
                 }
             }
         }
