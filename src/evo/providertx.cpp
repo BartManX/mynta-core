@@ -659,9 +659,14 @@ bool CheckProUpServTx(const CTransaction& tx, const CBlockIndex* pindexPrev, CVa
             }
         }
 
-        // Reject port 0 — unreachable MNs waste a registration slot
-        if (proTx.addr.GetPort() == 0) {
-            return state.DoS(10, false, REJECT_INVALID, "bad-protx-addr-port-zero");
+        // Reject port 0 after v2 migration (unreachable MNs waste a slot).
+        // Gated to avoid rejecting historical ProUpServTx during resync.
+        {
+            const auto& cpPort = GetParams().GetConsensus();
+            int nextHeight = pindexPrev->nHeight + 1;
+            if (nextHeight >= cpPort.nMNv2MigrationHeight && proTx.addr.GetPort() == 0) {
+                return state.DoS(10, false, REJECT_INVALID, "bad-protx-addr-port-zero");
+            }
         }
 
         // Intra-block conflict detection (only after activation to match v1.2.x consensus)

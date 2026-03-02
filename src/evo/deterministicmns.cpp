@@ -461,29 +461,43 @@ CDeterministicMNList CDeterministicMNList::UpdateMN(const uint256& proTxHash, co
         return *this;
     }
 
-    CDeterministicMNList result(*this);
-
-    // Helper: update a unique property, with conflict detection.
-    // If the new value already belongs to a different MN, log and skip (no-op).
-    auto safeUpdateProp = [&](const uint256& oldHash, const uint256& newHash,
-                              const uint256& ownerProTx, const char* label) {
-        if (oldHash == newHash) return;
-        auto conflict = result.mnUniquePropertyMap.find(newHash);
-        if (conflict != result.mnUniquePropertyMap.end() && conflict->second != ownerProTx) {
+    // Pre-flight: reject the entire update if any changed property would
+    // collide with a different MN.  A partial update (state written but map
+    // not updated) would leave mnMap and mnUniquePropertyMap inconsistent.
+    auto wouldConflict = [&](const uint256& newHash, const char* label) -> bool {
+        auto it = mnUniquePropertyMap.find(newHash);
+        if (it != mnUniquePropertyMap.end() && it->second != proTxHash) {
             LogPrintf("ERROR: UpdateMN: %s conflict — MN %s trying to claim property owned by MN %s\n",
-                      label, ownerProTx.ToString().substr(0, 16), conflict->second.ToString().substr(0, 16));
-            return;
+                      label, proTxHash.ToString().substr(0, 16), it->second.ToString().substr(0, 16));
+            return true;
         }
-        result.mnUniquePropertyMap.erase(oldHash);
-        result.mnUniquePropertyMap[newHash] = ownerProTx;
+        return false;
     };
 
-    safeUpdateProp(GetUniquePropertyHash(mn->state.addr), GetUniquePropertyHash(newState.addr),
-                   proTxHash, "service address");
-    safeUpdateProp(GetVotingKeyHash(mn->state.keyIDVoting), GetVotingKeyHash(newState.keyIDVoting),
-                   proTxHash, "voting key");
-    safeUpdateProp(GetOperatorKeyHash(mn->state.vchOperatorPubKey), GetOperatorKeyHash(newState.vchOperatorPubKey),
-                   proTxHash, "operator key");
+    uint256 newAddrHash = GetUniquePropertyHash(newState.addr);
+    uint256 newVoteHash = GetVotingKeyHash(newState.keyIDVoting);
+    uint256 newOpHash   = GetOperatorKeyHash(newState.vchOperatorPubKey);
+
+    if ((mn->state.addr != newState.addr && wouldConflict(newAddrHash, "service address")) ||
+        (mn->state.keyIDVoting != newState.keyIDVoting && wouldConflict(newVoteHash, "voting key")) ||
+        (mn->state.vchOperatorPubKey != newState.vchOperatorPubKey && wouldConflict(newOpHash, "operator key"))) {
+        return *this;
+    }
+
+    CDeterministicMNList result(*this);
+
+    if (mn->state.addr != newState.addr) {
+        result.mnUniquePropertyMap.erase(GetUniquePropertyHash(mn->state.addr));
+        result.mnUniquePropertyMap[newAddrHash] = proTxHash;
+    }
+    if (mn->state.keyIDVoting != newState.keyIDVoting) {
+        result.mnUniquePropertyMap.erase(GetVotingKeyHash(mn->state.keyIDVoting));
+        result.mnUniquePropertyMap[newVoteHash] = proTxHash;
+    }
+    if (mn->state.vchOperatorPubKey != newState.vchOperatorPubKey) {
+        result.mnUniquePropertyMap.erase(GetOperatorKeyHash(mn->state.vchOperatorPubKey));
+        result.mnUniquePropertyMap[newOpHash] = proTxHash;
+    }
 
     auto newMN = std::make_shared<CDeterministicMN>(*mn);
     newMN->state = newState;
@@ -508,21 +522,40 @@ CDeterministicMNList CDeterministicMNList::BatchUpdateMNStates(
 
         const auto& oldState = it->second->state;
 
-        auto safeUpdateProp = [&](const uint256& oldHash, const uint256& newHash, const char* label) {
-            if (oldHash == newHash) return;
-            auto conflict = result.mnUniquePropertyMap.find(newHash);
-            if (conflict != result.mnUniquePropertyMap.end() && conflict->second != proTxHash) {
+        // Pre-flight conflict check — skip this MN entirely if any
+        // changed property would collide with a different MN.
+        uint256 newAddrHash = GetUniquePropertyHash(newState.addr);
+        uint256 newVoteHash = GetVotingKeyHash(newState.keyIDVoting);
+        uint256 newOpHash   = GetOperatorKeyHash(newState.vchOperatorPubKey);
+
+        auto wouldConflict = [&](const uint256& newHash, const char* label) -> bool {
+            auto c = result.mnUniquePropertyMap.find(newHash);
+            if (c != result.mnUniquePropertyMap.end() && c->second != proTxHash) {
                 LogPrintf("ERROR: BatchUpdateMNStates: %s conflict — MN %s vs MN %s\n",
-                          label, proTxHash.ToString().substr(0, 16), conflict->second.ToString().substr(0, 16));
-                return;
+                          label, proTxHash.ToString().substr(0, 16), c->second.ToString().substr(0, 16));
+                return true;
             }
-            result.mnUniquePropertyMap.erase(oldHash);
-            result.mnUniquePropertyMap[newHash] = proTxHash;
+            return false;
         };
 
-        safeUpdateProp(GetUniquePropertyHash(oldState.addr), GetUniquePropertyHash(newState.addr), "service address");
-        safeUpdateProp(GetVotingKeyHash(oldState.keyIDVoting), GetVotingKeyHash(newState.keyIDVoting), "voting key");
-        safeUpdateProp(GetOperatorKeyHash(oldState.vchOperatorPubKey), GetOperatorKeyHash(newState.vchOperatorPubKey), "operator key");
+        if ((oldState.addr != newState.addr && wouldConflict(newAddrHash, "service address")) ||
+            (oldState.keyIDVoting != newState.keyIDVoting && wouldConflict(newVoteHash, "voting key")) ||
+            (oldState.vchOperatorPubKey != newState.vchOperatorPubKey && wouldConflict(newOpHash, "operator key"))) {
+            continue;
+        }
+
+        if (oldState.addr != newState.addr) {
+            result.mnUniquePropertyMap.erase(GetUniquePropertyHash(oldState.addr));
+            result.mnUniquePropertyMap[newAddrHash] = proTxHash;
+        }
+        if (oldState.keyIDVoting != newState.keyIDVoting) {
+            result.mnUniquePropertyMap.erase(GetVotingKeyHash(oldState.keyIDVoting));
+            result.mnUniquePropertyMap[newVoteHash] = proTxHash;
+        }
+        if (oldState.vchOperatorPubKey != newState.vchOperatorPubKey) {
+            result.mnUniquePropertyMap.erase(GetOperatorKeyHash(oldState.vchOperatorPubKey));
+            result.mnUniquePropertyMap[newOpHash] = proTxHash;
+        }
 
         auto newMN = std::make_shared<CDeterministicMN>(*it->second);
         newMN->state = newState;
